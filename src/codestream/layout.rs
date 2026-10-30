@@ -10,7 +10,7 @@ use super::{
     ComponentCodingStyles, ComponentQuantizations, DFS, DecodeError, EOC, MAX_COMPONENTS, MCC, MCO,
     MCT, MalformedKind, MctParameters, NLT, PLM, POC, PPM, PRF, PackedPacketHeaderSource,
     PackedPacketHeaders, PacketLengths, Parser, Part2Extensions, ProgressionChanges, QCC, QCD, RGN,
-    Resource, ResourceLimits, RoiShifts, SIZ, SOC, SOT, TLM,
+    Resource, ResourceLimits, RoiShifts, SIZ, SOC, SOT, TLM, TilePartPayload,
 };
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
@@ -423,13 +423,13 @@ impl<'a> Parser<'a> {
             parser.resolve_multiple_component_transform(&main_mct_parameters)?;
         let tile_count = image_size.tile_count()?;
         let mut tile_parts = 0_u32;
-        let mut tile_part_payloads = Vec::new();
+        let mut tile_part_payloads: Vec<TilePartPayload<'a>> = Vec::new();
         let tile_state_count = usize::try_from(tile_count)
             .map_err(|_| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
         let mut tile_roi_shifts = vec![None; tile_state_count];
         let mut tile_coding_styles = vec![None; tile_state_count];
         let mut tile_quantizations = vec![None; tile_state_count];
-        let mut tile_component_coding_styles = vec![None; tile_state_count];
+        let mut tile_component_style_parts: Vec<Option<usize>> = vec![None; tile_state_count];
         let mut tile_component_quantizations: Vec<Option<ComponentQuantizations>> =
             vec![None; tile_state_count];
         let mut tile_progression_changes: Vec<Option<ProgressionChanges>> =
@@ -439,7 +439,20 @@ impl<'a> Parser<'a> {
 
         #[cfg_attr(
             verus_keep_ghost,
-            verus_spec(decreases input_length as int - parser.position as int,)
+            verus_spec(
+                invariant
+                    tile_component_style_parts.len() == tile_state_count,
+                    forall|tile: int| 0 <= tile < tile_component_style_parts.len() ==>
+                        match #[trigger] tile_component_style_parts@[tile] {
+                            Some(part) => part < tile_part_payloads.len()
+                                && tile_part_payloads@[part as int].tile_index as int == tile
+                                && forall|later: int| part < later < tile_part_payloads.len() ==>
+                                    (#[trigger] tile_part_payloads@[later]).tile_index as int != tile,
+                            None => forall|prior: int| 0 <= prior < tile_part_payloads.len() ==>
+                                (#[trigger] tile_part_payloads@[prior]).tile_index as int != tile,
+                        },
+                decreases input_length as int - parser.position as int,
+            )
         )]
         loop {
             let previous_position = parser.position;
@@ -534,11 +547,24 @@ impl<'a> Parser<'a> {
                         Some(Some(value)) => *value,
                         _ => quantization,
                     };
-                    let inherited_component_styles =
-                        match tile_component_coding_styles.get(tile_index) {
-                            Some(Some(styles)) => *styles,
-                            _ => component_coding_styles,
-                        };
+                    let inherited_component_styles = match tile_component_style_parts
+                        .get(tile_index)
+                    {
+                        Some(Some(part)) => {
+                            #[cfg(verus_keep_ghost)]
+                            proof! {
+                                assert(*part < tile_part_payloads.len());
+                                assert(tile_part_payloads@[*part as int].tile_index as int == tile_index);
+                            }
+                            tile_part_payloads
+                                .get(*part)
+                                .ok_or_else(|| {
+                                    parser.malformed_here(MalformedKind::InvalidTilePart)
+                                })?
+                                .component_coding_styles
+                        }
+                        _ => component_coding_styles,
+                    };
                     let inherited_component_quantizations =
                         match tile_component_quantizations.get(tile_index) {
                             Some(Some(quantizations)) => quantizations.clone(),
@@ -592,10 +618,15 @@ impl<'a> Parser<'a> {
                         .get_mut(tile_index)
                         .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
                         Some(payload.quantization);
-                    *tile_component_coding_styles
+                    #[cfg(verus_keep_ghost)]
+                    proof_decl! {
+                        let ghost previous_style_parts = tile_component_style_parts@;
+                        let ghost previous_payloads = tile_part_payloads@;
+                    }
+                    *tile_component_style_parts
                         .get_mut(tile_index)
                         .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
-                        Some(payload.component_coding_styles);
+                        Some(tile_part_payloads.len());
                     *tile_component_quantizations
                         .get_mut(tile_index)
                         .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
@@ -613,6 +644,54 @@ impl<'a> Parser<'a> {
                         .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
                         Some(tile_extensions);
                     tile_part_payloads.push(payload);
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert forall|tile: int| 0 <= tile < tile_component_style_parts.len() implies
+                            match #[trigger] tile_component_style_parts@[tile] {
+                                Some(part) => part < tile_part_payloads.len()
+                                    && tile_part_payloads@[part as int].tile_index as int == tile
+                                    && forall|later: int| part < later < tile_part_payloads.len() ==>
+                                        (#[trigger] tile_part_payloads@[later]).tile_index as int != tile,
+                                None => forall|prior: int| 0 <= prior < tile_part_payloads.len() ==>
+                                    (#[trigger] tile_part_payloads@[prior]).tile_index as int != tile,
+                            } by {
+                                if tile != tile_index {
+                                    assert(tile_component_style_parts@[tile] == previous_style_parts[tile]);
+                                    match previous_style_parts[tile] {
+                                        Some(part) => {
+                                            assert(part < previous_payloads.len());
+                                            assert(tile_part_payloads@[part as int] == previous_payloads[part as int]);
+                                            assert forall|later: int| part < later < tile_part_payloads.len() implies
+                                                (#[trigger] tile_part_payloads@[later]).tile_index as int != tile by {
+                                                    if later < previous_payloads.len() {
+                                                        assert(tile_part_payloads@[later] == previous_payloads[later]);
+                                                        assert(previous_payloads[later].tile_index as int != tile);
+                                                    } else {
+                                                        assert(later == previous_payloads.len());
+                                                        assert(tile_part_payloads@[later].tile_index as int == tile_index);
+                                                    }
+                                                }
+                                        }
+                                        None => {
+                                            assert forall|prior: int| 0 <= prior < tile_part_payloads.len() implies
+                                                (#[trigger] tile_part_payloads@[prior]).tile_index as int != tile by {
+                                                    if prior < previous_payloads.len() {
+                                                        assert(tile_part_payloads@[prior] == previous_payloads[prior]);
+                                                        assert(previous_payloads[prior].tile_index as int != tile);
+                                                    } else {
+                                                        assert(prior == previous_payloads.len());
+                                                        assert(tile_part_payloads@[prior].tile_index as int == tile_index);
+                                                    }
+                                                }
+                                        }
+                                    }
+                                } else {
+                                    assert(tile_component_style_parts@[tile] == Some(previous_payloads.len() as usize));
+                                    assert(tile_part_payloads.len() == previous_payloads.len() + 1);
+                                    assert(tile_part_payloads@[previous_payloads.len() as int].tile_index as int == tile);
+                                }
+                            }
+                    }
                 }
                 EOC => {
                     if tile_parts == 0 {
