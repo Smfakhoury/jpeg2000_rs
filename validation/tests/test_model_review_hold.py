@@ -757,6 +757,155 @@ class ModelReviewHoldTests(unittest.TestCase):
             self.assertEqual(set(model_review_hold.held_changes(
                 self.repository, base, self.commit())), set(entry["paths"]))
 
+    def tile_component_style_cache_fixture(self):
+        paths = {
+            "src/codestream/layout.rs", "src/codestream/tiles.rs",
+            "src/codestream/tests.rs",
+        }
+        self.assertEqual(model_review_hold.AMENDMENT_PROFILES["tile-component-style-cache"],
+                         paths)
+        return self.layout_fixture(
+            {path: f"original {path}\n" for path in paths},
+            {path: f"latest-owner index cache {path}\n" for path in paths},
+            "tile-component-style-cache",
+            "Exact allocation reduction with proved latest-owner indices, not changed resource policy.",
+        )
+
+    def test_tile_component_style_cache_requires_exact_trusted_adoption(self):
+        base, head, entry = self.tile_component_style_cache_fixture()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(self.repository, base, head)),
+                             set(entry["paths"]))
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_tile_component_style_cache_rejects_each_changed_source_or_proof(self):
+        base, head, entry = self.tile_component_style_cache_fixture()
+        for index, path in enumerate(entry["paths"]):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"changed-tile-cache-{index}", head)
+                self.write(path, self.git("show", f"{head}:{path}") + "changed\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_tile_component_style_cache_does_not_authorize_models_limits_or_controls(self):
+        base, head, entry = self.tile_component_style_cache_fixture()
+        for index, path in enumerate((
+            "src/codestream.rs", "src/decode.rs", "src/error.rs",
+            "src/codestream/packet_headers.rs", "specs/new.rs", "proofs/new.rs",
+            "validation/resource_benchmarks.py", "validation/framework.py",
+            "validation/generate-proof-coverage.py", "validation/check-model-review-hold.py",
+            "Cargo.toml", ".github/workflows/ci.yml",
+        )):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"extra-tile-cache-{index}", head)
+                self.write(path, "unapproved extra change\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_tile_component_style_cache_rejects_expansion_or_missing_paths(self):
+        _, _, original = self.tile_component_style_cache_fixture()
+        for path in ("src/error.rs", "specs/new.rs", "validation/resource_benchmarks.py",
+                     "validation/check-model-review-hold.py"):
+            with self.subTest(path=path):
+                entry = copy.deepcopy(original)
+                entry["paths"][path] = entry["paths"].pop("src/codestream/layout.rs")
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+        for path in original["paths"]:
+            with self.subTest(missing=path):
+                entry = copy.deepcopy(original)
+                del entry["paths"][path]
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
+    def tile_packet_admission_fixture(self):
+        paths = {
+            "src/codestream/tiles.rs", "src/codestream/packet_headers.rs",
+            "src/codestream/tests.rs", "specs/packet_input.rs",
+            "validation/framework.py", "validation/normative-coverage.json",
+            "validation/tests/test_framework.py",
+        }
+        self.assertEqual(model_review_hold.AMENDMENT_PROFILES["tile-packet-admission"],
+                         paths)
+        return self.layout_fixture(
+            {path: f"original {path}\n" for path in paths},
+            {path: f"source-derived tile packet admission {path}\n" for path in paths},
+            "tile-packet-admission",
+            "Exact actual PLT/PPT producer extraction and complete state contracts.",
+        )
+
+    def test_tile_packet_admission_requires_exact_trusted_adoption(self):
+        base, head, entry = self.tile_packet_admission_fixture()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(self.repository, base, head)),
+                             set(entry["paths"]))
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_tile_packet_admission_rejects_each_changed_source_model_or_binding(self):
+        base, head, entry = self.tile_packet_admission_fixture()
+        for index, path in enumerate(entry["paths"]):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"changed-tile-admission-{index}", head)
+                self.write(path, self.git("show", f"{head}:{path}") + "changed\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_tile_packet_admission_does_not_authorize_other_models_or_controls(self):
+        base, head, entry = self.tile_packet_admission_fixture()
+        for index, path in enumerate((
+            "src/codestream/layout.rs", "src/error.rs", "src/decode.rs",
+            "specs/new.rs", "proofs/new.rs", "validation/resource_benchmarks.py",
+            "validation/generate-proof-coverage.py", "validation/check-model-review-hold.py",
+            "Cargo.toml", ".github/workflows/verus.yml",
+        )):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"extra-tile-admission-{index}", head)
+                self.write(path, "unapproved extra change\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_tile_packet_admission_rejects_expansion_and_incomplete_records(self):
+        _, _, original = self.tile_packet_admission_fixture()
+        for path in ("src/error.rs", "src/codestream/layout.rs", "specs/new.rs",
+                     "validation/check-model-review-hold.py"):
+            with self.subTest(path=path):
+                entry = copy.deepcopy(original)
+                entry["paths"][path] = entry["paths"].pop("specs/packet_input.rs")
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+        for path in original["paths"]:
+            with self.subTest(missing=path):
+                entry = copy.deepcopy(original)
+                del entry["paths"][path]
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
+    def test_cache_and_packet_records_do_not_authorize_combined_source(self):
+        cache_paths = model_review_hold.AMENDMENT_PROFILES["tile-component-style-cache"]
+        packet_paths = model_review_hold.AMENDMENT_PROFILES["tile-packet-admission"]
+        base, _, cache = self.layout_fixture(
+            {path: f"original {path}\n" for path in cache_paths | packet_paths},
+            {path: f"cache change {path}\n" for path in cache_paths},
+            "tile-component-style-cache", "Bounded cache fixture.",
+        )
+        for path in packet_paths:
+            self.write(path, f"packet change {path}\n")
+        head = self.commit()
+        packet = dict(cache, id="packet-admission-combined-fixture",
+                      profile="tile-packet-admission", source_head=head, paths={
+                          path: {"before": self.git("rev-parse", f"{base}:{path}"),
+                                 "after": self.git("rev-parse", f"{head}:{path}")}
+                          for path in packet_paths
+                      })
+        with patch.object(model_review_hold, "REGISTRY", self.registry([cache, packet])):
+            self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
+
     def test_invalid_trusted_registry_causes_explicit_cli_failure(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
         head = self.commit()
