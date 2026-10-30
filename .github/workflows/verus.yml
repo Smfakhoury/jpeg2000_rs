@@ -387,21 +387,28 @@ jobs:
               result = command("native-harness", ["bash", "-c", test_command], source, 720, required=False)
               output = (evidence / "native-harness.stdout").read_text(errors="replace")
               starts = list(re.finditer(r"^test (\w+) \.\.\. ", output, re.M))
+              controls = [{"name": "return_static_lifetime", "harness_outcome": "not_run"}]
+              expected = {case["name"] for case in report["cases"] + controls}
+              observed = [match[1] for match in starts]
+              if len(expected) != 7 or len(observed) != len(set(observed)):
+                  raise RuntimeError("Duplicate or invalid native test identities")
               for index, match in enumerate(starts):
                   segment = output[match.end():starts[index + 1].start() if index + 1 < len(starts) else len(output)]
                   status = re.search(r"^(ok|FAILED)\s*$", segment, re.M)
-                  records = [case for case in report["cases"] if case["name"] == match[1]]
+                  records = [case for case in report["cases"] + controls if case["name"] == match[1]]
                   if len(records) != 1 or status is None:
                       raise RuntimeError(f"Unrecognized or incomplete native test result: {match[1]}")
                   records[0]["harness_outcome"] = status[1]
+              report["additional_native_controls"] = controls
               report["native_summary"] = re.findall(r"^test result:.*$", output, re.M)
               report["observed_test_count"] = len(starts)
               report["passed"] = sum(case["harness_outcome"] == "ok" for case in report["cases"])
               report["failed"] = sum(case["harness_outcome"] == "FAILED" for case in report["cases"])
               save()
-              if (result["returncode"] != 0 or len(starts) != 6 or report["passed"] != 6
-                  or not re.search(r"^test result: ok\. 6 passed; 0 failed;", output, re.M)):
-                  raise RuntimeError("The exact six native regression expectations did not all pass")
+              if (result["returncode"] != 0 or set(observed) != expected or report["passed"] != 6
+                  or controls[0]["harness_outcome"] != "ok"
+                  or not re.search(r"^test result: ok\. 7 passed; 0 failed; 0 ignored;", output, re.M)):
+                  raise RuntimeError("The six native regressions and existing control did not all pass")
               report["outcome"] = "six_native_public_regressions_passed"
           except Exception as error:
               report["outcome"] = "failed"
