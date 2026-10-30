@@ -276,12 +276,16 @@ def _coverage_function_body(text: str, header: re.Match[str] | None) -> str | No
     return text[body_start + 1:body_start + 1 + closing.start()]
 
 
-def _coverage_same_file_call(text: str, caller: str, callee: str) -> bool:
+def _coverage_same_file_call(
+    text: str, caller: str, callee: str, *, distinct_file: bool = False,
+) -> bool:
     """Check another formatted function body, not the callee declaration."""
-    if caller.rsplit("::", 1)[-1] == callee:
+    same_name = caller.rsplit("::", 1)[-1] == callee
+    if same_name and not distinct_file:
         return False
     body = _coverage_function_body(text, _coverage_function_header(text, caller))
-    return body is not None and re.search(rf"\b{re.escape(callee)}\s*\(", body) is not None
+    prefix = r"(?<![\w.])" if same_name else r"\b"
+    return body is not None and re.search(rf"{prefix}{re.escape(callee)}\s*\(", body) is not None
 
 
 def _coverage_definition_path(parent: str, symbol: str) -> str:
@@ -2022,7 +2026,7 @@ def validate_normative_coverage(
         path: Path, caller: str, callee: str, *, require_caller_body: bool,
     ) -> bool:
         if require_caller_body:
-            return same_file_call(path, caller, callee)
+            return same_file_call(path, caller, callee, distinct_file=True)
         text = source_text(path)
         if re.fullmatch(r"\w+", callee) is None:
             return re.search(rf"\b{re.escape(callee)}\s*\(", text) is not None
@@ -2030,14 +2034,18 @@ def validate_normative_coverage(
             file_calls[path] = set(re.findall(r"\b(\w+)\s*\(", text))
         return callee in file_calls[path]
 
-    def same_file_call(path: Path, caller: str, callee: str) -> bool:
-        if caller.rsplit("::", 1)[-1] == callee:
+    def same_file_call(
+        path: Path, caller: str, callee: str, *, distinct_file: bool = False,
+    ) -> bool:
+        same_name = caller.rsplit("::", 1)[-1] == callee
+        if same_name and not distinct_file:
             return False
         key = (path, caller)
         if key not in bodies:
             bodies[key] = _coverage_function_body(source_text(path), function_header(path, caller))
         body = bodies[key]
-        return body is not None and re.search(rf"\b{re.escape(callee)}\s*\(", body) is not None
+        prefix = r"(?<![\w.])" if same_name else r"\b"
+        return body is not None and re.search(rf"{prefix}{re.escape(callee)}\s*\(", body) is not None
 
     ids: set[str] = set()
     contract_functions: set[tuple[str, str]] = set()
@@ -2120,25 +2128,25 @@ def validate_normative_coverage(
                 ("src/jpx/timeline.rs", "select_frame_instructions"): "frame_selection_result",
                 ("src/jpx/timeline.rs", "build_timeline"): "timeline_frames_result",
                 ("src/jpx/render.rs", "render_normalized_frame"): "crate::color::converted_image_result",
-                ("src/color.rs", "from_layer"): "converted_image_result",
-                ("src/color.rs", "from_composited"): "converted_image_result",
-                ("src/color.rs", "normalize_component"): "normalized_plane_result",
-                ("src/color.rs", "channel_layout"): "channel_layout_result",
+                ("src/color/output.rs", "from_layer"): "converted_image_result",
+                ("src/color/output.rs", "from_composited"): "converted_image_result",
+                ("src/color/normalization.rs", "normalize_component"): "normalized_plane_result",
+                ("src/color/admission.rs", "channel_layout"): "channel_layout_result",
                 ("src/tier1/raw.rs", "raw_reader_from_input"): "raw_reader_outcome",
-                ("src/transform.rs", "inverse_quantize_values"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_quantize"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_quantize_magnitudes"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_quantize_plane"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_5_3"): "sequence_outcome",
-                ("src/transform.rs", "inverse_9_7"): "sequence_outcome",
-                ("src/transform.rs", "inverse_horizontal_5_3"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_horizontal_9_7"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_vertical_5_3"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_vertical_9_7"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_level_5_3"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_level_9_7"): "reconstruction_outcome",
-                ("src/transform.rs", "convert_samples"): "sequence_outcome",
-                ("src/transform.rs", "interleave"): "sequence_outcome",
+                ("src/transform/quantization.rs", "inverse_quantize_values"): "reconstruction_outcome",
+                ("src/transform/quantization.rs", "inverse_quantize"): "reconstruction_outcome",
+                ("src/transform/quantization.rs", "inverse_quantize_magnitudes"): "reconstruction_outcome",
+                ("src/transform/quantization.rs", "inverse_quantize_plane"): "reconstruction_outcome",
+                ("src/transform/wavelets.rs", "inverse_5_3"): "sequence_outcome",
+                ("src/transform/wavelets.rs", "inverse_9_7"): "sequence_outcome",
+                ("src/transform/levels.rs", "inverse_horizontal_5_3"): "reconstruction_outcome",
+                ("src/transform/levels.rs", "inverse_horizontal_9_7"): "reconstruction_outcome",
+                ("src/transform/levels.rs", "inverse_vertical_5_3"): "reconstruction_outcome",
+                ("src/transform/levels.rs", "inverse_vertical_9_7"): "reconstruction_outcome",
+                ("src/transform/levels.rs", "inverse_level_5_3"): "reconstruction_outcome",
+                ("src/transform/levels.rs", "inverse_level_9_7"): "reconstruction_outcome",
+                ("src/transform/output.rs", "convert_samples"): "sequence_outcome",
+                ("src/transform/wavelets.rs", "interleave"): "sequence_outcome",
                 ("src/tier1/ht_cleanup_readers.rs", "ht_mel_from_input"): "ht_mel_outcome",
                 ("src/tier1/ht_cleanup_readers.rs", "ht_reverse_vlc_from_input"): "ht_reverse_vlc_outcome",
                 ("src/tier1/ht_cleanup_readers.rs", "ht_cleanup_readers_from_inputs"): "ht_cleanup_readers_outcome",
@@ -2164,11 +2172,11 @@ def validate_normative_coverage(
                 ("src/tier1/state.rs", "signed_magnitude"): "coefficient_signed_outcome",
                 ("src/tier1/state.rs", "coefficients"): "coefficient_slice_view",
                 ("src/tier1/state.rs", "wide_magnitude"): "crate::magnitude::magnitude_limbs",
-                ("src/color.rs", "convert_jp2_color"): "converted_image_result",
-                ("src/color.rs", "convert_color_channel"): "converted_channel_result",
-                ("src/color.rs", "convert_alpha_channel"): "converted_channel_result",
-                ("src/color.rs", "crop"): "converted_image_result",
-                ("src/color.rs", "crop_plane"): "normalized_plane_result",
+                ("src/color/conversion.rs", "convert_jp2_color"): "converted_image_result",
+                ("src/color/conversion.rs", "convert_color_channel"): "converted_channel_result",
+                ("src/color/conversion.rs", "convert_alpha_channel"): "converted_channel_result",
+                ("src/color/crop.rs", "crop"): "converted_image_result",
+                ("src/color/crop.rs", "crop_plane"): "normalized_plane_result",
                 ("src/decode/output.rs", "convert_selected_color"): "crate::color::converted_image_result",
                 ("src/decode/reconstruction.rs", "prepare_tile_component"): "prepared_component_outcome",
                 ("src/decode/reconstruction.rs", "initialize_prepare_working"): "prepare_working_outcome",
@@ -2261,17 +2269,17 @@ def validate_normative_coverage(
                 ("src/decode/output.rs", "invalid_jp2_output"): "part2_color_input_error",
                 ("src/image/layout.rs", "typed_component_from_parts"): "part2_typed_component_from_parts",
                 ("src/image/layout.rs", "typed_image_from_components_with_origin"): "part2_typed_image_from_parts",
-                ("src/color.rs", "crop"): "color_crop_image",
-                ("src/color.rs", "crop_plane"): "color_crop_plane",
-                ("src/color.rs", "crop_sample"): "color_crop_sample",
-                ("src/color.rs", "convert_jp2_color"): "color_convert_jp2",
-                ("src/color.rs", "convert_color_channel"): "color_convert_channel",
-                ("src/color.rs", "convert_alpha_channel"): "color_convert_alpha",
-                ("src/color.rs", "convert_sycc_pixel"): "color_sycc_pixel",
-                ("src/color.rs", "validate_components"): "color_validate_components",
-                ("src/color.rs", "validate_component_index"): "color_validate_component_index",
-                ("src/color.rs", "validate_component"): "color_validate_component",
-                ("src/color.rs", "validate_output_size"): "color_validate_output_size",
+                ("src/color/crop.rs", "crop"): "color_crop_image",
+                ("src/color/crop.rs", "crop_plane"): "color_crop_plane",
+                ("src/color/crop.rs", "crop_sample"): "color_crop_sample",
+                ("src/color/conversion.rs", "convert_jp2_color"): "color_convert_jp2",
+                ("src/color/conversion.rs", "convert_color_channel"): "color_convert_channel",
+                ("src/color/conversion.rs", "convert_alpha_channel"): "color_convert_alpha",
+                ("src/color/conversion.rs", "convert_sycc_pixel"): "color_sycc_pixel",
+                ("src/color/admission.rs", "validate_components"): "color_validate_components",
+                ("src/color/admission.rs", "validate_component_index"): "color_validate_component_index",
+                ("src/color/admission.rs", "validate_component"): "color_validate_component",
+                ("src/color/admission.rs", "validate_output_size"): "color_validate_output_size",
             }.get((reference["path"], short))
             if (reference["path"], reference["symbol"]) == ("src/image/layout.rs", "TypedImage::component"):
                 expected_result_model = "part2_typed_image_component"
@@ -2281,69 +2289,69 @@ def validate_normative_coverage(
             kernel_option = r"crate::transform::arbitrary_kernel_option\s*\(\s*kernel\s*\)"
             decoded_cap = r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)"
             arbitrary_contract = {
-                ("src/transform.rs", "inverse_arbitrary"): (
+                ("src/transform/arbitrary.rs", "inverse_arbitrary"): (
                     "sequence_outcome", "part2_inverse_arbitrary",
                     r"low@\s*,\s*high@\s*,\s*low_pass_first\s*,\s*" + kernel_view,
                 ),
-                ("src/transform.rs", "inverse_horizontal_arbitrary"): (
+                ("src/transform/levels.rs", "inverse_horizontal_arbitrary"): (
                     "reconstruction_outcome", "part2_atk_inverse_horizontal",
                     r"wavelet_band_view\s*\(\s*low\s*\)\s*,\s*wavelet_band_view\s*\(\s*high\s*\)\s*,\s*"
                     r"output_width\s*,\s*low_pass_first\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
                 ),
-                ("src/transform.rs", "inverse_vertical_arbitrary"): (
+                ("src/transform/levels.rs", "inverse_vertical_arbitrary"): (
                     "reconstruction_outcome", "part2_atk_inverse_vertical",
                     r"wavelet_band_view\s*\(\s*low\s*\)\s*,\s*wavelet_band_view\s*\(\s*high\s*\)\s*,\s*"
                     r"output_height\s*,\s*low_pass_first\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
                 ),
-                ("src/transform.rs", "inverse_level_arbitrary"): (
+                ("src/transform/levels.rs", "inverse_level_arbitrary"): (
                     "reconstruction_outcome", "part2_atk_inverse_level",
                     r"wavelet_level_view\s*\(\s*level\s*\)\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
                 ),
-                ("src/transform.rs", "apply_arbitrary_steps"): (
+                ("src/transform/arbitrary.rs", "apply_arbitrary_steps"): (
                     None, "part2_atk_steps",
                     r"old\s*\(\s*output\s*\)@\s*,\s*" + kernel_view + r"\s*,\s*low_pass_first\s*,\s*" + kernel_view + r"\.6\.len\s*\(\s*\)",
                 ),
-                ("src/transform.rs", "apply_arbitrary_step"): (
+                ("src/transform/arbitrary.rs", "apply_arbitrary_step"): (
                     None, "part2_atk_step",
                     r"old\s*\(\s*output\s*\)@\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view + r"\s*,\s*low_pass_first\s*,\s*update_odd",
                 ),
-                ("src/transform.rs", "arbitrary_reversible_target"): (
+                ("src/transform/arbitrary.rs", "arbitrary_reversible_target"): (
                     None, "part2_atk_reversible_target",
                     r"output@\s*,\s*target\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view,
                 ),
-                ("src/transform.rs", "arbitrary_irreversible_target"): (
+                ("src/transform/arbitrary.rs", "arbitrary_irreversible_target"): (
                     None, "part2_atk_irreversible_target",
                     r"output@\s*,\s*target\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view,
                 ),
-                ("src/transform.rs", "lifting_source_sum"): (
+                ("src/transform/arbitrary.rs", "lifting_source_sum"): (
                     None, "part2_atk_source_sum",
                     r"samples@\s*,\s*target\s*,\s*coefficient\s*,\s*offset\s*,\s*whole_sample_filter\s*,\s*whole_sample_extension",
                 ),
-                ("src/transform.rs", "extended_sample"): (
+                ("src/transform/arbitrary.rs", "extended_sample"): (
                     None, "part2_atk_extended", r"samples@\s*,\s*original_index\s*,\s*whole_sample_extension",
                 ),
-                ("src/transform.rs", "coefficient_integer"): (
+                ("src/transform/coefficients.rs", "coefficient_integer"): (
                     None, "part2_atk_integer", kernel_coefficient_view + r"\s*,\s*coefficient_type",
                 ),
-                ("src/transform.rs", "coefficient_fixed"): (
+                ("src/transform/coefficients.rs", "coefficient_fixed"): (
                     None, "part2_atk_fixed_coefficient", kernel_coefficient_view + r"\s*,\s*coefficient_type",
                 ),
-                ("src/transform.rs", "bytes_to_u128"): (
+                ("src/transform/coefficients.rs", "bytes_to_u128"): (
                     None, "part2_atk_bytes_prefix", r"bytes@\s*,\s*16",
                 ),
-                ("src/transform.rs", "binary_to_fixed"): (
+                ("src/transform/coefficients.rs", "binary_to_fixed"): (
                     None, "part2_atk_binary_format", r"bits\s*,\s*total_bits\s*,\s*exponent_bits\s*,\s*fraction_bits\s*,\s*bias",
                 ),
-                ("src/transform.rs", "fixed_from_binary_q32"): (
+                ("src/transform/coefficients.rs", "fixed_from_binary_q32"): (
                     None, "part2_atk_binary_q32", r"negative\s*,\s*significand\s*,\s*binary_exponent",
                 ),
-                ("src/transform.rs", "fixed_mul_q32"): (
+                ("src/transform/coefficients.rs", "fixed_mul_q32"): (
                     None, "part2_atk_fixed_mul", r"value\s*,\s*factor",
                 ),
-                ("src/transform.rs", "fixed_div_q32"): (
+                ("src/transform/coefficients.rs", "fixed_div_q32"): (
                     None, "part2_atk_fixed_div", r"value\s*,\s*divisor",
                 ),
-                ("src/transform.rs", "round_shift_i128"): (
+                ("src/transform/coefficients.rs", "round_shift_i128"): (
                     None, "part2_atk_round_shift", r"value\s*,\s*shift",
                 ),
                 ("src/decode/reconstruction.rs", "prepare_tile_component_with_kernel"): (

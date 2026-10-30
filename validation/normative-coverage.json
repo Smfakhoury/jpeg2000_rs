@@ -216,8 +216,8 @@
         {"path": "src/codestream/proof_support.rs", "symbol": "mct_fragment_outcome"},
         {"path": "src/codestream/proof_support.rs", "symbol": "mct_array_view"},
         {"path": "src/codestream/mct_markers.rs", "symbol": "Parser::parse_mct"},
-        {"path": "src/refinement.rs", "symbol": "mct_fragment_complete"},
-        {"path": "src/refinement.rs", "symbol": "mct_fragment_next"},
+        {"path": "src/refinement/reconstruction.rs", "symbol": "mct_fragment_complete"},
+        {"path": "src/refinement/reconstruction.rs", "symbol": "mct_fragment_next"},
         {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_components"}
       ],
       "test_refs": [
@@ -275,7 +275,7 @@
         {"path": "src/codestream/reader.rs", "symbol": "signed_u32"},
         {"path": "src/codestream/reader.rs", "symbol": "read_u16"},
         {"path": "src/codestream/reader.rs", "symbol": "read_u32"},
-        {"path": "src/refinement.rs", "symbol": "binary_fixed_shift"},
+        {"path": "src/refinement/reconstruction.rs", "symbol": "binary_fixed_shift"},
         {"path": "src/limits.rs", "symbol": "ResourceLimits::maximum_components"}
       ],
       "test_refs": [
@@ -321,8 +321,8 @@
         {"path": "src/codestream/proof_support.rs", "symbol": "mcc_pending_view"},
         {"path": "src/codestream/proof_support.rs", "symbol": "mcc_record_outcome"},
         {"path": "src/codestream/mct_markers.rs", "symbol": "Parser::parse_mcc"},
-        {"path": "src/refinement.rs", "symbol": "mct_fragment_next"},
-        {"path": "src/refinement.rs", "symbol": "mct_fragment_complete"}
+        {"path": "src/refinement/reconstruction.rs", "symbol": "mct_fragment_next"},
+        {"path": "src/refinement/reconstruction.rs", "symbol": "mct_fragment_complete"}
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_mcc_fragments_preserve_all_index_headers_first_matches_and_partial_failure_commits"},
@@ -585,8 +585,8 @@
         {"path": "src/codestream/proof_support.rs", "symbol": "owned_extensions_view"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::charge_extension_metadata"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::segment_byte"},
-        {"path": "src/refinement.rs", "symbol": "tlm_tile_index_bytes"},
-        {"path": "src/refinement.rs", "symbol": "tlm_length_bytes"}
+        {"path": "src/refinement/headers.rs", "symbol": "tlm_tile_index_bytes"},
+        {"path": "src/refinement/headers.rs", "symbol": "tlm_length_bytes"}
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_tlm_preserves_every_header_style_index_and_external_counter"},
@@ -639,8 +639,8 @@
         {"path": "src/codestream/proof_support.rs", "symbol": "segment_tail_outcome"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::charge_extension_metadata"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::segment_byte"},
-        {"path": "src/refinement.rs", "symbol": "cbd_precision"},
-        {"path": "src/refinement.rs", "symbol": "cbd_signed"}
+        {"path": "src/refinement/headers.rs", "symbol": "cbd_precision"},
+        {"path": "src/refinement/headers.rs", "symbol": "cbd_signed"}
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_nlt_preserves_all_component_selectors_precision_and_type_bytes"},
@@ -683,7 +683,7 @@
         {"path": "src/codestream/reader.rs", "symbol": "Parser::segment_byte"},
         {"path": "src/codestream/reader.rs", "symbol": "read_u16"},
         {"path": "src/codestream/reader.rs", "symbol": "read_u32"},
-        {"path": "src/refinement.rs", "symbol": "part15_cap_payload_length"}
+        {"path": "src/refinement/headers.rs", "symbol": "part15_cap_payload_length"}
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_marker_word_reader_preserves_all_endian_pairs_and_odd_tail_offsets"},
@@ -717,8 +717,8 @@
         {"path": "src/codestream/proof_support.rs", "symbol": "owned_extensions_view"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::charge_extension_metadata"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::segment_byte"},
-        {"path": "src/refinement.rs", "symbol": "cbd_precision"},
-        {"path": "src/refinement.rs", "symbol": "cbd_signed"}
+        {"path": "src/refinement/headers.rs", "symbol": "cbd_precision"},
+        {"path": "src/refinement/headers.rs", "symbol": "cbd_signed"}
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_cbd_preserves_all_raw_descriptors_and_partial_depth_prefixes"},
@@ -771,8 +771,8 @@
         {"path": "src/codestream/proof_support.rs", "symbol": "owned_arbitrary_decomposition_view"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::charge_extension_metadata"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::segment_byte"},
-        {"path": "src/refinement.rs", "symbol": "packed_two_bit_bytes"},
-        {"path": "src/refinement.rs", "symbol": "dfs_direction_code"}
+        {"path": "src/refinement/headers.rs", "symbol": "packed_two_bit_bytes"},
+        {"path": "src/refinement/headers.rs", "symbol": "dfs_direction_code"}
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_two_bit_values_preserve_terminal_padding_and_error_order"},
@@ -1149,7 +1149,7 @@
         {"path": "src/image/nonlinear_math.rs", "symbol": "nlt_fixed_pow_reciprocal_q32"},
         {"path": "src/image/nonlinear_math.rs", "symbol": "nlt_fixed_div_q32"},
         {"path": "src/image/nonlinear_math.rs", "symbol": "inverse_nlt_lut_sample"},
-        {"path": "src/refinement.rs", "symbol": "nlt_binary_complement"}
+        {"path": "src/refinement/reconstruction.rs", "symbol": "nlt_binary_complement"}
       ],
       "test_refs": [
         {"path": "src/image/tests.rs", "symbol": "actual_complete_nonlinear_samples_derive_parameters_gamma_dispatch_and_target_errors"}
@@ -1326,8 +1326,8 @@
       "proof_refs": [
         {"path": "src/image/proof_support.rs", "symbol": "typed_image_value_view"},
         {"path": "src/image/proof_support.rs", "symbol": "typed_image_component_views"},
-        {"path": "src/refinement.rs", "symbol": "decode_output_shape_valid"},
-        {"path": "src/refinement.rs", "symbol": "component_output_shape_valid"}
+        {"path": "src/refinement/geometry.rs", "symbol": "decode_output_shape_valid"},
+        {"path": "src/refinement/geometry.rs", "symbol": "component_output_shape_valid"}
       ],
       "test_refs": [
         {"path": "src/decode/tests.rs", "symbol": "actual_typed_output_admission_checks_raw_header_and_every_signed_unsigned_plane"}
@@ -1520,7 +1520,7 @@
       "proof_refs": [
         {"path": "src/codestream/proof_support.rs", "symbol": "extended_capabilities_view"},
         {"path": "src/codestream/proof_support.rs", "symbol": "codestream_profile_capabilities"},
-        {"path": "src/refinement.rs", "symbol": "part15_magnitude_bound"}
+        {"path": "src/refinement/headers.rs", "symbol": "part15_magnitude_bound"}
       ],
       "test_refs": [
         {"path": "src/codestream/tests.rs", "symbol": "actual_capability_lookup_preserves_all_u8_parts_raw_masks_and_ragged_physical_words"},
@@ -2332,7 +2332,7 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_bytes_step"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_byte_bound"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_chroma_normalization"},
-        {"path": "src/color.rs", "symbol": "normalize_unsigned"}
+        {"path": "src/color/normalization.rs", "symbol": "normalize_unsigned"}
       ],
       "test_refs": [
         {"path": "src/jpx/tests.rs", "symbol": "raw_chroma_normalization_preserves_all_depth_length_and_channel_frontiers"},
@@ -2419,7 +2419,7 @@
       "proof_refs": [
         {"path": "src/jpx/proof_support.rs", "symbol": "layer_registration_view"},
         {"path": "src/jpx/resources.rs", "symbol": "checked_area"},
-        {"path": "src/refinement.rs", "symbol": "registered_extent"}
+        {"path": "src/refinement/geometry.rs", "symbol": "registered_extent"}
       ],
       "test_refs": [
         {"path": "src/jpx/tests.rs", "symbol": "registered_extent_matches_wide_ceil_at_every_native_frontier"},
@@ -4160,24 +4160,24 @@
       "id": "part2-complete-native-arbitrary-kernel-preparation",
       "topic": "Complete actual native reversible/irreversible arbitrary inverse, all integer/binary32/64/128 coefficients and Q32 rounding, every target/step partial buffer, H/V/2D levels and None/Some component preparation. Native contradictory styles/flags/shapes/width hints, singleton/unvisited bypass and first errors remain modeled; private target bounds derive from actual loop guards. No normalized/success/budget/trace premise; general MCT/whole decoder and external normative adjudication remain separate.",
       "contract_refs": [
-        {"path": "src/transform.rs", "symbol": "inverse_arbitrary"},
-        {"path": "src/transform.rs", "symbol": "inverse_horizontal_arbitrary"},
-        {"path": "src/transform.rs", "symbol": "inverse_vertical_arbitrary"},
-        {"path": "src/transform.rs", "symbol": "inverse_level_arbitrary"},
-        {"path": "src/transform.rs", "symbol": "apply_arbitrary_steps"},
-        {"path": "src/transform.rs", "symbol": "apply_arbitrary_step"},
-        {"path": "src/transform.rs", "symbol": "arbitrary_reversible_target"},
-        {"path": "src/transform.rs", "symbol": "arbitrary_irreversible_target"},
-        {"path": "src/transform.rs", "symbol": "lifting_source_sum"},
-        {"path": "src/transform.rs", "symbol": "extended_sample"},
-        {"path": "src/transform.rs", "symbol": "coefficient_integer"},
-        {"path": "src/transform.rs", "symbol": "coefficient_fixed"},
-        {"path": "src/transform.rs", "symbol": "bytes_to_u128"},
-        {"path": "src/transform.rs", "symbol": "binary_to_fixed"},
-        {"path": "src/transform.rs", "symbol": "fixed_from_binary_q32"},
-        {"path": "src/transform.rs", "symbol": "fixed_mul_q32"},
-        {"path": "src/transform.rs", "symbol": "fixed_div_q32"},
-        {"path": "src/transform.rs", "symbol": "round_shift_i128"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "inverse_arbitrary"},
+        {"path": "src/transform/levels.rs", "symbol": "inverse_horizontal_arbitrary"},
+        {"path": "src/transform/levels.rs", "symbol": "inverse_vertical_arbitrary"},
+        {"path": "src/transform/levels.rs", "symbol": "inverse_level_arbitrary"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "apply_arbitrary_steps"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "apply_arbitrary_step"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "arbitrary_reversible_target"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "arbitrary_irreversible_target"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "lifting_source_sum"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "extended_sample"},
+        {"path": "src/transform/coefficients.rs", "symbol": "coefficient_integer"},
+        {"path": "src/transform/coefficients.rs", "symbol": "coefficient_fixed"},
+        {"path": "src/transform/coefficients.rs", "symbol": "bytes_to_u128"},
+        {"path": "src/transform/coefficients.rs", "symbol": "binary_to_fixed"},
+        {"path": "src/transform/coefficients.rs", "symbol": "fixed_from_binary_q32"},
+        {"path": "src/transform/coefficients.rs", "symbol": "fixed_mul_q32"},
+        {"path": "src/transform/coefficients.rs", "symbol": "fixed_div_q32"},
+        {"path": "src/transform/coefficients.rs", "symbol": "round_shift_i128"},
         {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component_with_kernel"},
         {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_working"},
         {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_resolution"}
@@ -4187,18 +4187,18 @@
         {"path": "src/decode/reconstruction.rs", "symbol": "prepare_tile_component_with_kernel"},
         {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_working"},
         {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_resolution"},
-        {"path": "src/transform.rs", "symbol": "inverse_row_pair"},
-        {"path": "src/transform.rs", "symbol": "inverse_column_pair"},
-        {"path": "src/transform.rs", "symbol": "inverse_arbitrary"},
-        {"path": "src/transform.rs", "symbol": "apply_arbitrary_steps"},
-        {"path": "src/transform.rs", "symbol": "apply_arbitrary_step"},
-        {"path": "src/transform.rs", "symbol": "arbitrary_reversible_target"},
-        {"path": "src/transform.rs", "symbol": "arbitrary_irreversible_target"},
-        {"path": "src/transform.rs", "symbol": "lifting_source_sum"},
-        {"path": "src/transform.rs", "symbol": "coefficient_integer"},
-        {"path": "src/transform.rs", "symbol": "coefficient_fixed"},
-        {"path": "src/transform.rs", "symbol": "binary_to_fixed"},
-        {"path": "src/transform.rs", "symbol": "fixed_mul_q32"}
+        {"path": "src/transform/levels.rs", "symbol": "inverse_row_pair"},
+        {"path": "src/transform/levels.rs", "symbol": "inverse_column_pair"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "inverse_arbitrary"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "apply_arbitrary_steps"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "apply_arbitrary_step"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "arbitrary_reversible_target"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "arbitrary_irreversible_target"},
+        {"path": "src/transform/arbitrary.rs", "symbol": "lifting_source_sum"},
+        {"path": "src/transform/coefficients.rs", "symbol": "coefficient_integer"},
+        {"path": "src/transform/coefficients.rs", "symbol": "coefficient_fixed"},
+        {"path": "src/transform/coefficients.rs", "symbol": "binary_to_fixed"},
+        {"path": "src/transform/coefficients.rs", "symbol": "fixed_mul_q32"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part2_inverse_arbitrary"},
@@ -4237,10 +4237,10 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_kernel_fold_error_guard"}
       ],
       "test_refs": [
-        {"path": "src/transform.rs", "symbol": "arbitrary_q32_arithmetic_preserves_full_signed_edges_and_errors"},
-        {"path": "src/transform.rs", "symbol": "arbitrary_binary_coefficients_match_integer_rational_rounding_and_raw_format_edges"},
-        {"path": "src/transform.rs", "symbol": "arbitrary_sequences_preserve_all_raw_kinds_width_hints_flags_and_scaling_order"},
-        {"path": "src/transform.rs", "symbol": "arbitrary_lifting_runs_reverse_step_parity_and_preserves_late_partial_errors"},
+        {"path": "src/transform/tests.rs", "symbol": "arbitrary_q32_arithmetic_preserves_full_signed_edges_and_errors"},
+        {"path": "src/transform/tests.rs", "symbol": "arbitrary_binary_coefficients_match_integer_rational_rounding_and_raw_format_edges"},
+        {"path": "src/transform/tests.rs", "symbol": "arbitrary_sequences_preserve_all_raw_kinds_width_hints_flags_and_scaling_order"},
+        {"path": "src/transform/tests.rs", "symbol": "arbitrary_lifting_runs_reverse_step_parity_and_preserves_late_partial_errors"},
         {"path": "src/decode/tests.rs", "symbol": "full_native_kernel_preparation_preserves_real_dispatch_and_lazy_validation"},
         {"path": "src/decode/tests.rs", "symbol": "complete_standard_prepare_matches_independent_wide_multilevel_reference"},
         {"path": "src/decode/tests.rs", "symbol": "complete_standard_prepare_preserves_all_ordered_rejections"}
@@ -4819,8 +4819,8 @@
         {"path": "src/decode/output.rs", "symbol": "convert_associated_selected_color"}
       ],
       "proof_refs": [
-        {"path": "src/color.rs", "symbol": "converted_image_model"},
-        {"path": "src/color.rs", "symbol": "converted_image_result"},
+        {"path": "src/color/proof_support.rs", "symbol": "converted_image_model"},
+        {"path": "src/color/proof_support.rs", "symbol": "converted_image_result"},
         {"path": "src/decode/arithmetic.rs", "symbol": "invalid_decode"},
         {"path": "src/image/proof_support.rs", "symbol": "typed_image_geometry"}
       ],
@@ -4837,19 +4837,19 @@
     },
     {
       "contract_refs": [
-        {"path": "src/color.rs", "symbol": "ConvertedImage::crop"},
-        {"path": "src/color.rs", "symbol": "crop_plane"},
-        {"path": "src/color.rs", "symbol": "crop_sample"}
+        {"path": "src/color/crop.rs", "symbol": "ConvertedImage::crop"},
+        {"path": "src/color/crop.rs", "symbol": "crop_plane"},
+        {"path": "src/color/crop.rs", "symbol": "crop_sample"}
       ],
       "id": "part1-complete-converted-selection-crop",
       "implementation_refs": [
         {"path": "src/decode/output.rs", "symbol": "convert_selected_color"},
-        {"path": "src/color.rs", "symbol": "ConvertedImage::crop"},
-        {"path": "src/color.rs", "symbol": "crop_plane"}
+        {"path": "src/color/crop.rs", "symbol": "ConvertedImage::crop"},
+        {"path": "src/color/crop.rs", "symbol": "crop_plane"}
       ],
       "proof_refs": [
-        {"path": "src/color.rs", "symbol": "converted_image_model"},
-        {"path": "src/color.rs", "symbol": "converted_channel_views_push"},
+        {"path": "src/color/proof_support.rs", "symbol": "converted_image_model"},
+        {"path": "src/color/proof_support.rs", "symbol": "converted_channel_views_push"},
         {"path": "proofs/internal_specs.rs", "symbol": "color_crop_ready"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_crop_columns_error"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_crop_rows_error"},
@@ -4864,35 +4864,35 @@
         {"path": "specs/mod.rs", "symbol": "color_crop_channels"}
       ],
       "test_refs": [
-        {"path": "src/color.rs", "symbol": "complete_crop_matches_independent_source_coordinate_masks_and_all_metadata"},
-        {"path": "src/color.rs", "symbol": "crop_identity_and_native_boundary_error_priority_are_exact"}
+        {"path": "src/color/tests.rs", "symbol": "complete_crop_matches_independent_source_coordinate_masks_and_all_metadata"},
+        {"path": "src/color/tests.rs", "symbol": "crop_identity_and_native_boundary_error_priority_are_exact"}
       ],
       "topic": "Complete actual converted-image selection crop, preserved arbitrary channel metadata, native checked geometry, identity bypass and exact first missing-sample rejection"
     },
     {
       "contract_refs": [
-        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
-        {"path": "src/color.rs", "symbol": "convert_color_channel"},
-        {"path": "src/color.rs", "symbol": "convert_alpha_channel"},
-        {"path": "src/color.rs", "symbol": "convert_sycc_pixel"},
-        {"path": "src/color.rs", "symbol": "validate_components"},
-        {"path": "src/color.rs", "symbol": "validate_component_index"},
-        {"path": "src/color.rs", "symbol": "validate_component"},
-        {"path": "src/color.rs", "symbol": "validate_output_size"}
+        {"path": "src/color/conversion.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color/conversion.rs", "symbol": "convert_color_channel"},
+        {"path": "src/color/conversion.rs", "symbol": "convert_alpha_channel"},
+        {"path": "src/color/conversion.rs", "symbol": "convert_sycc_pixel"},
+        {"path": "src/color/admission.rs", "symbol": "validate_components"},
+        {"path": "src/color/admission.rs", "symbol": "validate_component_index"},
+        {"path": "src/color/admission.rs", "symbol": "validate_component"},
+        {"path": "src/color/admission.rs", "symbol": "validate_output_size"}
       ],
       "id": "part1-complete-typed-color-conversion",
       "implementation_refs": [
         {"path": "src/jpx/layer_decode.rs", "symbol": "decode_layer"},
         {"path": "src/decode/output.rs", "symbol": "convert_selected_color"},
-        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
-        {"path": "src/color.rs", "symbol": "convert_color_channel"},
-        {"path": "src/color.rs", "symbol": "convert_alpha_channel"},
-        {"path": "src/color.rs", "symbol": "convert_sycc_pixel"},
-        {"path": "src/color.rs", "symbol": "validate_components"},
-        {"path": "src/color.rs", "symbol": "validate_component_index"}
+        {"path": "src/color/conversion.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color/conversion.rs", "symbol": "convert_color_channel"},
+        {"path": "src/color/conversion.rs", "symbol": "convert_alpha_channel"},
+        {"path": "src/color/conversion.rs", "symbol": "convert_sycc_pixel"},
+        {"path": "src/color/admission.rs", "symbol": "validate_components"},
+        {"path": "src/color/admission.rs", "symbol": "validate_component_index"}
       ],
       "proof_refs": [
-        {"path": "src/color.rs", "symbol": "converted_channel_views_push"},
+        {"path": "src/color/proof_support.rs", "symbol": "converted_channel_views_push"},
         {"path": "src/jp2/proof_support.rs", "symbol": "color_specification_method"},
         {"path": "src/limits.rs", "symbol": "resource_decoded_bytes_limit"},
         {"path": "proofs/internal_specs.rs", "symbol": "color_conversion_ready"},
@@ -4916,29 +4916,29 @@
         {"path": "specs/mod.rs", "symbol": "color_validate_output_size"}
       ],
       "test_refs": [
-        {"path": "src/color.rs", "symbol": "complete_color_conversion_matches_independent_registered_planes_and_metadata"},
-        {"path": "src/color.rs", "symbol": "complete_color_admission_matches_wide_checked_count_and_limit_model"},
-        {"path": "src/color.rs", "symbol": "complete_color_conversion_preserves_format_metadata_budget_and_sample_error_priority"}
+        {"path": "src/color/tests.rs", "symbol": "complete_color_conversion_matches_independent_registered_planes_and_metadata"},
+        {"path": "src/color/tests.rs", "symbol": "complete_color_admission_matches_wide_checked_count_and_limit_model"},
+        {"path": "src/color/tests.rs", "symbol": "complete_color_conversion_preserves_format_metadata_budget_and_sample_error_priority"}
       ],
       "topic": "Complete actual typed JP2 color converter: format and CDEF selection, component validation, exact output admission, all raster/color/alpha samples and metadata, and every typed first failure"
     },
     {
       "contract_refs": [
-        {"path": "src/color.rs", "symbol": "sycc_to_srgb"},
-        {"path": "src/color.rs", "symbol": "rounded_fixed"},
-        {"path": "src/color.rs", "symbol": "clamp_u16"},
-        {"path": "src/color.rs", "symbol": "normalized_at"},
-        {"path": "src/color.rs", "symbol": "normalized_difference_at"}
+        {"path": "src/color/conversion.rs", "symbol": "sycc_to_srgb"},
+        {"path": "src/color/conversion.rs", "symbol": "rounded_fixed"},
+        {"path": "src/color/conversion.rs", "symbol": "clamp_u16"},
+        {"path": "src/color/normalization.rs", "symbol": "normalized_at"},
+        {"path": "src/color/normalization.rs", "symbol": "normalized_difference_at"}
       ],
       "id": "part1-complete-fixed-point-sycc-pixel",
       "implementation_refs": [
-        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
-        {"path": "src/color.rs", "symbol": "convert_sycc_pixel"},
-        {"path": "src/color.rs", "symbol": "sycc_to_srgb"}
+        {"path": "src/color/conversion.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color/conversion.rs", "symbol": "convert_sycc_pixel"},
+        {"path": "src/color/conversion.rs", "symbol": "sycc_to_srgb"}
       ],
       "proof_refs": [
-        {"path": "src/color.rs", "symbol": "sycc_to_srgb"},
-        {"path": "src/color.rs", "symbol": "rounded_fixed"}
+        {"path": "src/color/conversion.rs", "symbol": "sycc_to_srgb"},
+        {"path": "src/color/conversion.rs", "symbol": "rounded_fixed"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "color_sycc_to_srgb"},
@@ -4950,22 +4950,22 @@
         {"path": "specs/mod.rs", "symbol": "color_normalize_difference"}
       ],
       "test_refs": [
-        {"path": "src/color.rs", "symbol": "fixed_rounding_matches_unsigned_magnitude_reference_at_native_boundaries"},
-        {"path": "src/color.rs", "symbol": "sycc_conversion_matches_independent_wide_integer_reference"},
-        {"path": "src/color.rs", "symbol": "chroma_normalization_matches_wide_signed_ratio_for_every_supported_precision"},
-        {"path": "src/color.rs", "symbol": "chroma_sampling_preserves_typed_input_and_coordinate_error_order"}
+        {"path": "src/color/tests.rs", "symbol": "fixed_rounding_matches_unsigned_magnitude_reference_at_native_boundaries"},
+        {"path": "src/color/tests.rs", "symbol": "sycc_conversion_matches_independent_wide_integer_reference"},
+        {"path": "src/color/tests.rs", "symbol": "chroma_normalization_matches_wide_signed_ratio_for_every_supported_precision"},
+        {"path": "src/color/tests.rs", "symbol": "chroma_sampling_preserves_typed_input_and_coordinate_error_order"}
       ],
       "topic": "Complete actual sampled luminance/chroma and fixed-point sYCC pixel conversion, signed half-away-from-zero rounding and clamp over full native input domains"
     },
     {
       "contract_refs": [
-        {"path": "src/color.rs", "symbol": "channel_layout"},
-        {"path": "src/color.rs", "symbol": "validate_alpha_association"}
+        {"path": "src/color/admission.rs", "symbol": "channel_layout"},
+        {"path": "src/color/admission.rs", "symbol": "validate_alpha_association"}
       ],
       "id": "part2-complete-component-channel-layout",
       "implementation_refs": [
-        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
-        {"path": "src/color.rs", "symbol": "channel_layout"}
+        {"path": "src/color/conversion.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color/admission.rs", "symbol": "channel_layout"}
       ],
       "proof_refs": [
         {"path": "src/image/proof_support.rs", "symbol": "typed_image_definition_views"},
@@ -4982,29 +4982,29 @@
         {"path": "specs/mod.rs", "symbol": "color_layout_components_prefix"}
       ],
       "test_refs": [
-        {"path": "src/color.rs", "symbol": "complete_channel_layout_matches_independent_flat_map_metadata_model"},
-        {"path": "src/color.rs", "symbol": "channel_layout_duplicates_and_first_metadata_error_preserve_order"}
+        {"path": "src/color/tests.rs", "symbol": "complete_channel_layout_matches_independent_flat_map_metadata_model"},
+        {"path": "src/color/tests.rs", "symbol": "channel_layout_duplicates_and_first_metadata_error_preserve_order"}
       ],
       "topic": "Complete CDEF component/color/alpha routing and exact ordered metadata rejection relative to actual typed image definitions"
     },
     {
       "contract_refs": [
-        {"path": "src/color.rs", "symbol": "normalize_component"},
-        {"path": "src/color.rs", "symbol": "normalized_component_at"},
-        {"path": "src/color.rs", "symbol": "nominal_component_at"},
-        {"path": "src/color.rs", "symbol": "normalize_unsigned"},
-        {"path": "src/color.rs", "symbol": "registered_ceil_div"},
-        {"path": "src/color.rs", "symbol": "registered_floor_div"},
-        {"path": "src/color.rs", "symbol": "pixel_coordinates"}
+        {"path": "src/color/normalization.rs", "symbol": "normalize_component"},
+        {"path": "src/color/normalization.rs", "symbol": "normalized_component_at"},
+        {"path": "src/color/normalization.rs", "symbol": "nominal_component_at"},
+        {"path": "src/color/normalization.rs", "symbol": "normalize_unsigned"},
+        {"path": "src/color/geometry.rs", "symbol": "registered_ceil_div"},
+        {"path": "src/color/geometry.rs", "symbol": "registered_floor_div"},
+        {"path": "src/color/normalization.rs", "symbol": "pixel_coordinates"}
       ],
       "id": "part1-complete-normalized-component-plane",
       "implementation_refs": [
-        {"path": "src/color.rs", "symbol": "convert_jp2_color"},
-        {"path": "src/color.rs", "symbol": "convert_color_channel"},
-        {"path": "src/color.rs", "symbol": "convert_alpha_channel"},
-        {"path": "src/color.rs", "symbol": "normalize_component"},
-        {"path": "src/color.rs", "symbol": "normalized_component_at"},
-        {"path": "src/color.rs", "symbol": "nominal_component_at"}
+        {"path": "src/color/conversion.rs", "symbol": "convert_jp2_color"},
+        {"path": "src/color/conversion.rs", "symbol": "convert_color_channel"},
+        {"path": "src/color/conversion.rs", "symbol": "convert_alpha_channel"},
+        {"path": "src/color/normalization.rs", "symbol": "normalize_component"},
+        {"path": "src/color/normalization.rs", "symbol": "normalized_component_at"},
+        {"path": "src/color/normalization.rs", "symbol": "nominal_component_at"}
       ],
       "proof_refs": [
         {"path": "src/image/proof_support.rs", "symbol": "typed_component_view"},
@@ -5023,24 +5023,24 @@
         {"path": "specs/mod.rs", "symbol": "color_pixel_coordinates"}
       ],
       "test_refs": [
-        {"path": "src/color.rs", "symbol": "complete_normalized_component_planes_match_wide_registered_reference"},
-        {"path": "src/color.rs", "symbol": "registered_coordinates_match_wide_full_domain_boundaries"},
-        {"path": "src/color.rs", "symbol": "normalized_component_rejects_every_invalid_stage_input_in_order"}
+        {"path": "src/color/tests.rs", "symbol": "complete_normalized_component_planes_match_wide_registered_reference"},
+        {"path": "src/color/tests.rs", "symbol": "registered_coordinates_match_wide_full_domain_boundaries"},
+        {"path": "src/color/tests.rs", "symbol": "normalized_component_rejects_every_invalid_stage_input_in_order"}
       ],
       "topic": "Complete input-relative signed/unsigned integer component sampling and normalized output planes, registration, range and typed first-error behavior"
     },
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/geometry.rs",
           "symbol": "ceil_div_u32"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/geometry.rs",
           "symbol": "tile_clip_start"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/geometry.rs",
           "symbol": "tile_clip_end"
         }
       ],
@@ -5186,11 +5186,11 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "packet_data_bits"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "packet_bit"
         }
       ],
@@ -5229,20 +5229,21 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "tag_inherited_low"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "tag_step_low"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "tag_step_value"
         }
       ],
       "id": "part1-tag-tree-state",
       "implementation_refs": [
+        {"path": "src/packet/tag_tree.rs", "symbol": "decode_tag_tree_node"},
         {
           "path": "src/packet/tag_tree.rs", "symbol": "TagTree::decode"
         }
@@ -5280,20 +5281,22 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "progression_digit"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "progression_advance"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "progression_emit_allowed"
         }
       ],
       "id": "part1-packet-progression",
       "implementation_refs": [
+        {"path": "src/packet/progression.rs", "symbol": "ProgressionPacketIterator::candidate_step"},
+        {"path": "src/packet/tile.rs", "symbol": "execute_progression_packet"},
         {
           "path": "src/packet/progression.rs", "symbol": "unravel"
         },
@@ -5303,7 +5306,7 @@
       ],
       "proof_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "progression_emit_allowed"
         }
       ],
@@ -5334,11 +5337,11 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "mq_decision"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "mq_next_mps"
         }
       ],
@@ -5384,19 +5387,19 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_pass_code"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_refinement_context"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_refined_magnitude"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_midpoint_delta"
         }
       ],
@@ -5470,20 +5473,20 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "maxshift_restore"
         }
       ],
       "id": "part1-maxshift-restore",
       "implementation_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "undo_maxshift"
         }
       ],
       "proof_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "maxshift_restore"
         }
       ],
@@ -5495,7 +5498,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "undoes_maximum_maxshift_before_narrowing_and_quantization"
         }
       ],
@@ -5504,20 +5507,21 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "reversible_inverse_quantize"
         }
       ],
       "id": "part1-reversible-quantization",
       "implementation_refs": [
+        {"path": "src/transform/quantization.rs", "symbol": "quantize_magnitude_sample"},
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "inverse_quantize_magnitudes"
         }
       ],
       "proof_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "reversible_inverse_quantize"
         }
       ],
@@ -5529,7 +5533,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "applies_quantization_roi_and_output_conversion"
         }
       ],
@@ -5538,32 +5542,33 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "five_three_predict"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "five_three_update"
         }
       ],
       "id": "part1-reversible-five-three",
       "implementation_refs": [
+        {"path": "src/transform/wavelets.rs", "symbol": "inverse_lifting_value"},
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_5_3"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_lift"
         }
       ],
       "proof_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "five_three_predict"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "five_three_update"
         }
       ],
@@ -5579,11 +5584,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "reverses_five_three_lifting_for_known_samples"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "reconstructs_two_dimensional_reversible_level"
         }
       ],
@@ -5592,35 +5597,36 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "rct_green"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "rct_red"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "rct_blue"
         }
       ],
       "id": "part1-reversible-color-transform",
       "implementation_refs": [
+        {"path": "src/image/component_transform.rs", "symbol": "inverse_component_values"},
         {
           "path": "src/image/component_transform.rs", "symbol": "apply_reversible_component_transform"
         }
       ],
       "proof_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "rct_green"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "rct_red"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "rct_blue"
         }
       ],
@@ -5648,18 +5654,19 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "level_shift"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "clip_sample"
         }
       ],
       "id": "part1-sample-output",
       "implementation_refs": [
+        {"path": "src/transform/output.rs", "symbol": "convert_sample"},
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/output.rs",
           "symbol": "convert_samples"
         }
       ],
@@ -5681,7 +5688,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "bounds_output_and_rejects_bad_band_geometry"
         }
       ],
@@ -5690,19 +5697,19 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "marker_value"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "parser_progress"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "main_header_boundary"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "tile_header_boundary"
         }
       ],
@@ -5761,28 +5768,35 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "packet_next_included"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "packet_next_lblock"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "packet_next_passes"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "exact_consumption"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "packet_logical_bytes"
         }
       ],
       "id": "part1-packet-body-transitions",
       "implementation_refs": [
+        {"path": "src/packet/precinct.rs", "symbol": "decode_precinct_packet_payload_after_headers"},
+        {"path": "src/packet/body.rs", "symbol": "decode_ht_contribution_segments"},
+        {"path": "src/packet/body.rs", "symbol": "decode_legacy_code_block_contribution_body"},
+        {"path": "src/packet/body.rs", "symbol": "prepare_code_block_contribution_body"},
+        {"path": "src/packet/contributions.rs", "symbol": "commit_header_contribution"},
+        {"path": "src/packet/contributions.rs", "symbol": "read_header_lblock"},
+        {"path": "src/packet/contributions.rs", "symbol": "read_header_prefix"},
         {
           "path": "src/packet/contributions.rs", "symbol": "decode_code_block_contribution"
         },
@@ -5837,35 +5851,35 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "mq_interval_subtract"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "mq_code_subtract"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "mq_byte_class"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "mq_byte_addend"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "mq_byte_ct"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "mq_byte_advances"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "mq_renorm_double"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "mq_renorm_ct"
         }
       ],
@@ -5947,44 +5961,46 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_stripe_rows"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_sigprop_eligible"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_magref_eligible"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_cleanup_eligible"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_pass_complete"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_zero_context"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_sign_offset"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_predicted_negative"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "tier1_decoded_sign"
         }
       ],
       "id": "part1-complete-legacy-tier1",
       "implementation_refs": [
+        {"path": "src/tier1/legacy_passes.rs", "symbol": "decode_refinement_coefficient"},
+        {"path": "src/tier1/legacy_passes.rs", "symbol": "decode_significance_coefficient"},
         {
           "path": "src/tier1/state.rs", "symbol": "zero_coding_context"
         },
@@ -6082,38 +6098,40 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "irreversible_centered"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "irreversible_scale"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "fixed_round_q16"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "nine_seven_scale"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "nine_seven_lift"
         }
       ],
       "id": "part1-irreversible-numerical-model",
       "implementation_refs": [
+        {"path": "src/transform/wavelets.rs", "symbol": "inverse_nine_seven_lifts"},
+        {"path": "src/transform/quantization.rs", "symbol": "quantize_magnitude_sample"},
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "inverse_quantize_magnitudes"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_9_7"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "fixed_mul"
         }
       ],
@@ -6147,11 +6165,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "applies_quantization_roi_and_output_conversion"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "inverse_horizontal_stage_matches_row_synthesis"
         }
       ],
@@ -6160,26 +6178,29 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "wavelet_detail_advance"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "wavelet_next_resolution"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "wavelet_sample_count"
         }
       ],
       "id": "part1-multilevel-wavelet-synthesis",
       "implementation_refs": [
+        {"path": "src/decode/geometry.rs", "symbol": "derive_packet_grid_for"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_working"},
+        {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_resolution"},
         {
           "path": "src/decode/reconstruction.rs",
           "symbol": "prepare_tile_component_with_kernel"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_level"
         }
       ],
@@ -6222,24 +6243,26 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "sop_sequence"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "sop_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "eph_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/packet.rs",
           "symbol": "packet_length_matches"
         }
       ],
       "id": "part1-tile-packet-sequencing",
       "implementation_refs": [
+        {"path": "src/packet/precinct.rs", "symbol": "decode_precinct_packet_payload_after_headers"},
+        {"path": "src/packet/precinct.rs", "symbol": "decode_precinct_packet_payload_prefix"},
         {
           "path": "src/packet/precinct.rs", "symbol": "decode_precinct_packet"
         },
@@ -6302,11 +6325,11 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/geometry.rs",
           "symbol": "decode_output_shape_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/geometry.rs",
           "symbol": "component_output_shape_valid"
         }
       ],
@@ -6368,15 +6391,15 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "tlm_tile_index_bytes"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "tlm_length_bytes"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "crg_payload_bytes"
         }
       ],
@@ -6391,11 +6414,11 @@
       ],
       "proof_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "tlm_tile_index_bytes"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "crg_payload_bytes"
         }
       ],
@@ -6428,16 +6451,19 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "packed_two_bit_bytes"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "dfs_direction_code"
         }
       ],
       "id": "part2-dfs-ads-decomposition",
       "implementation_refs": [
+        {"path": "src/codestream/decomposition.rs", "symbol": "Parser::decode_dfs_payload"},
+        {"path": "src/codestream/decomposition.rs", "symbol": "Parser::unpack_two_bit_values"},
+        {"path": "src/codestream/decomposition.rs", "symbol": "Parser::decode_ads_payload"},
         {
           "path": "src/codestream/decomposition.rs", "symbol": "Parser::parse_dfs"
         },
@@ -6483,15 +6509,15 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "cbd_precision"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "cbd_signed"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "nlt_binary_complement"
         }
       ],
@@ -6513,7 +6539,7 @@
           "symbol": "production_cbd_rejects_tile_header_scope"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "nlt_binary_complement"
         }
       ],
@@ -6552,21 +6578,22 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "atk_reconstruction_step"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "atk_next_parity"
         }
       ],
       "id": "part2-atk-execution",
       "implementation_refs": [
+        {"path": "src/transform/arbitrary.rs", "symbol": "apply_arbitrary_steps"},
         {
           "path": "src/codestream/part2_transforms.rs", "symbol": "Parser::parse_atk"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/arbitrary.rs",
           "symbol": "inverse_arbitrary"
         }
       ],
@@ -6596,7 +6623,7 @@
           "symbol": "parses_and_executes_extended_atk_forms"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "inverse_horizontal_stage_matches_row_synthesis"
         }
       ],
@@ -6605,24 +6632,27 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "mct_fragment_next"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "mct_fragment_complete"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "mct_reverse_stage"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "binary_fixed_shift"
         }
       ],
       "id": "part2-mct-mcc-mco-transform-graph",
       "implementation_refs": [
+        {"path": "src/codestream/mct_markers.rs", "symbol": "fixed_from_binary"},
+        {"path": "src/codestream/mct_markers.rs", "symbol": "Parser::prepare_mcc_fragment"},
+        {"path": "src/codestream/mct_markers.rs", "symbol": "Parser::prepare_mct_fragment"},
         {
           "path": "src/codestream/mct_markers.rs", "symbol": "Parser::consume_mct_fragment"
         },
@@ -6713,15 +6743,15 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "palette_coordinates_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "component_mapping_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "channel_definition_valid"
         }
       ],
@@ -6924,22 +6954,22 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/reconstruction.rs",
           "symbol": "signed_to_nominal"
         }
       ],
       "id": "part2-pinned-color-normalization",
       "implementation_refs": [
         {
-          "path": "src/color.rs",
+          "path": "src/color/normalization.rs",
           "symbol": "nominal_component_at"
         },
         {
-          "path": "src/color.rs",
+          "path": "src/color/normalization.rs",
           "symbol": "normalize_component"
         },
         {
-          "path": "src/color.rs",
+          "path": "src/color/conversion.rs",
           "symbol": "convert_jp2_color"
         }
       ],
@@ -6961,7 +6991,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/color.rs",
+          "path": "src/color/tests.rs",
           "symbol": "signed_subsampled_sycc_and_alpha_resample_to_image_grid"
         },
         {
@@ -6974,16 +7004,18 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "first_override_allowed"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "effective_layer_count"
         }
       ],
       "id": "part2-jpx-codestream-header-inheritance",
       "implementation_refs": [
+        {"path": "src/jpx/inspection.rs", "symbol": "inspect_file"},
+        {"path": "src/jpx/render.rs", "symbol": "render_jpx_composition"},
         {
           "path": "src/jp2/container.rs", "symbol": "parse"
         },
@@ -7130,20 +7162,21 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/geometry.rs",
           "symbol": "registered_extent"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/geometry.rs",
           "symbol": "registered_source_coordinate"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "chroma_key_alpha"
         }
       ],
       "id": "part2-jpx-general-layer-rendering",
       "implementation_refs": [
+        {"path": "src/jpx/chroma.rs", "symbol": "apply_chroma_key_with_policy"},
         {
           "path": "src/jpx/layer_decode.rs", "symbol": "decode_general_compositing_layer"
         },
@@ -7200,59 +7233,62 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "composition_clip"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "loop_frame"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "source_over_alpha_numerator"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "source_over_color_numerator"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "source_over_rounded_ratio"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "try_store_composition_sample"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "source_over_pixel"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "gather_composition_pixel"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "scatter_composition_pixel"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "compose_planar_pixel"
         },
         {
           "path": "src/jpx/compositing.rs", "symbol": "composite_placed_layer"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "composition_mapped_offset"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "composition_pixel_index"
         }
       ],
       "id": "part2-jpx-composition-rendering",
       "implementation_refs": [
+        {"path": "src/jpx/compositing.rs", "symbol": "composite_layer"},
+        {"path": "src/refinement/composition.rs", "symbol": "source_over_pixel"},
+        {"path": "src/jpx/timeline.rs", "symbol": "select_frame_instructions"},
         {
           "path": "src/jp2/composition.rs", "symbol": "parse_instruction_set"
         },
@@ -7275,7 +7311,7 @@
           "path": "src/jpx/compositing.rs", "symbol": "composite_placed_layer"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/composition.rs",
           "symbol": "compose_planar_pixel"
         },
         {
@@ -7600,11 +7636,11 @@
           "path": "src/jpx/timeline.rs", "symbol": "select_frame_instructions"
         },
         {
-          "path": "src/color.rs",
+          "path": "src/color/output.rs",
           "symbol": "from_layer"
         },
         {
-          "path": "src/color.rs",
+          "path": "src/color/output.rs",
           "symbol": "from_composited"
         },
         {
@@ -7650,11 +7686,11 @@
           "path": "src/jpx/timeline.rs", "symbol": "select_frame_instructions"
         },
         {
-          "path": "src/color.rs",
+          "path": "src/color/output.rs",
           "symbol": "from_layer"
         },
         {
-          "path": "src/color.rs",
+          "path": "src/color/output.rs",
           "symbol": "from_composited"
         }
       ],
@@ -7844,7 +7880,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/color.rs",
+          "path": "src/color/tests.rs",
           "symbol": "normalized_plane_constructor_preserves_all_metadata_and_rejects_each_shape_fault"
         },
         {
@@ -7880,7 +7916,7 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "metadata_count"
         }
       ],
@@ -7915,36 +7951,37 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_header_form_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_header_has_explicit_class"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_header_has_explicit_codestream"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_vbas_first_is_canonical"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_vbas_step"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_auxiliary_present"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_eor_extent"
         }
       ],
       "id": "part9-bin-id-vbas-aux-eor",
       "implementation_refs": [
+        {"path": "src/jpip/message.rs", "symbol": "DatabinClass::has_auxiliary"},
         {
           "path": "src/jpip/message.rs", "symbol": "parse_jpip_message"
         },
@@ -8011,16 +8048,17 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_class_identifier_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_databin_identity"
         }
       ],
       "id": "part9-databin-identity",
       "implementation_refs": [
+        {"path": "src/jpip/message.rs", "symbol": "DatabinClass::from_identifier"},
         {
           "path": "src/jpip/message.rs", "symbol": "DatabinId::new"
         },
@@ -8057,11 +8095,11 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_fragment_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_final_length_consistent"
         }
       ],
@@ -8107,11 +8145,11 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_overlap_consistent"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_transaction_commit"
         }
       ],
@@ -8150,15 +8188,15 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_merge_start"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_merge_end"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_databin_complete"
         }
       ],
@@ -8211,15 +8249,15 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_missing_length"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_available_bytes"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_range_complete"
         }
       ],
@@ -8272,11 +8310,11 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_metadata_descent_allowed"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_box_length"
         }
       ],
@@ -8328,7 +8366,7 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_reconstruction_length"
         }
       ],
@@ -8372,7 +8410,7 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_precinct_in_class"
         }
       ],
@@ -8414,15 +8452,15 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_progression_supported"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_reframed_marker_removed"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_packet_reframed_length"
         }
       ],
@@ -8481,7 +8519,7 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_tile_transition_sufficient"
         }
       ],
@@ -8522,11 +8560,11 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_quality_prefix_available"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/jpip.rs",
           "symbol": "jpip_progressive_update_valid"
         }
       ],
@@ -8575,7 +8613,7 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "part15_jph_branding"
         }
       ],
@@ -8607,15 +8645,15 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "part15_cap_payload_length"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "part15_signaling_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "part15_codestream_class"
         }
       ],
@@ -8663,23 +8701,23 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "part15_mode_allows"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "part15_magnitude_bound"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "part15_component_allowed"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "part15_capability_fields_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "part15_headers_allowed"
         }
       ],
@@ -8741,20 +8779,21 @@
           "path": "src/tier1/ht_segments.rs", "symbol": "ht_pass_group_from_packet"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_placeholder_passes"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_substantive_passes"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_segment_passes"
         }
       ],
       "id": "part15-pass-grouping",
       "implementation_refs": [
+        {"path": "src/packet/contributions.rs", "symbol": "read_header_segment"},
         {
           "path": "src/tier1/ht_segments.rs", "symbol": "HtPassGroup::from_packet_passes"
         },
@@ -8811,12 +8850,13 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_mixed_selects_legacy"
         }
       ],
       "id": "part15-mixed-routing",
       "implementation_refs": [
+        {"path": "src/packet/contributions.rs", "symbol": "read_header_segment_length"},
         {
           "path": "src/packet/contributions.rs", "symbol": "decode_code_block_contribution"
         }
@@ -8846,11 +8886,11 @@
           "path": "src/tier1/ht_segments.rs", "symbol": "parse_ht_block_segments"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_scup"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_magsgn_end"
         }
       ],
@@ -8925,23 +8965,23 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_forward_data_bits"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_forward_stuffing_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_mel_stuffing_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_reverse_data_bits"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_cleanup_byte_claims_valid"
         }
       ],
@@ -9245,35 +9285,35 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_mel_exponent"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_mel_next_state"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_vlc_table_index"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_vlc_word_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_uvlc_value"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_quad_sample_in_bounds"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_quad_origin_valid"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_noninitial_vlc_context"
         }
       ],
@@ -9424,9 +9464,9 @@
       "contract_refs": [
         {"path": "src/tier1/ht_cleanup.rs", "symbol": "reconstruct_ht_magnitude"},
         {"path": "src/tier1/ht_cleanup_readers.rs", "symbol": "HtForwardMagSgnReader::read_bit"},
-        {"path": "src/refinement.rs", "symbol": "ht_magnitude_payload_bits"},
-        {"path": "src/refinement.rs", "symbol": "ht_magnitude_sign"},
-        {"path": "src/refinement.rs", "symbol": "ht_bin_center_odd"}
+        {"path": "src/refinement/tier1.rs", "symbol": "ht_magnitude_payload_bits"},
+        {"path": "src/refinement/tier1.rs", "symbol": "ht_magnitude_sign"},
+        {"path": "src/refinement/tier1.rs", "symbol": "ht_bin_center_odd"}
       ],
       "id": "part15-numeric-magnitude-reader-state",
       "implementation_refs": [
@@ -9463,27 +9503,27 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_magsgn_fill_value"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_kappa_completion"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_magnitude_payload_bits"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_magnitude_sign"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_bin_center_odd"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/headers.rs",
           "symbol": "part15_cleanup_u_bound"
         }
       ],
@@ -9564,7 +9604,7 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_claim_available"
         }
       ],
@@ -9604,24 +9644,29 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_stripe_rows"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_patch_end"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_sigprop_eligible"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_magref_eligible"
         }
       ],
       "id": "part15-refinement-traversal",
       "implementation_refs": [
+        {"path": "src/tier1/ht_refinement.rs", "symbol": "HtRefinementPlaneState::magnitude_sample"},
+        {"path": "src/tier1/ht_refinement.rs", "symbol": "HtSignificancePatchState::discover_sample"},
+        {"path": "src/tier1/ht_refinement.rs", "symbol": "run_ht_significance_stripe"},
+        {"path": "src/tier1/ht_refinement.rs", "symbol": "HtRefinementPlaneState::magnitude_pass"},
+        {"path": "src/tier1/ht_refinement.rs", "symbol": "run_ht_significance_pass"},
         {
           "path": "src/tier1/ht_refinement.rs", "symbol": "decode_ht_refinement_plane"
         },
@@ -9673,15 +9718,15 @@
     {
       "contract_refs": [
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_refinement_pass_total"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_multiple_set_allowed"
         },
         {
-          "path": "src/refinement.rs",
+          "path": "src/refinement/tier1.rs",
           "symbol": "ht_replacement_allowed"
         }
       ],
@@ -9730,31 +9775,31 @@
     {
       "contract_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "inverse_quantize"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "inverse_quantize_magnitudes"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "inverse_quantize_values"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "inverse_quantize_plane"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "undo_maxshift_magnitude"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "quantize_magnitude_sample"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/arithmetic.rs",
           "symbol": "validate_quantization_size"
         }
       ],
@@ -9765,27 +9810,27 @@
           "symbol": "prepare_tile_component_with_kernel"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "quantization_rejects_in_production_order_and_preserves_public_adapters"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "inverse_quantize"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "inverse_quantize_magnitudes"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "inverse_quantize_values"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "inverse_quantize_plane"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/quantization.rs",
           "symbol": "quantize_magnitude_sample"
         }
       ],
@@ -9823,11 +9868,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "complete_quantization_planes_match_independent_bit_and_rational_reference"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "quantization_rejects_in_production_order_and_preserves_public_adapters"
         }
       ],
@@ -9836,46 +9881,46 @@
     {
       "contract_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_5_3"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "interleave"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_lift"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_lifting_value"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "fixed_mul"
         }
       ],
       "id": "part1-complete-five-three-sequence",
       "implementation_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_row_pair"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_column_pair"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_5_3"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_lift"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_lifting_value"
         }
       ],
@@ -9917,11 +9962,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "full_five_three_sequences_and_rejections_match_wide_reference"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "complete_lifting_buffers_preserve_first_error_state_and_opposite_parity"
         }
       ],
@@ -9930,30 +9975,30 @@
     {
       "contract_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_9_7"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "scale_parity"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_nine_seven_lifts"
         }
       ],
       "id": "part1-complete-nine-seven-sequence",
       "implementation_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_row_pair"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_column_pair"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/wavelets.rs",
           "symbol": "inverse_9_7"
         }
       ],
@@ -9987,11 +10032,11 @@
       ],
       "test_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "complete_nine_seven_sequences_match_independent_wide_reference"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "complete_scaling_lifting_and_column_store_states_match_independent_arithmetic"
         }
       ],
@@ -10000,78 +10045,79 @@
     {
       "contract_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_horizontal_5_3"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_horizontal_9_7"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_vertical_5_3"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_vertical_9_7"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_level_5_3"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_level_9_7"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/geometry.rs",
           "symbol": "validate_level"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/geometry.rs",
           "symbol": "validate_band"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/arithmetic.rs",
           "symbol": "checked_area"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/geometry.rs",
           "symbol": "store_column"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/geometry.rs",
           "symbol": "store_column_sample"
         }
       ],
       "id": "part1-complete-standard-wavelet-planes",
       "implementation_refs": [
+        {"path": "src/decode/reconstruction.rs", "symbol": "reconstruct_prepare_resolution"},
         {
           "path": "src/decode/reconstruction.rs",
           "symbol": "prepare_tile_component_with_kernel"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_level"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_horizontal"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_vertical"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/geometry.rs",
           "symbol": "validate_level"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/levels.rs",
           "symbol": "inverse_columns"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/geometry.rs",
           "symbol": "store_column"
         }
       ],
@@ -10137,15 +10183,15 @@
       ],
       "test_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "complete_standard_planes_match_independent_reference_for_all_small_geometries"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "complete_plane_rejections_preserve_late_band_checks_and_resource_order"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "complete_scaling_lifting_and_column_store_states_match_independent_arithmetic"
         }
       ],
@@ -10154,30 +10200,30 @@
     {
       "contract_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/output.rs",
           "symbol": "convert_samples"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/output.rs",
           "symbol": "convert_sample"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/output.rs",
           "symbol": "round_fixed"
         }
       ],
       "id": "part1-complete-public-sample-conversion",
       "implementation_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "complete_sample_conversion_matches_wide_reference_and_error_boundaries"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/output.rs",
           "symbol": "convert_samples"
         },
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/output.rs",
           "symbol": "convert_sample"
         }
       ],
@@ -10207,7 +10253,7 @@
       ],
       "test_refs": [
         {
-          "path": "src/transform.rs",
+          "path": "src/transform/tests.rs",
           "symbol": "complete_sample_conversion_matches_wide_reference_and_error_boundaries"
         }
       ],
@@ -10326,8 +10372,8 @@
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_placements_error"},
         {"path": "proofs/production_impl/mod.rs", "symbol": "production_prepare_fold_error_guard"},
         {"path": "proofs/spec_properties/mod.rs", "symbol": "standard_prepare_preserves_complete_plan_metadata"},
-        {"path": "src/transform.rs", "symbol": "quantized_coefficients_fields"},
-        {"path": "src/transform.rs", "symbol": "quantized_coefficients_push"}
+        {"path": "src/transform/proof_support.rs", "symbol": "quantized_coefficients_fields"},
+        {"path": "src/transform/proof_support.rs", "symbol": "quantized_coefficients_push"}
       ],
       "spec_refs": [
         {"path": "specs/mod.rs", "symbol": "part1_prepare_standard_component"},
