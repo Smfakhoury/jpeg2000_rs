@@ -109,6 +109,12 @@ impl<'a> Parser<'a> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures match result {
+            Ok((payload, _, _)) => payload.tile_index == tile_part.tile_index,
+            Err(_) => true,
+        },
+    ))]
     pub(super) fn read_tile_part(
         &mut self,
         tile_part: TilePart,
