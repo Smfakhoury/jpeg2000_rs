@@ -684,6 +684,7 @@ class ModelReviewHoldTests(unittest.TestCase):
 
     def packet_metadata_fixture(self):
         paths = {
+            "src/error.rs",
             "src/codestream/packet_headers.rs", "src/codestream/proof_support.rs",
             "src/codestream/tests.rs", "specs/packet_input.rs",
             "validation/framework.py", "validation/normative-coverage.json",
