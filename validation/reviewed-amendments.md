@@ -16,6 +16,7 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-171-ghost-support` | Adopted through #172; the mechanical proof/view relocation is now owner-merged in #171 | CI40730904780 / Verus40729319509; refreshed source and actual-main qualification are retained in #171 |
 | `proposal-174-tier1-tests` | Adopted through #175; private Tier-1 tests are now merged in #174 under explicit owner delegation | CI40772805265 / Verus40772806908; refreshed source and actual-main qualification are retained in #174 |
 | `proposal-177-crate-rename` | Proposed exact owner-requested Cargo package/import/tooling rename; no decoder/model/proof Rust change | #177; original CI40789824278 / Verus40789825409; fresh source checks required after adoption |
+| `proposal-180-decode-domains` | Proposed exact JBIG2-style decoder responsibility layout; executing contracts/body tokens and public API paths preserved | #180; original CI40978411701 / Verus40978411630; fresh source checks required after adoption |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
@@ -189,6 +190,33 @@ The #176 [publication-name profile authorization](crate-rename-profile-authoriza
 was deployed at `8055a5e9f766a02fb40fd2526dd3ffd96eb96c3d` and accepted from
 fresh actual-main CI and both proof replays. It added only the fixed profile,
 not a source record. This proposed record cannot activate itself on a feature branch.
+
+### Proposed real decoder modules
+
+The #180 record binds exactly the 16 paths in `decode-domain-layout`, not another
+module, controller/model amendment or a combined change. The qualified original
+source is `39431e36cb8723365e951a2db203c4e7256d2a50`: a 367-line shared-type/
+public-re-export facade, nine real runtime modules of 98-1,248 lines, separate
+private tests and root ghost-only support. It is not arbitrary executing includes
+or a second proof-free implementation.
+
+All 146 executing declaration contracts/signatures/body tokens and shared type/
+field tokens are preserved, apart from optional formatted parameter trailing
+commas and private helpers becoming parent-visible where required. All 666
+native test identities remain. Exact source preflight originals passed 300 Python
+tests without skips, repository and actual-archive Verus 3,518/0 each, actual
+63-file/47-Rust archive formatting/binding and all native/MSRV/resource/consumer
+gates. All 4,554 observed identities remain with only the exact 124 declared
+free-function module moves; root ghost-helper namespaces stay unchanged.
+
+The fixed profile was separately adopted through externally reviewed #179 and
+deployed at `b89ec2db65556587a4a69764c34f3e239b600ab7`, then accepted from fresh
+actual-main CI/proof originals. It added no source record. This proposal cannot
+authorize itself. Source #180 remains a genuine held draft until this separate
+record is adopted with every check green. Then accept fresh main, normally
+refresh source, require fresh complete checks and a separate engineering review
+before its normal merge, and accept fresh actual main again. Agent reviews are
+not independent human/normative approval; no publication is authorized.
 
 ```json
 {
@@ -461,6 +489,81 @@ not a source record. This proposed record cannot activate itself on a feature br
         "validation/tests/test_proof_coverage.py": {
           "before": "76026ec16c80b96f29971d4a859ee7aed0a4e609",
           "after": "b1132139e7adce6620fab222198ecc7ff5ba043c"
+        }
+      }
+    },
+    {
+      "id": "proposal-180-decode-domains",
+      "profile": "decode-domain-layout",
+      "source_pr": 180,
+      "source_head": "39431e36cb8723365e951a2db203c4e7256d2a50",
+      "ci_run": 40978411701,
+      "verus_run": 40978411630,
+      "rationale": "Exact real Rust decoder responsibility layout:146executing declaration contracts/bodytokens and sharedtype/fieldtokens preserved;666nativeidentities retained,124declaredmodulemoves only. Not a generic/model/controller exception, normative certification or publication.",
+      "paths": {
+        "src/decode.rs": {
+          "before": "afd81f4a1d9d17a79f952248e602798e544db53e",
+          "after": "bf7bb48e3951e301a53841f4c90a939cdf6aa448"
+        },
+        "src/decode/api.rs": {
+          "before": null,
+          "after": "b7c8c46667fe4188238868ca4a3943c2e40209ba"
+        },
+        "src/decode/arithmetic.rs": {
+          "before": null,
+          "after": "d95ce7f845b3fe49328af032aebdab75fb6331cf"
+        },
+        "src/decode/code_blocks.rs": {
+          "before": null,
+          "after": "ee5d14d2b97f5a46971fc4608c619eaecab6dcd6"
+        },
+        "src/decode/execution.rs": {
+          "before": null,
+          "after": "1ec7c63155383a43596098df07eccba4a924c1e2"
+        },
+        "src/decode/geometry.rs": {
+          "before": null,
+          "after": "cc4e7cbb7c8259e57235157b2cb09b4b8915c7cd"
+        },
+        "src/decode/output.rs": {
+          "before": null,
+          "after": "e2bc114a10d1760dfe927a3c65dc2e5d0a2c1544"
+        },
+        "src/decode/planning.rs": {
+          "before": null,
+          "after": "5ad7d96ad6368ce1559ee80fab387a30257db45c"
+        },
+        "src/decode/proof_support.rs": {
+          "before": "848e266a5715993d226b5905fe112f035b183c87",
+          "after": "6226e5852d6948024a648433c28800cc8df127f3"
+        },
+        "src/decode/reconstruction.rs": {
+          "before": null,
+          "after": "418edef885a155f556282f6d921e16c92b60478d"
+        },
+        "src/decode/selection.rs": {
+          "before": null,
+          "after": "d60a564133e39e2c47427ea23f63a9620f5f0d72"
+        },
+        "src/decode/tests.rs": {
+          "before": null,
+          "after": "b503ea0e4c830462ad13e3241713c0f21f27e07e"
+        },
+        "validation/expected-package-files.txt": {
+          "before": "a2d0538bf1db8f48537bb303bd55666df142ff16",
+          "after": "dad10d65b8755dab328cd6e969ef022ece8b5328"
+        },
+        "validation/framework.py": {
+          "before": "2aa2f94580c51120b19bf3d4182e53eed4fb777f",
+          "after": "868da3d7b50f1a022de8306e822557d2eaaaeff8"
+        },
+        "validation/normative-coverage.json": {
+          "before": "c7436555216afc20d9cd86dfa7d0291deb2fd179",
+          "after": "53f1b409b3910b26147979bbbf142cbe256dd18c"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "bc1541157dfcb818f70546589e524dfb52d2afff",
+          "after": "ac92b5cd896d92a9634b8def13d61b4cb47a0956"
         }
       }
     }
