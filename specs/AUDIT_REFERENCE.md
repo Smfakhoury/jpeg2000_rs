@@ -2039,7 +2039,8 @@ completed ITU-clause audit.
 ## Worked example 2: PLM packet-length admission
 
 **Code → model.** Open `Parser::parse_plm` and its actual callee
-`Parser::validate_packet_lengths` in [src/codestream.rs](../src/codestream.rs).
+`Parser::validate_packet_lengths` in
+[packet_headers.rs](../src/codestream/packet_headers.rs).
 Their models in [mod.rs](mod.rs) are `part1_parse_plm`,
 `part1_plm_groups_from`, `part1_validate_packet_lengths`, and
 `part1_packet_length_admission_from`. The raw variable-length decoder is modeled

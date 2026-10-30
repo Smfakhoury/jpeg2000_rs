@@ -37,6 +37,20 @@ and after replay; it also records Cargo's manifest normalization explicitly.
 
 ## Single executable implementation
 
+The [parser facade](src/codestream.rs) keeps shared data definitions and public
+re-exports. Real Rust child modules separate marker reading, header and tile-part
+orchestration, coding/quantization, packed packet headers and Part 2 transforms;
+see the [responsibility map](README.md#repository-layout). Existing public paths,
+type/field tokens and native test identities are preserved. Private methods or
+helpers become parent-visible only where cross-module access requires it.
+
+The [parser proof support](src/codestream/proof_support.rs) is included into the
+same logical `codestream` module under `verus_keep_ghost`. It contains no executable
+decoder alternative; ghost signatures, bodies and open/closed declarations remain
+unchanged. Executable contracts and invariants remain attached to their real
+child-module bodies. Fresh evidence must bind actual verifier namespaces, not
+silently rewrite historical reports.
+
 Cargo and Verus use the exact [src/lib.rs](src/lib.rs) crate root. Production
 algorithms live in [src/](src/); a second proof-only decoder implementation is
 not maintained.

@@ -608,7 +608,7 @@ def _packet_progression_contracts() -> dict[tuple[str, str], tuple[str, str, str
     }
     return {
         **{("src/packet.rs", name): value for name, value in packet_contracts.items()},
-        **{("src/codestream.rs", name): value for name, value in input_contracts.items()},
+        **{("src/codestream/packet_headers.rs", name): value for name, value in input_contracts.items()},
     }
 
 
@@ -786,7 +786,7 @@ def _reconstruction_contracts() -> dict[tuple[str, str], tuple[str, str, str | N
     return {
         **{("src/image.rs", name): recipe for name, recipe in image_contracts.items()},
         **{("src/decode.rs", name): recipe for name, recipe in decode_contracts.items()},
-        ("src/codestream.rs", "Part2Extensions::arbitrary_kernel"): (
+        ("src/codestream/extensions.rs", "Part2Extensions::arbitrary_kernel"): (
             "part2_kernel_registry_lookup", view("crate::transform::arbitrary_kernel_option", r"\1"), None,
             args(view("part2_kernel_registry", "self"), "index")),
     }
@@ -807,46 +807,46 @@ _LAYER_STATE_CONTRACTS = {
 }
 
 _TRANSFORM_ARRAY_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "read_u64"): (
+    ("src/codestream/reader.rs", "read_u64"): (
         "part1_codestream_u64", r"\1", None, r"bytes\s*@",
     ),
-    ("src/codestream.rs", "signed_u16"): (
+    ("src/codestream/reader.rs", "signed_u16"): (
         "part1_signed_u16", r"\1", None, "value",
     ),
-    ("src/codestream.rs", "fixed_from_binary"): (
+    ("src/codestream/mct_markers.rs", "fixed_from_binary"): (
         "part1_fixed_from_binary", r"\1", None, r"negative\s*,\s*significand\s*,\s*binary_exponent",
     ),
-    ("src/codestream.rs", "float32_to_fixed"): (
+    ("src/codestream/mct_markers.rs", "float32_to_fixed"): (
         "part1_float32_to_fixed", r"\1", None, "bits",
     ),
-    ("src/codestream.rs", "float64_to_fixed"): (
+    ("src/codestream/mct_markers.rs", "float64_to_fixed"): (
         "part1_float64_to_fixed", r"\1", None, "bits",
     ),
-    ("src/codestream.rs", "Parser::decode_mct_element"): (
+    ("src/codestream/mct_markers.rs", "Parser::decode_mct_element"): (
         "part1_mct_element", r"\1", None, r"offset\s*,\s*data\s*@\s*,\s*position\s*,\s*numeric_format",
     ),
-    ("src/codestream.rs", "Parser::parse_mct"): (
+    ("src/codestream/mct_markers.rs", "Parser::parse_mct"): (
         "part1_parse_mct", _coverage_call("mct_array_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*self\.limits",
     ),
 }
 
 _COLLECTION_FRAGMENT_CONTRACTS = {
-    ("src/codestream.rs", "find_mcc_fragment"): (
+    ("src/codestream/mct_markers.rs", "find_mcc_fragment"): (
         "part1_mcc_fragment_find", r"\1", None,
         _coverage_call("mcc_pending_view", r"pending\s*@") + r"\s*,\s*index\s*,\s*0",
     ),
-    ("src/codestream.rs", "u8_list_contains"): (
+    ("src/codestream/mct_resolution.rs", "u8_list_contains"): (
         "part1_byte_list_contains", r"\1", None, r"values\s*@\s*,\s*value",
     ),
-    ("src/codestream.rs", "Parser::prepare_mcc_fragment"): (
+    ("src/codestream/mct_markers.rs", "Parser::prepare_mcc_fragment"): (
         "part1_prepare_mcc_fragment", r"\1",
         _coverage_call("mcc_pending_view", _coverage_call("final", "pending") + r"\s*@"),
         _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*"
         + _coverage_call("mcc_pending_view", _coverage_call("old", "pending") + r"\s*@")
         + r"\s*,\s*completed\s*@",
     ),
-    ("src/codestream.rs", "Parser::consume_mcc_fragment"): (
+    ("src/codestream/mct_markers.rs", "Parser::consume_mcc_fragment"): (
         "part1_consume_mcc_fragment", _coverage_call("mcc_fragment_outcome", r"\1"),
         _coverage_call("mcc_pending_view", _coverage_call("final", "pending") + r"\s*@")
         + r"\s*,\s*" + _coverage_call("final", "completed") + r"\s*@",
@@ -857,7 +857,7 @@ _COLLECTION_FRAGMENT_CONTRACTS = {
 }
 
 _PACKED_HEADER_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_packed_fragment"): (
+    ("src/codestream/packet_headers.rs", "Parser::parse_packed_fragment"): (
         "part1_parse_packed_fragment", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self"))
         + r"\s*,\s*\*\s*" + _coverage_call("final", "next_index")
@@ -869,20 +869,20 @@ _PACKED_HEADER_BYTES_CONTRACTS = {
         + r"\s*,\s*\*\s*" + _coverage_call("old", "fragments")
         + r"\s*,\s*" + _coverage_call("old", "bytes") + r"\s*@",
     ),
-    ("src/codestream.rs", "Parser::parse_ppm_frames"): (
+    ("src/codestream/packet_headers.rs", "Parser::parse_ppm_frames"): (
         "part1_parse_ppm_frames", _coverage_call("packed_header_frames_outcome", r"\1"), None,
         r"bytes\s*@\s*,\s*fragments\s*,\s*self\.limits",
     ),
 }
 
 _PACKET_LENGTH_ADMISSION_CONTRACTS = {
-    ("src/codestream.rs", "Parser::validate_packet_lengths"): (
+    ("src/codestream/packet_headers.rs", "Parser::validate_packet_lengths"): (
         "part1_validate_packet_lengths", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")),
         _coverage_call("parser_view", _coverage_call("old", "self"))
         + r"\s*,\s*encoded\s*@\s*,\s*marker_offset",
     ),
-    ("src/codestream.rs", "Parser::parse_plm"): (
+    ("src/codestream/packet_headers.rs", "Parser::parse_plm"): (
         "part1_parse_plm", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self"))
         + r"\s*,\s*\*\s*" + _coverage_call("final", "next_index")
@@ -897,77 +897,77 @@ _PACKET_LENGTH_ADMISSION_CONTRACTS = {
 }
 
 _TRANSFORM_GRAPH_CONTRACTS = {
-    ("src/codestream.rs", "Parser::expected_mct_elements"): (
+    ("src/codestream/mct_resolution.rs", "Parser::expected_mct_elements"): (
         "part1_mct_graph_element_count", r"\1", None,
         r"rows\s*,\s*columns\s*,\s*kind\s*,\s*reversible",
     ),
-    ("src/codestream.rs", "Parser::resolve_mct_collection"): (
+    ("src/codestream/mct_resolution.rs", "Parser::resolve_mct_collection"): (
         "part1_mct_graph_collection", _coverage_call("mct_collection_outcome", r"\1"), None,
         _coverage_call("mcc_collection_reference_view", "reference") + r"\s*,\s*"
         + _coverage_call("mct_arrays_view", r"arrays\s*@"),
     ),
-    ("src/codestream.rs", "Parser::resolve_mct_stage"): (
+    ("src/codestream/mct_resolution.rs", "Parser::resolve_mct_stage"): (
         "part1_mct_graph_stage", _coverage_call("mct_stage_outcome", r"\1"), None,
         _coverage_call("mct_record_view", "record") + r"\s*,\s*"
         + _coverage_call("mct_arrays_view", r"arrays\s*@"),
     ),
-    ("src/codestream.rs", "Parser::resolve_multiple_component_transform"): (
+    ("src/codestream/mct_resolution.rs", "Parser::resolve_multiple_component_transform"): (
         "part1_mct_graph", _coverage_call("mct_graph_outcome", r"\1"), None,
         _coverage_call("mct_parameters_view", "parameters"),
     ),
 }
 
 _TRANSFORM_REGISTRY_CONTRACTS = {
-    ("src/codestream.rs", "find_mct_array_index"): (
+    ("src/codestream/mct_resolution.rs", "find_mct_array_index"): (
         "part1_mct_registry_array_find", r"\1", None,
         _coverage_call("mct_arrays_view", r"arrays\s*@") + r"\s*,\s*index\s*,\s*0",
     ),
-    ("src/codestream.rs", "find_mct_record_index"): (
+    ("src/codestream/mct_resolution.rs", "find_mct_record_index"): (
         "part1_mct_registry_record_find", r"\1", None,
         _coverage_call("mct_records_view", r"records\s*@") + r"\s*,\s*index\s*,\s*0",
     ),
-    ("src/codestream.rs", "validate_unique_mct_array_indexes"): (
+    ("src/codestream/mct_resolution.rs", "validate_unique_mct_array_indexes"): (
         "part1_mct_registry_unique_array", r"\1", None,
         _coverage_call("mct_arrays_view", r"arrays\s*@") + r"\s*,\s*marker_offset",
     ),
-    ("src/codestream.rs", "validate_unique_mct_record_indexes"): (
+    ("src/codestream/mct_resolution.rs", "validate_unique_mct_record_indexes"): (
         "part1_mct_registry_unique_record", r"\1", None,
         _coverage_call("mct_records_view", r"records\s*@") + r"\s*,\s*marker_offset",
     ),
-    ("src/codestream.rs", "replace_mct_array"): (
+    ("src/codestream/mct_resolution.rs", "replace_mct_array"): (
         "part1_mct_registry_replace_array", r"\(\s*\)",
         _coverage_call("mct_arrays_view", _coverage_call("final", "arrays") + r"\s*@"),
         _coverage_call("mct_arrays_view", _coverage_call("old", "arrays") + r"\s*@")
         + r"\s*,\s*" + _coverage_call("mct_array_view", r"&\s*replacement"),
     ),
-    ("src/codestream.rs", "replace_mct_record"): (
+    ("src/codestream/mct_resolution.rs", "replace_mct_record"): (
         "part1_mct_registry_replace_record", r"\(\s*\)",
         _coverage_call("mct_records_view", _coverage_call("final", "records") + r"\s*@"),
         _coverage_call("mct_records_view", _coverage_call("old", "records") + r"\s*@")
         + r"\s*,\s*" + _coverage_call("mct_record_view", r"&\s*replacement"),
     ),
-    ("src/codestream.rs", "referenced_mct_array"): (
+    ("src/codestream/mct_resolution.rs", "referenced_mct_array"): (
         "part1_mct_registry_reference", _coverage_call("mct_array_reference_outcome", r"\1"), None,
         _coverage_call("mct_arrays_view", r"arrays\s*@") + r"\s*,\s*index\s*,\s*kind",
     ),
 }
 
 _TRANSFORM_FRAGMENT_CONTRACTS = {
-    ("src/codestream.rs", "find_mct_fragment"): (
+    ("src/codestream/mct_markers.rs", "find_mct_fragment"): (
         "part1_mct_fragment_find", r"\1", None,
         _coverage_call("mct_pending_view", r"pending\s*@") + r"\s*,\s*index\s*,\s*0",
     ),
-    ("src/codestream.rs", "u8_list_contains"): _COLLECTION_FRAGMENT_CONTRACTS[
-        ("src/codestream.rs", "u8_list_contains")
+    ("src/codestream/mct_resolution.rs", "u8_list_contains"): _COLLECTION_FRAGMENT_CONTRACTS[
+        ("src/codestream/mct_resolution.rs", "u8_list_contains")
     ],
-    ("src/codestream.rs", "Parser::prepare_mct_fragment"): (
+    ("src/codestream/mct_markers.rs", "Parser::prepare_mct_fragment"): (
         "part1_prepare_mct_fragment", r"\1",
         _coverage_call("mct_pending_view", _coverage_call("final", "pending") + r"\s*@"),
         _coverage_call("segment_view", "segment") + r"\s*,\s*self\.limits\s*,\s*"
         + _coverage_call("mct_pending_view", _coverage_call("old", "pending") + r"\s*@")
         + r"\s*,\s*completed\s*@",
     ),
-    ("src/codestream.rs", "Parser::consume_mct_fragment"): (
+    ("src/codestream/mct_markers.rs", "Parser::consume_mct_fragment"): (
         "part1_consume_mct_fragment", _coverage_call("mct_fragment_outcome", r"\1"),
         _coverage_call("mct_pending_view", _coverage_call("final", "pending") + r"\s*@")
         + r"\s*,\s*" + _coverage_call("final", "completed") + r"\s*@",
@@ -978,66 +978,66 @@ _TRANSFORM_FRAGMENT_CONTRACTS = {
 }
 
 _TRANSFORM_COLLECTION_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "signed_u32"): (
+    ("src/codestream/reader.rs", "signed_u32"): (
         "part1_signed_u32", r"\1", None, "value",
     ),
-    ("src/codestream.rs", "component_lists_overlap"): (
+    ("src/codestream/mct_resolution.rs", "component_lists_overlap"): (
         "part1_mcc_lists_overlap", r"\1", None, r"left\s*@\s*,\s*right\s*@",
     ),
-    ("src/codestream.rs", "validate_parallel_collections"): (
+    ("src/codestream/mct_resolution.rs", "validate_parallel_collections"): (
         "part1_mcc_parallel_collections", r"\1", None,
         _coverage_call("mcc_collection_references_view", r"collections\s*@") + r"\s*,\s*marker_offset",
     ),
-    ("src/codestream.rs", "Parser::decode_mcc_collection"): (
+    ("src/codestream/mct_markers.rs", "Parser::decode_mcc_collection"): (
         "part1_mcc_collection", _coverage_call("mcc_collection_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*start",
     ),
-    ("src/codestream.rs", "Parser::parse_mcc"): (
+    ("src/codestream/mct_markers.rs", "Parser::parse_mcc"): (
         "part1_parse_mcc", _coverage_call("mcc_record_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*self\.limits",
     ),
 }
 
 _TRANSFORM_ROUTING_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_mco"): (
+    ("src/codestream/mct_markers.rs", "Parser::parse_mco"): (
         "part1_parse_mco", _coverage_call("segment_tail_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "parse_mcc_component_list"): (
+    ("src/codestream/mct_markers.rs", "parse_mcc_component_list"): (
         "part1_parse_mcc_component_list", _coverage_call("marker_words_outcome", r"\1"),
         r"\*\s*" + _coverage_call("final", "position"),
         r"payload\s*@\s*,\s*\*\s*" + _coverage_call("old", "position")
         + r"\s*,\s*components\s*,\s*marker_offset",
     ),
-    ("src/codestream.rs", "u16_list_contains"): (
+    ("src/codestream/mct_markers.rs", "u16_list_contains"): (
         "part1_mcc_reference_present", r"\1", None, r"values\s*@\s*,\s*value",
     ),
 }
 
 _PROGRESSION_ADMISSION_CONTRACTS = {
-    ("src/codestream.rs", "Parser::progression_validation_shape"): (
+    ("src/codestream/coding_markers.rs", "Parser::progression_validation_shape"): (
         "part1_poc_validation_shape", r"\1", None,
         r"offset\s*,\s*layers\s*,\s*component_styles\s*,\s*0\s*,\s*0\s*,\s*0",
     ),
-    ("src/codestream.rs", "Parser::mark_progression_resolutions"): (
+    ("src/codestream/coding_markers.rs", "Parser::mark_progression_resolutions"): (
         "part1_poc_mark_resolutions", r"\1", _coverage_call("final", "owners") + r"\s*@",
         r"offset\s*,\s*record\s*,\s*coordinate\s*,\s*0\s*,\s*"
         + _coverage_call("old", "owners") + r"\s*@\s*,\s*progress",
     ),
-    ("src/codestream.rs", "Parser::mark_progression_layers"): (
+    ("src/codestream/coding_markers.rs", "Parser::mark_progression_layers"): (
         "part1_poc_mark_layers", r"\1", _coverage_call("final", "owners") + r"\s*@",
         r"offset\s*,\s*record\s*,\s*coordinate\s*,\s*layers\s*,\s*0\s*,\s*"
         + _coverage_call("old", "owners") + r"\s*@\s*,\s*progress",
     ),
-    ("src/codestream.rs", "Parser::mark_progression_record"): (
+    ("src/codestream/coding_markers.rs", "Parser::mark_progression_record"): (
         "part1_poc_mark_record", r"\1", _coverage_call("final", "owners") + r"\s*@",
         r"offset\s*,\s*record\s*,\s*layers\s*,\s*component_styles\s*,\s*"
         + _coverage_call("old", "owners") + r"\s*@",
     ),
-    ("src/codestream.rs", "progression_owners_complete"): (
+    ("src/codestream/coding_markers.rs", "progression_owners_complete"): (
         "part1_progression_owners_complete", r"\1", None, r"owners\s*@",
     ),
-    ("src/codestream.rs", "Parser::validate_progression_changes"): (
+    ("src/codestream/coding_markers.rs", "Parser::validate_progression_changes"): (
         "part1_validate_progression_changes", r"\1", None,
         r"offset\s*,\s*" + _coverage_call("progression_changes_view", "changes")
         + r"\s*,\s*layers\s*,\s*component_styles\s*,\s*self\.limits",
@@ -1045,36 +1045,36 @@ _PROGRESSION_ADMISSION_CONTRACTS = {
 }
 
 _PROGRESSION_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::read_poc_byte"): (
+    ("src/codestream/coding_markers.rs", "Parser::read_poc_byte"): (
         "part1_poc_byte", r"\1", None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*position",
     ),
-    ("src/codestream.rs", "Parser::read_poc_component"): (
+    ("src/codestream/coding_markers.rs", "Parser::read_poc_component"): (
         "part1_poc_component", r"\1", None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*position\s*,\s*width",
     ),
-    ("src/codestream.rs", "Parser::parse_poc"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_poc"): (
         "part1_parse_poc", _coverage_call("parsed_progression_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*components",
     ),
 }
 
 _KERNEL_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::read_kernel_coefficient"): (
+    ("src/codestream/part2_transforms.rs", "Parser::read_kernel_coefficient"): (
         "part1_kernel_coefficient", _coverage_call("kernel_coefficient_outcome", r"\1"), None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
         + r"\s*,\s*position\s*,\s*width\s*,\s*coefficient_type",
     ),
-    ("src/codestream.rs", "Parser::decode_atk_step"): (
+    ("src/codestream/part2_transforms.rs", "Parser::decode_atk_step"): (
         "part1_atk_step", _coverage_call("kernel_step_outcome", r"\1"), None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
         + r"\s*,\s*start\s*,\s*width\s*,\s*coefficient_type\s*,\s*reversible\s*,\s*whole_sample_filter",
     ),
-    ("src/codestream.rs", "Parser::decode_atk_payload"): (
+    ("src/codestream/part2_transforms.rs", "Parser::decode_atk_payload"): (
         "part1_atk_payload", _coverage_call("atk_payload_outcome", r"\1"), None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "Parser::parse_atk"): (
+    ("src/codestream/part2_transforms.rs", "Parser::parse_atk"): (
         "part1_parse_atk", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1085,7 +1085,7 @@ _KERNEL_BYTES_CONTRACTS = {
 }
 
 _TILE_LENGTH_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_tlm"): (
+    ("src/codestream/image_header.rs", "Parser::parse_tlm"): (
         "part1_parse_tlm", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*\*\s*"
         + _coverage_call("final", "next_index") + r"\s*,\s*"
@@ -1098,21 +1098,21 @@ _TILE_LENGTH_BYTES_CONTRACTS = {
 }
 
 _NONLINEAR_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "maximum_u32_for_bits"): (
+    ("src/codestream/profile.rs", "maximum_u32_for_bits"): (
         "part1_maximum_u32_for_bits", r"\1", None, "bits",
     ),
-    ("src/codestream.rs", "Parser::copy_segment_tail"): (
+    ("src/codestream/reader.rs", "Parser::copy_segment_tail"): (
         "part1_copy_segment_tail", _coverage_call("segment_tail_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*start",
     ),
-    ("src/codestream.rs", "Parser::decode_nlt_gamma"): (
+    ("src/codestream/part2_transforms.rs", "Parser::decode_nlt_gamma"): (
         "part1_nlt_gamma", r"\1", None, _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "Parser::decode_nlt_payload"): (
+    ("src/codestream/part2_transforms.rs", "Parser::decode_nlt_payload"): (
         "part1_nlt_payload", _coverage_call("nlt_payload_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*components",
     ),
-    ("src/codestream.rs", "Parser::parse_nlt"): (
+    ("src/codestream/part2_transforms.rs", "Parser::parse_nlt"): (
         "part1_parse_nlt", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1123,25 +1123,25 @@ _NONLINEAR_BYTES_CONTRACTS = {
 }
 
 _PROFILE_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "count_set_bits"): (
+    ("src/codestream/profile.rs", "count_set_bits"): (
         "part1_set_bits_prefix", r"\1\s+as\s+nat", None, r"value\s*,\s*32",
     ),
-    ("src/codestream.rs", "Parser::read_marker_words"): (
+    ("src/codestream/profile.rs", "Parser::read_marker_words"): (
         "part1_marker_words", _coverage_call("marker_words_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*start",
     ),
-    ("src/codestream.rs", "Parser::parse_cap"): (
+    ("src/codestream/profile.rs", "Parser::parse_cap"): (
         "part1_parse_cap", _coverage_call("cap_payload_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "Parser::parse_profile_number"): (
+    ("src/codestream/profile.rs", "Parser::parse_profile_number"): (
         "part1_parse_profile_number", _coverage_call("profile_number_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment"),
     ),
 }
 
 _COMPONENT_DEPTH_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_cbd"): (
+    ("src/codestream/image_header.rs", "Parser::parse_cbd"): (
         "part1_parse_cbd", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1152,20 +1152,20 @@ _COMPONENT_DEPTH_BYTES_CONTRACTS = {
 }
 
 _DECOMPOSITION_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::unpack_two_bit_values"): (
+    ("src/codestream/decomposition.rs", "Parser::unpack_two_bit_values"): (
         "part1_unpack_two_bit_values", _coverage_call("two_bit_values_outcome", r"\1"), None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
         + r"\s*,\s*start\s*,\s*count\s*,\s*allow_terminal",
     ),
-    ("src/codestream.rs", "Parser::decode_dfs_payload"): (
+    ("src/codestream/decomposition.rs", "Parser::decode_dfs_payload"): (
         "part1_dfs_payload", _coverage_call("dfs_payload_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "Parser::decode_ads_payload"): (
+    ("src/codestream/decomposition.rs", "Parser::decode_ads_payload"): (
         "part1_ads_payload", _coverage_call("ads_payload_outcome", r"\1"), None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "Parser::parse_dfs"): (
+    ("src/codestream/decomposition.rs", "Parser::parse_dfs"): (
         "part1_parse_dfs", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1173,7 +1173,7 @@ _DECOMPOSITION_BYTES_CONTRACTS = {
         + _coverage_call("segment_view", "segment") + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("old", "extensions")),
     ),
-    ("src/codestream.rs", "Parser::parse_ads"): (
+    ("src/codestream/decomposition.rs", "Parser::parse_ads"): (
         "part1_parse_ads", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1187,12 +1187,12 @@ _COMPONENT_MARKER_BYTES_CONTRACTS = {
     ("src/limits.rs", "ResourceLimits::maximum_metadata_bytes"): (
         "part1_metadata_byte_limit", r"\1", None, "self",
     ),
-    ("src/codestream.rs", "Parser::segment_byte"): (
+    ("src/codestream/reader.rs", "Parser::segment_byte"): (
         "part1_segment_byte", r"\1", None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
         + r"\s*,\s*position\s*,\s*relative",
     ),
-    ("src/codestream.rs", "Parser::charge_extension_metadata"): (
+    ("src/codestream/reader.rs", "Parser::charge_extension_metadata"): (
         "part1_charge_extension_metadata", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1200,7 +1200,7 @@ _COMPONENT_MARKER_BYTES_CONTRACTS = {
         + _coverage_call("segment_view", "segment") + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("old", "extensions")),
     ),
-    ("src/codestream.rs", "Parser::parse_crg"): (
+    ("src/codestream/image_header.rs", "Parser::parse_crg"): (
         "part1_parse_crg", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1208,24 +1208,24 @@ _COMPONENT_MARKER_BYTES_CONTRACTS = {
         + _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("old", "extensions")),
     ),
-    ("src/codestream.rs", "Parser::parse_rgn"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_rgn"): (
         "part1_parse_rgn", r"\1", None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components",
     ),
 }
 
 _QUANTIZATION_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_qcd"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_qcd"): (
         "part1_parse_qcd_payload", _coverage_call("parsed_quantization_outcome", r"\1"), None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*"
         + _coverage_call("parsed_coding_style_view", "coding_style"),
     ),
-    ("src/codestream.rs", "Parser::parse_qcd_payload"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_qcd_payload"): (
         "part1_parse_qcd_payload", _coverage_call("parsed_quantization_outcome", r"\1"), None,
         r"segment_offset\s*,\s*payload\s*@\s*,\s*"
         + _coverage_call("parsed_coding_style_view", "coding_style"),
     ),
-    ("src/codestream.rs", "Parser::parse_qcc"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_qcc"): (
         "part1_parse_qcc", _coverage_call("parsed_component_quantization_outcome", r"\1"), None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*"
         + _coverage_call("parsed_coding_style_view", "coding_style"),
@@ -1233,16 +1233,16 @@ _QUANTIZATION_BYTES_CONTRACTS = {
 }
 
 _COMPONENT_STYLE_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::prepare_coc_payload"): (
+    ("src/codestream/coding_markers.rs", "Parser::prepare_coc_payload"): (
         "part1_coc_prepare", _coverage_call("parsed_component_coding_style_payload_outcome", r"\1"), None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*"
         + _coverage_call("parsed_coding_style_view", "default"),
     ),
-    ("src/codestream.rs", "Parser::parse_component_index"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_component_index"): (
         "part1_parse_component_index", r"\1", None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*invalid_kind",
     ),
-    ("src/codestream.rs", "Parser::parse_coc"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_coc"): (
         "part1_parse_coc", _coverage_call("parsed_component_coding_style_outcome", r"\1"), None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*"
         + _coverage_call("parsed_coding_style_view", "default") + r"\s*,\s*self\.limits",
@@ -1250,67 +1250,67 @@ _COMPONENT_STYLE_BYTES_CONTRACTS = {
 }
 
 _CODING_STYLE_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_cod"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_cod"): (
         "part1_parse_cod_payload", _coverage_call("parsed_coding_style_outcome", r"\1"), None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*self\.limits",
     ),
-    ("src/codestream.rs", "Parser::parse_cod_payload"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_cod_payload"): (
         "part1_parse_cod_payload", _coverage_call("parsed_coding_style_outcome", r"\1"), None,
         r"segment_offset\s*,\s*payload\s*@\s*,\s*self\.limits",
     ),
 }
 
 _SIZ_GEOMETRY_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_siz"): (
+    ("src/codestream/image_header.rs", "Parser::parse_siz"): (
         "part1_parse_siz", _coverage_call("parsed_siz_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*self\.limits",
     ),
-    ("src/codestream.rs", "Parser::malformed_at"): (
+    ("src/codestream/reader.rs", "Parser::malformed_at"): (
         "part1_codestream_malformed", r"\1", None, r"value\s*,\s*kind",
     ),
-    ("src/codestream.rs", "read_u32"): (
+    ("src/codestream/reader.rs", "read_u32"): (
         "part1_codestream_u32", r"\1", None,
         r"bytes\s*\[\s*0\s*\]\s*,\s*bytes\s*\[\s*1\s*\]\s*,\s*bytes\s*\[\s*2\s*\]\s*,\s*bytes\s*\[\s*3\s*\]",
     ),
-    ("src/codestream.rs", "ceil_div"): (
+    ("src/codestream/geometry.rs", "ceil_div"): (
         "part1_image_ceil_div", r"\1", None, r"value\s*,\s*divisor",
     ),
 }
 
 _CODESTREAM_READER_CONTRACTS = {
-    ("src/codestream.rs", "new_parser"): (
+    ("src/codestream/reader.rs", "new_parser"): (
         "part1_codestream_reader_new", _coverage_call("parser_initial_outcome", r"\1"), None, r"input\s*@\s*,\s*limits",
     ),
-    ("src/codestream.rs", "Parser::peek_marker"): (
+    ("src/codestream/reader.rs", "Parser::peek_marker"): (
         "part1_codestream_peek_marker", r"\1", None, _coverage_call("parser_view", "self"),
     ),
-    ("src/codestream.rs", "Parser::expect_standalone"): (
+    ("src/codestream/reader.rs", "Parser::expect_standalone"): (
         "part1_codestream_expect_standalone", r"\1", _coverage_call("parser_view", _coverage_call("final", "self")),
         _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*expected",
     ),
-    ("src/codestream.rs", "Parser::read_segment"): (
+    ("src/codestream/reader.rs", "Parser::read_segment"): (
         "part1_codestream_read_segment", _coverage_call("segment_outcome", r"\1"),
         _coverage_call("parser_view", _coverage_call("final", "self")),
         _coverage_call("parser_view", _coverage_call("old", "self")),
     ),
-    ("src/codestream.rs", "Parser::find_eoc"): (
+    ("src/codestream/tiles.rs", "Parser::find_eoc"): (
         "part1_codestream_find_eoc", r"\1", _coverage_call("parser_view", _coverage_call("final", "self")),
         _coverage_call("parser_view", _coverage_call("old", "self")),
     ),
-    ("src/codestream.rs", "Parser::charge_work"): (
+    ("src/codestream/reader.rs", "Parser::charge_work"): (
         "part1_codestream_charge_work", r"\1", _coverage_call("parser_view", _coverage_call("final", "self")),
         _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*amount",
     ),
-    ("src/codestream.rs", "Parser::malformed_here"): (
+    ("src/codestream/reader.rs", "Parser::malformed_here"): (
         "part1_codestream_malformed", r"\1", None, r"self\.position\s*,\s*kind",
     ),
-    ("src/codestream.rs", "Parser::offset"): (
+    ("src/codestream/reader.rs", "Parser::offset"): (
         "part1_codestream_offset", r"\1", None, r"value",
     ),
-    ("src/codestream.rs", "is_standalone_marker"): (
+    ("src/codestream/reader.rs", "is_standalone_marker"): (
         "part1_codestream_standalone", r"\1", None, r"marker",
     ),
-    ("src/codestream.rs", "read_u16"): (
+    ("src/codestream/reader.rs", "read_u16"): (
         "part1_marker_value", r"\1", None, r"bytes\s*\[\s*0\s*\]\s*,\s*bytes\s*\[\s*1\s*\]",
     ),
 }
@@ -1422,7 +1422,7 @@ _NONLINEAR_ARITHMETIC_CONTRACTS = {
 }
 
 _NONLINEAR_REGIONS_CONTRACTS = {
-    ("src/codestream.rs", "Part2Extensions::nonlinear_transform_for"): (
+    ("src/codestream/extensions.rs", "Part2Extensions::nonlinear_transform_for"): (
         "part2_nonlinear_transform_for", _coverage_call("nonlinear_transform_option_view", r"\1"), None,
         _coverage_call("owned_extensions_view", "self") + r"\.nonlinear\s*,\s*component",
     ),
@@ -1456,7 +1456,7 @@ _LAYOUT_DECODING_CONTRACTS = {
 }
 
 _TILE_COLLECTION_CONTRACTS = {
-    ("src/codestream.rs", "TilePartPayload::clone"): (
+    ("src/codestream/tiles.rs", "TilePartPayload::clone"): (
         "part2_tile_part_copy", _coverage_call("tile_part_owned_view", r"&\s*\1"), None,
         _coverage_call("tile_part_owned_view", "self"),
     ),
@@ -1476,52 +1476,52 @@ _RAW_TILE_DECODING_CONTRACTS = {
 }
 
 _PROFILE_POLICY_CONTRACTS = {
-    ("src/codestream.rs", "ExtendedCapabilities::capability_for_part"): (
+    ("src/codestream/profile.rs", "ExtendedCapabilities::capability_for_part"): (
         "part2_capability_value", r"\1", None,
         _coverage_call("extended_capabilities_view", "self") + r"\s*,\s*part",
     ),
-    ("src/codestream.rs", "ExtendedCapabilities::part15_value"): (
+    ("src/codestream/profile.rs", "ExtendedCapabilities::part15_value"): (
         "part2_capability_value", r"\1", None,
         _coverage_call("extended_capabilities_view", "self") + r"\s*,\s*15",
     ),
-    ("src/codestream.rs", "ExtendedCapabilities::part15_block_mode"): (
+    ("src/codestream/profile.rs", "ExtendedCapabilities::part15_block_mode"): (
         "part2_capability_block_mode", r"\1", None, _coverage_call("extended_capabilities_view", "self"),
     ),
-    ("src/codestream.rs", "ExtendedCapabilities::part15_allows_multiple_ht_sets"): (
+    ("src/codestream/profile.rs", "ExtendedCapabilities::part15_allows_multiple_ht_sets"): (
         "part2_capability_multiple_sets", r"\1", None, _coverage_call("extended_capabilities_view", "self"),
     ),
-    ("src/codestream.rs", "ExtendedCapabilities::part15_magnitude_bound"): (
+    ("src/codestream/profile.rs", "ExtendedCapabilities::part15_magnitude_bound"): (
         "part2_capability_magnitude_bound", r"\1", None, _coverage_call("extended_capabilities_view", "self"),
     ),
-    ("src/codestream.rs", "CodestreamProfile::part15_allows_multiple_ht_sets"): (
+    ("src/codestream/profile.rs", "CodestreamProfile::part15_allows_multiple_ht_sets"): (
         "part2_profile_multiple_sets", r"\1", None, _coverage_call("codestream_profile_capabilities", "self"),
     ),
-    ("src/codestream.rs", "CodestreamProfile::part15_magnitude_bound"): (
+    ("src/codestream/profile.rs", "CodestreamProfile::part15_magnitude_bound"): (
         "part2_profile_magnitude_bound", r"\1", None, _coverage_call("codestream_profile_capabilities", "self"),
     ),
-    ("src/codestream.rs", "CodestreamProfile::part15_requires_all_ht_blocks"): (
+    ("src/codestream/profile.rs", "CodestreamProfile::part15_requires_all_ht_blocks"): (
         "part2_profile_force_ht", r"\1", None, _coverage_call("codestream_profile_capabilities", "self"),
     ),
 }
 
 _TILE_METADATA_CONTRACTS = {
-    ("src/codestream.rs", "MctArray::equals"): (
+    ("src/codestream/mct.rs", "MctArray::equals"): (
         "part2_mct_array_identity", r"\1", None,
         _coverage_call("mct_array_view", "self") + r"\s*,\s*" + _coverage_call("mct_array_view", "other"),
     ),
-    ("src/codestream.rs", "MctCollection::equals"): (
+    ("src/codestream/mct.rs", "MctCollection::equals"): (
         "part2_mct_collection_identity", r"\1", None,
         _coverage_call("mct_collection_view", "self") + r"\s*,\s*" + _coverage_call("mct_collection_view", "other"),
     ),
-    ("src/codestream.rs", "MctStage::equals"): (
+    ("src/codestream/mct.rs", "MctStage::equals"): (
         "part2_mct_stage_identity", r"\1", None,
         _coverage_call("mct_stage_view", "self") + r"\s*,\s*" + _coverage_call("mct_stage_view", "other"),
     ),
-    ("src/codestream.rs", "MultipleComponentTransform::equals"): (
+    ("src/codestream/mct.rs", "MultipleComponentTransform::equals"): (
         "part2_mct_identity", r"\1", None,
         _coverage_call("multiple_component_transform_view", "self") + r"\s*,\s*" + _coverage_call("multiple_component_transform_view", "other"),
     ),
-    ("src/codestream.rs", "CodingStyle::maximum_isotropic_reduction"): (
+    ("src/codestream/coding_style.rs", "CodingStyle::maximum_isotropic_reduction"): (
         "part2_maximum_isotropic_reduction", r"\1", None,
         _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1\s*,\s*0",
@@ -1629,10 +1629,10 @@ _CODEBLOCK_VECTOR_CONTRACTS = {
 }
 
 _COMPONENT_PLAN_METADATA_CONTRACTS = {
-    ("src/codestream.rs", "ComponentQuantizations::quantization"): (
+    ("src/codestream/quantization.rs", "ComponentQuantizations::quantization"): (
         "part2_component_quantization", r"\1", None, r"self\s*,\s*component",
     ),
-    ("src/codestream.rs", "RoiShifts::shift"): (
+    ("src/codestream/quantization.rs", "RoiShifts::shift"): (
         "part2_roi_shift", r"\1", None,
         _coverage_call("roi_shifts_view", "self") + r"\s*,\s*component",
     ),
@@ -1689,7 +1689,7 @@ _DECODER_INITIALIZATION_CONTRACTS = {
 }
 
 _SUBBAND_VECTOR_CONTRACTS = {
-    ("src/codestream.rs", "CodingStyle::subband_count"): (
+    ("src/codestream/coding_style.rs", "CodingStyle::subband_count"): (
         "part2_subband_count", r"\1", None,
         _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1",
@@ -1714,7 +1714,7 @@ _SUBBAND_VECTOR_PROVED_BOUNDARY_APIS = frozenset({
 })
 
 _SUBBAND_ADMISSION_CONTRACTS = {
-    ("src/codestream.rs", "Quantization::step"): (
+    ("src/codestream/quantization.rs", "Quantization::step"): (
         "part2_quantization_lookup", r"\1", None,
         _coverage_call("quantization_view", "self") + r"\s*,\s*index",
     ),
@@ -1783,17 +1783,17 @@ _RESOLUTION_GEOMETRY_PROVED_BOUNDARY_APIS = frozenset({
 })
 
 _RESOLUTION_STYLE_CONTRACTS = {
-    ("src/codestream.rs", "CodingStyle::resolution_downsampling"): (
+    ("src/codestream/coding_style.rs", "CodingStyle::resolution_downsampling"): (
         "part2_resolution_downsampling", r"\1", None,
         _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1\s*,\s*resolution",
     ),
-    ("src/codestream.rs", "CodingStyle::resolution_downsampling_step"): (
+    ("src/codestream/coding_style.rs", "CodingStyle::resolution_downsampling_step"): (
         "part2_resolution_scale_step", r"\1", None,
         _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1\s*,\s*stage\s*,\s*scales",
     ),
-    ("src/codestream.rs", "CodingStyle::precinct_exponents"): (
+    ("src/codestream/coding_style.rs", "CodingStyle::precinct_exponents"): (
         "part2_precinct_exponents", r"\1", None,
         _coverage_call("precinct_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("precinct_selector_view", "self") + r"\s*\.1\s*,\s*resolution",
@@ -1801,7 +1801,7 @@ _RESOLUTION_STYLE_CONTRACTS = {
 }
 
 _TILE_COMPONENT_GEOMETRY_CONTRACTS = {
-    ("src/codestream.rs", "registered_ceil_div"): (
+    ("src/codestream/geometry.rs", "registered_ceil_div"): (
         "part2_registered_component_ceil", r"\1", None,
         r"value\s*,\s*divisor\s*,\s*registration",
     ),
@@ -1809,7 +1809,7 @@ _TILE_COMPONENT_GEOMETRY_CONTRACTS = {
         "part2_registered_decode_ceil", r"\1", None,
         r"value\s*,\s*divisor\s*,\s*registration",
     ),
-    ("src/codestream.rs", "ImageSize::tile_component_bounds"): (
+    ("src/codestream/geometry.rs", "ImageSize::tile_component_bounds"): (
         "part2_tile_component_bounds", r"\1", None,
         r"\s*,\s*".join((
             _coverage_call("selection_geometry_view", "self"),
@@ -1939,7 +1939,7 @@ _DECODER_ADMISSION_CONTRACTS = {
         r"style\s*,\s*" + _coverage_call("codestream::part2_execution_registry", "extensions")
         + r"\s*,\s*" + _coverage_call("codestream::part2_kernel_registry", "extensions"),
     ),
-    ("src/codestream.rs", "Part2Extensions::component_bit_depths_equal"): (
+    ("src/codestream/extensions.rs", "Part2Extensions::component_bit_depths_equal"): (
         "part2_component_depths_equal", r"\1", None,
         _coverage_call("part2_component_depths", "self") + r"\s*,\s*" + _coverage_call("part2_component_depths", "other"),
     ),
@@ -1995,7 +1995,11 @@ def validate_normative_coverage(
             )
         return headers[key]
 
-    def cross_file_call(path: Path, callee: str) -> bool:
+    def cross_file_call(
+        path: Path, caller: str, callee: str, *, require_caller_body: bool,
+    ) -> bool:
+        if require_caller_body:
+            return same_file_call(path, caller, callee)
         text = source_text(path)
         if re.fullmatch(r"\w+", callee) is None:
             return re.search(rf"\b{re.escape(callee)}\s*\(", text) is not None
@@ -2404,10 +2408,10 @@ def validate_normative_coverage(
                 r"codestream\.image_size\.uniform_signed\s*,\s*offset"
             )
             selection_contract = {
-                ("src/codestream.rs", "ImageSize::tile_count"): (
+                ("src/codestream/geometry.rs", "ImageSize::tile_count"): (
                     None, "part2_selection_tile_count", r"selection_geometry_view\s*\(\s*&\s*self\s*\)",
                 ),
-                ("src/codestream.rs", "ImageSize::tile_bounds"): (
+                ("src/codestream/geometry.rs", "ImageSize::tile_bounds"): (
                     None, "part2_selection_tile_bounds", r"selection_geometry_view\s*\(\s*self\s*\)\s*,\s*tile_index",
                 ),
                 ("src/options.rs", "selection_from_parts"): (
@@ -2555,8 +2559,8 @@ def validate_normative_coverage(
             if (reference["path"], reference["symbol"]) in (
                 ("src/tier1.rs", "Tier1CodingStyle::set_force_high_throughput"),
                 ("src/tier1.rs", "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"),
-                ("src/codestream.rs", "replace_mct_array"),
-                ("src/codestream.rs", "replace_mct_record"),
+                ("src/codestream/mct_resolution.rs", "replace_mct_array"),
+                ("src/codestream/mct_resolution.rs", "replace_mct_record"),
             ) and re.search(r"\)\s*->", text[signature:body_start]):
                 raise ValueError(f"linked unit-state contract requires the actual implicit unit return: {short}")
             projected_result = re.search(
@@ -3021,7 +3025,10 @@ def validate_normative_coverage(
                 raise ValueError(f"linked function contract lacks normative spec reference: {short}")
             if claimed_consumer and not any(
                 ref != reference
-                and (cross_file_call((ROOT / ref["path"]).resolve(), short)
+                and (cross_file_call(
+                    (ROOT / ref["path"]).resolve(), ref["symbol"], short,
+                    require_caller_body=reference["path"].startswith(("src/decode/", "src/codestream/")),
+                )
                  if ref["path"] != reference["path"] else
                  same_file_call(path, ref["symbol"], short))
                 for ref in entry["implementation_refs"]

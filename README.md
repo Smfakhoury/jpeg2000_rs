@@ -133,6 +133,25 @@ provided. See [supported profiles and limitations](SUPPORTED.md) for details.
 ### Repository layout
 
 - [src/](src/) is the single executable decoder used by Cargo and Verus.
+- [codestream.rs](src/codestream.rs) is a small shared-type and public-API facade.
+  Its real Rust child modules separate parser responsibilities:
+
+  | Responsibility | Implementation |
+  |---|---|
+  | Public parsing and main-header orchestration | [layout.rs](src/codestream/layout.rs) |
+  | Bounded marker reads and parser accounting | [reader.rs](src/codestream/reader.rs) |
+  | Image size, registration and tile-length markers | [image_header.rs](src/codestream/image_header.rs) |
+  | Tile-part headers, payloads and owned records | [tiles.rs](src/codestream/tiles.rs) |
+  | Coding/progression markers and selectors | [coding_markers.rs](src/codestream/coding_markers.rs), [coding_style.rs](src/codestream/coding_style.rs) |
+  | Quantization, ROI and decomposition | [quantization.rs](src/codestream/quantization.rs), [decomposition.rs](src/codestream/decomposition.rs) |
+  | Part 2 extensions, transforms and kernels | [extensions.rs](src/codestream/extensions.rs), [part2_transforms.rs](src/codestream/part2_transforms.rs) |
+  | MCT metadata, fragments and executable resolution | [mct.rs](src/codestream/mct.rs), [mct_markers.rs](src/codestream/mct_markers.rs), [mct_resolution.rs](src/codestream/mct_resolution.rs) |
+  | Packed headers and packet lengths | [packet_headers.rs](src/codestream/packet_headers.rs) |
+  | Geometry and profile compatibility | [geometry.rs](src/codestream/geometry.rs), [profile.rs](src/codestream/profile.rs) |
+
+  Contracts stay attached to the executing functions and methods.
+  [Ghost support](src/codestream/proof_support.rs) stays in the logical parser
+  module; [tests](src/codestream/tests.rs) retain `codestream::tests` identities.
 - [specs/](specs/) and [proofs/](proofs/) contain maintained semantic models
   and proofs, not generated run results.
 - [validation/](validation/) contains the reusable harness, regression tests,

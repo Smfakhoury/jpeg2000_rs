@@ -776,7 +776,7 @@ class FrameworkTests(WorkingFiles):
         read_text = Path.read_text
         for relative, symbols in (
             ("src/tier1.rs", ("set_force_high_throughput", "set_multiple_ht_sets_allowed")),
-            ("src/codestream.rs", ("replace_mct_array", "replace_mct_record")),
+            ("src/codestream/mct_resolution.rs", ("replace_mct_array", "replace_mct_record")),
         ):
             source = framework.ROOT / relative
             original = source.read_text()
@@ -1090,6 +1090,22 @@ class FrameworkTests(WorkingFiles):
             "src/codestream.rs", "src/codestream/tests.rs",
         )
 
+    def test_parser_child_module_requires_the_actual_cross_module_caller(self):
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        entry = next(item for item in coverage["requirements"]
+                     if item["id"] == "part2-complete-native-tile-component-geometry")
+        coverage["requirements"] = [entry]
+        entry["contract_refs"] = [{
+            "path": "src/codestream/geometry.rs", "symbol": "ImageSize::tile_component_bounds",
+        }]
+        entry["implementation_refs"] = [{
+            "path": "src/decode.rs", "symbol": "prepare_component_plan_metadata",
+        }]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        entry["implementation_refs"][0]["symbol"] = "decode_codestream"
+        with self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+            framework.validate_normative_coverage(coverage)
+
     def test_inventory_tracks_relocated_tier1_tests_and_rejects_stale_or_missing_bindings(self):
         self._assert_relocated_test_bindings(
             "part2-complete-native-decoder-initialization",
@@ -1162,14 +1178,19 @@ class FrameworkTests(WorkingFiles):
             coverage["requirements"][0]["contract_refs"] = [reference] if claimed_consumer else entry["contract_refs"][:1]
             source = framework.ROOT / reference["path"]
             original = source.read_text()
-            actual_callers = [caller for caller in entry["implementation_refs"] if caller != reference and (
-                re.search(rf"\b{re.escape(reference['symbol'].rsplit('::', 1)[-1])}\s*\(",
-                          (framework.ROOT / caller["path"]).read_text())
-                if caller["path"] != reference["path"] else framework._coverage_same_file_call(
-                    original, caller["symbol"], reference["symbol"].rsplit("::", 1)[-1],
-                )
+            def actual_call(caller):
+                caller_source = (framework.ROOT / caller["path"]).read_text()
+                callee = reference["symbol"].rsplit("::", 1)[-1]
+                if caller["path"] == reference["path"] or reference["path"].startswith(
+                    ("src/decode/", "src/codestream/"),
+                ):
+                    return framework._coverage_same_file_call(caller_source, caller["symbol"], callee)
+                return re.search(rf"\b{re.escape(callee)}\s*\(", caller_source) is not None
 
-            )]
+            actual_callers = [
+                caller for caller in entry["implementation_refs"]
+                if caller != reference and actual_call(caller)
+            ]
             isolated = coverage["requirements"][0]
             if claimed_consumer:
                 self.assertTrue(actual_callers)
@@ -1363,8 +1384,8 @@ class FrameworkTests(WorkingFiles):
                      if item["id"] == "part2-complete-native-container-selection-output")
         read_text = Path.read_text
         cases = (
-            ("src/codestream.rs", "ImageSize::tile_count", None, "part2_selection_tile_count", ("selection_geometry_view(&self)", "selection_geometry_view(unrelated)")),
-            ("src/codestream.rs", "ImageSize::tile_bounds", None, "part2_selection_tile_bounds", ("self), tile_index", "self), 0")),
+            ("src/codestream/geometry.rs", "ImageSize::tile_count", None, "part2_selection_tile_count", ("selection_geometry_view(&self)", "selection_geometry_view(unrelated)")),
+            ("src/codestream/geometry.rs", "ImageSize::tile_bounds", None, "part2_selection_tile_bounds", ("self), tile_index", "self), 0")),
             ("src/options.rs", "selection_from_parts", "decode_selection_value_view", "part2_selection_from_parts", ("region, discard_levels", "region, 0")),
             ("src/decode.rs", "ceil_div_u32", None, "part2_selection_ceil", ("value, divisor", "divisor, value")),
             ("src/decode.rs", "tile_list_contains", None, "part2_tile_list_contains", ("tiles@, tile", "unrelated@, tile")),
