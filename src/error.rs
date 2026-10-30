@@ -1,5 +1,7 @@
 #[cfg(not(verus_keep_ghost))]
 use core::fmt;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::verus_spec;
 
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
@@ -172,6 +174,9 @@ pub enum DecodeError {
 }
 
 impl DecodeError {
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        ensures returns (Self::MalformedInput { offset, kind }),
+    ))]
     pub(crate) const fn malformed(offset: u64, kind: MalformedKind) -> Self {
         Self::MalformedInput { offset, kind }
     }

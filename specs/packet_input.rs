@@ -160,6 +160,91 @@ pub open spec fn part1_packet_length_decode(encoded: Seq<u8>, start: usize, end:
     } else { part1_packet_length_groups(encoded, start, end, start, 0, 0) }
 }
 
+#[verifier::opaque]
+pub open spec fn part1_sum_packet_lengths_from(bytes: Seq<u8>, position: usize, total: u64)
+    -> Result<u64, crate::DecodeError>
+    decreases bytes.len() - position,
+{
+    if position >= bytes.len() {
+        Ok(total)
+    } else {
+        match part1_packet_length_decode(bytes, position, bytes.len() as usize) {
+            Err(error) => Err(error),
+            Ok((length, next)) => {
+                if next <= position || next > bytes.len() {
+                    Err(part1_packet_input_error(position, crate::MalformedKind::InvalidPacketLength))
+                } else if total as int + length as int > u64::MAX {
+                    Err(part1_packet_input_error(0, crate::MalformedKind::ArithmeticOverflow))
+                } else {
+                    part1_sum_packet_lengths_from(bytes, next, (total + length) as u64)
+                }
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_sum_packet_lengths(source: Part1PacketLengthSource) -> Result<u64, crate::DecodeError> {
+    match source {
+        Part1PacketLengthSource::None => Ok(0),
+        Part1PacketLengthSource::Plt(_) => Err(part1_packet_input_error(0, crate::MalformedKind::InvalidPacketLength)),
+        Part1PacketLengthSource::Plm(bytes) => part1_sum_packet_lengths_from(bytes, 0, 0),
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_finish_packet_lengths(
+    input: Seq<u8>, start: usize, end: usize, main: Part1PacketLengths,
+    plt_seen: bool, plt_count: u64, plt_bytes: u64, plt_payload: u64,
+    data_length: usize, packed_length: usize, offset: usize,
+) -> Result<Part1PacketLengths, crate::DecodeError> {
+    if plt_seen && (start > end || end > input.len()) {
+        Err(part1_packet_input_error(offset, crate::MalformedKind::InvalidTilePart))
+    } else {
+        let lengths = if plt_seen {
+            Part1PacketLengths {
+                source: Part1PacketLengthSource::Plt(input.subrange(start as int, end as int)),
+                packet_count: plt_count, encoded_bytes: plt_bytes,
+            }
+        } else { main };
+        if matches!(lengths.source, Part1PacketLengthSource::None) {
+            Ok(lengths)
+        } else {
+            let declared = if plt_seen { Ok(plt_payload) } else { part1_sum_packet_lengths(lengths.source) };
+            match declared {
+                Err(error) => Err(error),
+                Ok(bytes) => {
+                    let logical = data_length as int + packed_length as int;
+                    if logical > u64::MAX {
+                        Err(part1_packet_input_error(offset, crate::MalformedKind::ArithmeticOverflow))
+                    } else if bytes as int != logical {
+                        Err(part1_packet_input_error(offset, crate::MalformedKind::InvalidPacketLength))
+                    } else { Ok(lengths) }
+                },
+            }
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_finish_packed_packet_headers(
+    input: Seq<u8>, start: usize, end: usize, main: Part1PackedHeaders,
+    fragments: u16, length: usize, offset: usize,
+) -> Result<Part1PackedHeaders, crate::DecodeError> {
+    if fragments == 0 {
+        Ok(main)
+    } else if start > end || end > input.len() {
+        Err(part1_packet_input_error(offset, crate::MalformedKind::InvalidTilePart))
+    } else {
+        Ok(Part1PackedHeaders {
+            source: Part1PackedHeaderSource::MarkerSegments {
+                header: input.subrange(start as int, end as int), marker: 0xff61, logical_start: 0,
+            },
+            length, fragments,
+        })
+    }
+}
+
 pub open spec fn part1_packet_lengths_iter(s: Part1PacketLengths) -> Part1PacketLengthIter {
     Part1PacketLengthIter { source: s.source, position: 0, segment_end: 0 }
 }
