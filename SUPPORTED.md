@@ -4,6 +4,61 @@ This document describes implementation scope, not certification. JPEG 2000 is
 the ISO/IEC 15444 and corresponding ITU-T T.8xx standards family. It is not a
 single RFC, and this library does not implement every part of that family.
 
+## Conformance claim and evidence matrix
+
+The scope below freezes the implementation families being qualified; it does
+not declare them conformant. The selected editions are listed at the end of
+this document. Resource and numeric policies, deliberate exclusions and
+unqualified combinations below remain part of the scope. A failed comparison
+must not be hidden by silently narrowing the claim or changing a tolerance.
+
+Keep four evidence levels separate:
+
+1. **Implemented:** a real supported execution path exists.
+2. **Independently qualified:** the stated finite profile passed an independent
+   expected-result or decoder comparison.
+3. **Normatively reviewed:** independent review established correspondence to
+   an authorized exact edition and frozen requirements.
+4. **Officially tested:** the applicable, rights-cleared conformance selection
+   passed with independently established expected outcomes.
+
+No family currently has completed levels 3 or 4. Successful Verus checks apply
+to the expressed contracts, not to an independently frozen translation of the
+standard. The [technical reference inventory](validation/normative-coverage.json)
+maps named implementation/model/contract/proof/test entries; it is not an
+exhaustive standards-clause or source-function-coverage measurement.
+
+| Qualification family | Actual entry and inventory examples | Existing independent evidence | Remaining claim boundary |
+|---|---|---|---|
+| Part 1 raw headers, tile state and JP2 input | [Parser](src/codestream/layout.rs), [public raw APIs](src/decode/api.rs); `part1-complete-native-codestream-reader`, `part1-complete-native-raw-coding-style` | Generated framing/error tests and selected reference-coded inputs | Whole raw header/inherited-tile-to-layout result and public composition |
+| Part 1 legacy entropy and packets | [Tier-1](src/tier1.rs), [packets](src/packet.rs); `part1-complete-legacy-tier1` | Selected MQ/RAW, style, ROI, layer and selection profiles | Independent rule correspondence and unqualified combinations |
+| Part 1 transforms and typed output | [Transforms](src/transform.rs), [typed output](src/image.rs); `part1-reversible-five-three`, `part1-irreversible-numerical-model` | Exact selected reversible comparisons; explicit engineering lossy budgets | Full implemented precision/component range and prescribed conformance tolerances |
+| Part 2 extensions, color and JPX | [Component transforms](src/image/mct.rs), [JPX rendering](src/jpx/render.rs); `part2-jpx-general-layer-rendering`, `part2-jpx-composition-rendering` | Selected raw numeric properties, native-plane and independent rational composition expectations | Actual source-to-normalization/frame joins, native JPX oracle gaps and edition reconciliation |
+| Part 9 non-network JPIP | [Messages and reconstruction](src/jpip.rs); `part9-codestream-reconstruction`, `part9-progressive-updates` | Selected framing, fragment, reconstruction and progressive relations | Exact selected-edition correspondence and applicable official cases |
+| Part 15 HTJ2K and mixed routing | [HT cleanup](src/tier1/ht_cleanup.rs), [retained contributions](src/packet/contributions.rs); `part15-complete-actual-cleanup-plane`, `part15-mixed-routing` | Selected pinned scalar OpenJPH and mixed-route comparisons | Broader precision/component/profile combinations and independent normative review |
+
+These are entry points, not substitutes for the complete per-family profiles
+and limitations below. In particular, ICC execution, additional Part 2
+progression orders, arbitrary native JPX semantics and every combination of
+the implemented 1..38-bit range are not qualified by the current comparisons.
+Encoding and network/application services are not decoder conformance claims.
+
+The remaining work is tracked under
+[#132](https://github.com/microsoft/jpeg2000_rs/issues/132):
+[#186](https://github.com/microsoft/jpeg2000_rs/issues/186) for this scope/matrix,
+[#187](https://github.com/microsoft/jpeg2000_rs/issues/187) for independent
+model correspondence, [#188](https://github.com/microsoft/jpeg2000_rs/issues/188)
+for official vectors, [#189](https://github.com/microsoft/jpeg2000_rs/issues/189)
+for verification assurance and
+[#190](https://github.com/microsoft/jpeg2000_rs/issues/190) for resource/fuzz
+qualification. Actual proof dependencies remain
+[#133](https://github.com/microsoft/jpeg2000_rs/issues/133) ->
+[#134](https://github.com/microsoft/jpeg2000_rs/issues/134) ->
+[#131](https://github.com/microsoft/jpeg2000_rs/issues/131) ->
+[#130](https://github.com/microsoft/jpeg2000_rs/issues/130).
+None of these engineering trackers clears the document-use decisions in
+[#149](https://github.com/microsoft/jpeg2000_rs/issues/149).
+
 ## Inputs and outputs
 
 | Interface | Behavior |
