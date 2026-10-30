@@ -1,0 +1,763 @@
+use super::arithmetic::{
+    arithmetic_overflow, ceil_div, checked_area, index, invalid_image, registered_ceil_div,
+};
+use super::{
+    AssemblyDimensions, AssemblyPlane, AssemblySelection, DecodedComponent, DecodedImage,
+    TileComponent,
+};
+#[cfg(verus_keep_ghost)]
+use super::{
+    assembly_size_view, assembly_tile_view, assembly_tiles_view, decoded_component_view,
+    decoded_components_view, decoded_image_outcome,
+};
+use crate::codestream::ImageSize;
+use crate::{DecodeError, Resource, ResourceLimits};
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures decoded_image_outcome(result) == crate::specs::part1_assemble_image(
+        assembly_size_view(size), assembly_tiles_view(tiles@), crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+pub fn assemble_image(
+    size: &ImageSize,
+    tiles: &[TileComponent<'_>],
+    limits: &ResourceLimits,
+) -> Result<DecodedImage, DecodeError> {
+    let components = Vec::with_capacity(usize::from(size.components));
+    let image_x1 = size
+        .x_origin
+        .checked_add(size.width)
+        .ok_or_else(arithmetic_overflow)?;
+    let image_y1 = size
+        .y_origin
+        .checked_add(size.height)
+        .ok_or_else(arithmetic_overflow)?;
+    let mut image = DecodedImage {
+        width: size.width,
+        height: size.height,
+        x_origin: size.x_origin,
+        y_origin: size.y_origin,
+        components,
+    };
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = image@; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_assembly_components_empty(
+            original, 0, assembly_size_view(size), assembly_tiles_view(tiles@), (image_x1, image_y1),
+            None, crate::limits::resource_decoded_bytes_limit(limits),
+        );
+    }
+    let mut decoded_bytes = 0_u64;
+    let mut component = 0_u16;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant component <= size.components,
+            image_x1 as int == size.x_origin as int + size.width as int,
+            image_y1 as int == size.y_origin as int + size.height as int,
+            original == (size.width, size.height, size.x_origin, size.y_origin, Seq::empty()),
+            crate::specs::part1_assembly_components_prefix(
+                original, 0, assembly_size_view(size), assembly_tiles_view(tiles@), (image_x1, image_y1),
+                None, crate::limits::resource_decoded_bytes_limit(limits), component as nat,
+            ) == (Ok(()), image@, decoded_bytes),
+            decreases size.components - component,
+        )
+    )]
+    while component < size.components {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_assembly_components_step(
+                original, 0, assembly_size_view(size), assembly_tiles_view(tiles@), (image_x1, image_y1),
+                None, crate::limits::resource_decoded_bytes_limit(limits), component as nat,
+            );
+        }
+        match append_assembly_component(
+            &mut image,
+            &mut decoded_bytes,
+            size,
+            tiles,
+            component,
+            ([image_x1, image_y1], None),
+            limits.maximum_decoded_bytes(),
+        ) {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_assembly_components_error_persists(
+                        original, 0, assembly_size_view(size), assembly_tiles_view(tiles@), (image_x1, image_y1),
+                        None, crate::limits::resource_decoded_bytes_limit(limits), component as nat + 1, size.components as nat,
+                    );
+                }
+                return Err(error);
+            }
+        }
+        component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(image)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_assembly_component_dimensions(
+        assembly_size_view(size), component, (extent[0], extent[1]), selection,
+    ),
+))]
+fn assembly_component_dimensions(
+    size: &ImageSize,
+    component: u16,
+    extent: [u32; 2],
+    selection: AssemblySelection,
+) -> Result<AssemblyDimensions, DecodeError> {
+    let info = crate::codestream::image_component_info(size, component)?;
+    match selection {
+        None => {
+            let x1 = registered_ceil_div(
+                extent[0],
+                u32::from(info.x_subsampling),
+                info.x_registration,
+            )?;
+            let x0 = registered_ceil_div(
+                size.x_origin,
+                u32::from(info.x_subsampling),
+                info.x_registration,
+            )?;
+            let width = x1.checked_sub(x0).ok_or_else(arithmetic_overflow)?;
+            let y1 = registered_ceil_div(
+                extent[1],
+                u32::from(info.y_subsampling),
+                info.y_registration,
+            )?;
+            let y0 = registered_ceil_div(
+                size.y_origin,
+                u32::from(info.y_subsampling),
+                info.y_registration,
+            )?;
+            let height = y1.checked_sub(y0).ok_or_else(arithmetic_overflow)?;
+            Ok((
+                info,
+                width,
+                height,
+                u32::from(info.x_subsampling),
+                u32::from(info.y_subsampling),
+                x0,
+                y0,
+            ))
+        }
+        Some((region, scale)) => {
+            let x_divisor = u32::from(info.x_subsampling)
+                .checked_mul(scale)
+                .ok_or_else(arithmetic_overflow)?;
+            let y_divisor = u32::from(info.y_subsampling)
+                .checked_mul(scale)
+                .ok_or_else(arithmetic_overflow)?;
+            let x0 = registered_ceil_div(region[0], x_divisor, info.x_registration)?;
+            let y0 = registered_ceil_div(region[1], y_divisor, info.y_registration)?;
+            let width = registered_ceil_div(region[2], x_divisor, info.x_registration)?
+                .checked_sub(x0)
+                .ok_or_else(arithmetic_overflow)?;
+            let height = registered_ceil_div(region[3], y_divisor, info.y_registration)?
+                .checked_sub(y0)
+                .ok_or_else(arithmetic_overflow)?;
+            if width == 0 || height == 0 {
+                return Err(DecodeError::InvalidSelection {
+                    reason: crate::SelectionError::EmptyComponentIntersection,
+                });
+            }
+            Ok((info, width, height, x_divisor, y_divisor, x0, y0))
+        }
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_assembly_component_crop(assembly_size_view(size), dimensions, selected),
+))]
+fn assembly_component_crop(
+    size: &ImageSize,
+    dimensions: AssemblyDimensions,
+    selected: bool,
+) -> Result<Option<(u32, u32, u32, u32)>, DecodeError> {
+    if !selected {
+        return Ok(None);
+    }
+    let x0 = dimensions
+        .5
+        .checked_sub(registered_ceil_div(
+            size.x_origin,
+            dimensions.3,
+            dimensions.0.x_registration,
+        )?)
+        .ok_or_else(arithmetic_overflow)?;
+    let y0 = dimensions
+        .6
+        .checked_sub(registered_ceil_div(
+            size.y_origin,
+            dimensions.4,
+            dimensions.0.y_registration,
+        )?)
+        .ok_or_else(arithmetic_overflow)?;
+    let x1 = x0
+        .checked_add(dimensions.1)
+        .ok_or_else(arithmetic_overflow)?;
+    let y1 = y0
+        .checked_add(dimensions.2)
+        .ok_or_else(arithmetic_overflow)?;
+    Ok(Some((x0, y0, x1, y1)))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, *final(bytes)) == crate::specs::part1_accumulate_decoded_bytes(
+        count as nat, *old(bytes), maximum,
+    ),
+))]
+pub(super) fn charge_assembly_bytes(
+    count: usize,
+    bytes: &mut u64,
+    maximum: u64,
+) -> Result<(), DecodeError> {
+    let component_bytes = (count as u64)
+        .checked_mul(8)
+        .ok_or_else(arithmetic_overflow)?;
+    *bytes = bytes
+        .checked_add(component_bytes)
+        .ok_or_else(arithmetic_overflow)?;
+    if *bytes > maximum {
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::DecodedBytes,
+            limit: maximum,
+            actual: *bytes,
+        });
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(image)@, *final(bytes)) == crate::specs::part1_assembly_append_plane(
+        old(image)@, *old(bytes), assembly_size_view(size), assembly_tiles_view(tiles@), component,
+        (profile.0[0], profile.0[1]), profile.1, maximum,
+    ),
+))]
+fn append_assembly_component(
+    image: &mut DecodedImage,
+    bytes: &mut u64,
+    size: &ImageSize,
+    tiles: &[TileComponent<'_>],
+    component: u16,
+    profile: ([u32; 2], AssemblySelection),
+    maximum: u64,
+) -> Result<(), DecodeError> {
+    let (extent, selection) = profile;
+    let dimensions = assembly_component_dimensions(size, component, extent, selection)?;
+    let count = checked_area(dimensions.1, dimensions.2)?;
+    charge_assembly_bytes(count, bytes, maximum)?;
+    let crop = assembly_component_crop(size, dimensions, selection.is_some())?;
+    let mut plane = AssemblyPlane {
+        width: dimensions.1,
+        height: dimensions.2,
+        fraction_bits: None,
+        samples: vec![0_i64; count],
+        visited: vec![false; count],
+    };
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(plane.samples@ =~= Seq::new(count as nat, |i: int| 0i64));
+        assert(plane.visited@ =~= Seq::new(count as nat, |i: int| false));
+    }
+    collect_assembly_tiles(&mut plane, tiles, component, crop)?;
+    image.components.push(DecodedComponent {
+        width: dimensions.1,
+        height: dimensions.2,
+        info: dimensions.0,
+        fraction_bits: plane.fraction_bits.ok_or_else(invalid_image)?,
+        samples: plane.samples,
+    });
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(decoded_components_view(image.components@) == decoded_components_view(old(image).components@).push(
+            decoded_component_view(image.components@[image.components@.len() - 1]),
+        )) by {
+            assert forall |i: int| 0 <= i < image.components@.len() implies
+                decoded_components_view(image.components@)[i] == decoded_components_view(old(image).components@).push(
+                    decoded_component_view(image.components@[image.components@.len() - 1]),
+                )[i] by {};
+        };
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures decoded_image_outcome(result) == crate::specs::part1_assemble_selected_image(
+        assembly_size_view(size), assembly_tiles_view(tiles@), region, discard_levels,
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+pub(crate) fn assemble_selected_image(
+    size: &ImageSize,
+    tiles: &[TileComponent<'_>],
+    region: [u32; 4],
+    discard_levels: u8,
+    limits: &ResourceLimits,
+) -> Result<DecodedImage, DecodeError> {
+    let header = assembly_selected_header(region, discard_levels)?;
+    let components = Vec::with_capacity(usize::from(size.components));
+    let mut image = DecodedImage {
+        width: header.3,
+        height: header.4,
+        x_origin: header.1,
+        y_origin: header.2,
+        components,
+    };
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = image@; }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_assembly_components_empty(
+            original, 0, assembly_size_view(size), assembly_tiles_view(tiles@), (0, 0),
+            Some((region, header.0)), crate::limits::resource_decoded_bytes_limit(limits),
+        );
+    }
+    let mut decoded_bytes = 0_u64;
+    let mut component = 0_u16;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant component <= size.components,
+            crate::specs::part1_assembly_selected_header(region, discard_levels) == Ok(header),
+            original == (header.3, header.4, header.1, header.2, Seq::empty()),
+            crate::specs::part1_assembly_components_prefix(
+                original, 0, assembly_size_view(size), assembly_tiles_view(tiles@), (0, 0),
+                Some((region, header.0)), crate::limits::resource_decoded_bytes_limit(limits), component as nat,
+            ) == (Ok(()), image@, decoded_bytes),
+            decreases size.components - component,
+        )
+    )]
+    while component < size.components {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            crate::proofs::production_impl::production_assembly_components_step(
+                original, 0, assembly_size_view(size), assembly_tiles_view(tiles@), (0, 0),
+                Some((region, header.0)), crate::limits::resource_decoded_bytes_limit(limits), component as nat,
+            );
+        }
+        match append_assembly_component(
+            &mut image,
+            &mut decoded_bytes,
+            size,
+            tiles,
+            component,
+            ([0, 0], Some((region, header.0))),
+            limits.maximum_decoded_bytes(),
+        ) {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_assembly_components_error_persists(
+                        original, 0, assembly_size_view(size), assembly_tiles_view(tiles@), (0, 0),
+                        Some((region, header.0)), crate::limits::resource_decoded_bytes_limit(limits),
+                        component as nat + 1, size.components as nat,
+                    );
+                }
+                return Err(error);
+            }
+        }
+        component = component.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(image)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_assembly_selected_header(region, discard_levels),
+))]
+fn assembly_selected_header(
+    region: [u32; 4],
+    discard_levels: u8,
+) -> Result<(u32, u32, u32, u32, u32), DecodeError> {
+    if region[0] >= region[2] || region[1] >= region[3] || discard_levels > 31 {
+        return Err(invalid_image());
+    }
+    let scale = 1_u32 << u32::from(discard_levels);
+    let x0 = ceil_div(region[0], scale)?;
+    let y0 = ceil_div(region[1], scale)?;
+    let width = ceil_div(region[2], scale)?
+        .checked_sub(x0)
+        .ok_or_else(arithmetic_overflow)?;
+    let height = ceil_div(region[3], scale)?
+        .checked_sub(y0)
+        .ok_or_else(arithmetic_overflow)?;
+    if width == 0 || height == 0 {
+        return Err(invalid_image());
+    }
+    Ok((scale, x0, y0, width, height))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(plane)@) == crate::specs::part1_assembly_pixel(
+        old(plane)@, assembly_tile_view(tile), position[0], position[1], crop,
+    ),
+))]
+fn assembly_pixel(
+    plane: &mut AssemblyPlane,
+    tile: TileComponent<'_>,
+    position: [u32; 2],
+    crop: Option<(u32, u32)>,
+) -> Result<(), DecodeError> {
+    let destination_x = match crop {
+        None => tile
+            .x
+            .checked_add(position[0])
+            .ok_or_else(arithmetic_overflow)?,
+        Some(origin) => position[0]
+            .checked_sub(origin.0)
+            .ok_or_else(arithmetic_overflow)?,
+    };
+    let destination_y = match crop {
+        None => tile
+            .y
+            .checked_add(position[1])
+            .ok_or_else(arithmetic_overflow)?,
+        Some(origin) => position[1]
+            .checked_sub(origin.1)
+            .ok_or_else(arithmetic_overflow)?,
+    };
+    let destination = index(plane.width, destination_x, destination_y)?;
+    let source_x = match crop {
+        None => position[0],
+        Some(_) => position[0]
+            .checked_sub(tile.x)
+            .ok_or_else(arithmetic_overflow)?,
+    };
+    let source_y = match crop {
+        None => position[1],
+        Some(_) => position[1]
+            .checked_sub(tile.y)
+            .ok_or_else(arithmetic_overflow)?,
+    };
+    let source = index(tile.width, source_x, source_y)?;
+    if destination >= plane.samples.len()
+        || destination >= plane.visited.len()
+        || source >= tile.samples.len()
+        || plane.visited[destination]
+    {
+        return Err(invalid_image());
+    }
+    plane.samples[destination] = tile.samples[source];
+    plane.visited[destination] = true;
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(plane)@) == crate::specs::part1_assembly_row_prefix(
+        old(plane)@, assembly_tile_view(tile), row[0], row[2], crop,
+        if row[0] >= row[1] { 0nat } else { (row[1] - row[0]) as nat },
+    ),
+))]
+fn assembly_row(
+    plane: &mut AssemblyPlane,
+    tile: TileComponent<'_>,
+    row: [u32; 3],
+    crop: Option<(u32, u32)>,
+) -> Result<(), DecodeError> {
+    if row[0] >= row[1] {
+        return Ok(());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = plane@; }
+    let mut x = row[0];
+    let mut passes = row[1].checked_sub(row[0]).ok_or_else(arithmetic_overflow)?;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant row[0] <= x <= row[1],
+        passes == row[1] - x,
+        original == old(plane)@,
+        crate::specs::part1_assembly_row_prefix(
+            original, assembly_tile_view(tile), row[0], row[2], crop, (x - row[0]) as nat,
+        ) == (Ok(()), plane@),
+        decreases passes,
+    ))]
+    while x < row[1] {
+        match assembly_pixel(plane, tile, [x, row[2]], crop) {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_assembly_row_error_persists(
+                        original, assembly_tile_view(tile), row[0], row[2], crop,
+                        (x - row[0]) as nat + 1, (row[1] - row[0]) as nat,
+                    );
+                }
+                return Err(error);
+            }
+        }
+        x = x.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        passes = passes.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(plane)@) == crate::specs::part1_assembly_rectangle(
+        old(plane)@, assembly_tile_view(tile), (rectangle[0], rectangle[1], rectangle[2], rectangle[3]), crop,
+    ),
+))]
+fn assembly_rectangle(
+    plane: &mut AssemblyPlane,
+    tile: TileComponent<'_>,
+    rectangle: [u32; 4],
+    crop: Option<(u32, u32)>,
+) -> Result<(), DecodeError> {
+    if rectangle[0] >= rectangle[2] || rectangle[1] >= rectangle[3] {
+        return Ok(());
+    }
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = plane@; }
+    let mut y = rectangle[1];
+    let mut passes = rectangle[3]
+        .checked_sub(rectangle[1])
+        .ok_or_else(arithmetic_overflow)?;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant rectangle[0] < rectangle[2],
+        rectangle[1] <= y <= rectangle[3],
+        passes == rectangle[3] - y,
+        original == old(plane)@,
+        crate::specs::part1_assembly_rectangle_prefix(
+            original, assembly_tile_view(tile), (rectangle[0], rectangle[1], rectangle[2], rectangle[3]),
+            crop, (y - rectangle[1]) as nat,
+        ) == (Ok(()), plane@),
+        decreases passes,
+    ))]
+    while y < rectangle[3] {
+        match assembly_row(plane, tile, [rectangle[0], rectangle[2], y], crop) {
+            Ok(()) => {}
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_assembly_rectangle_error_persists(
+                        original, assembly_tile_view(tile), (rectangle[0], rectangle[1], rectangle[2], rectangle[3]), crop,
+                        (y - rectangle[1]) as nat + 1, (rectangle[3] - rectangle[1]) as nat,
+                    );
+                }
+                return Err(error);
+            }
+        }
+        y = y.checked_add(1).ok_or_else(arithmetic_overflow)?;
+        passes = passes.checked_sub(1).ok_or_else(arithmetic_overflow)?;
+    }
+    Ok(())
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(plane)@) == crate::specs::part1_place_assembly_tile(old(plane)@, assembly_tile_view(tile)),
+))]
+fn place_tile(plane: &mut AssemblyPlane, tile: TileComponent<'_>) -> Result<(), DecodeError> {
+    if tile.width == 0
+        || tile.height == 0
+        || tile
+            .x
+            .checked_add(tile.width)
+            .ok_or_else(arithmetic_overflow)?
+            > plane.width
+        || tile
+            .y
+            .checked_add(tile.height)
+            .ok_or_else(arithmetic_overflow)?
+            > plane.height
+        || tile.samples.len() != checked_area(tile.width, tile.height)?
+    {
+        return Err(invalid_image());
+    }
+    assembly_rectangle(plane, tile, [0, 0, tile.width, tile.height], None)
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(plane)@) == crate::specs::part1_place_selected_tile(
+        old(plane)@, assembly_tile_view(tile), (crop[0], crop[1], crop[2], crop[3]),
+    ),
+))]
+fn place_selected_tile(
+    plane: &mut AssemblyPlane,
+    tile: TileComponent<'_>,
+    crop: [u32; 4],
+) -> Result<(), DecodeError> {
+    let x0 = tile.x.max(crop[0]);
+    let y0 = tile.y.max(crop[1]);
+    let x1 = tile
+        .x
+        .checked_add(tile.width)
+        .ok_or_else(arithmetic_overflow)?
+        .min(crop[2]);
+    let y1 = tile
+        .y
+        .checked_add(tile.height)
+        .ok_or_else(arithmetic_overflow)?
+        .min(crop[3]);
+    assembly_rectangle(plane, tile, [x0, y0, x1, y1], Some((crop[0], crop[1])))
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(plane)@) == crate::specs::part1_assembly_tile_step(
+        old(plane)@, assembly_tile_view(tile), component, crop,
+    ),
+))]
+fn assembly_tile_step(
+    plane: &mut AssemblyPlane,
+    tile: TileComponent<'_>,
+    component: u16,
+    crop: Option<(u32, u32, u32, u32)>,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_assembly_tile_step); }
+    if tile.component != component {
+        return Ok(());
+    }
+    if plane.fraction_bits.is_some() && plane.fraction_bits != Some(tile.fraction_bits) {
+        return Err(invalid_image());
+    }
+    plane.fraction_bits = Some(tile.fraction_bits);
+    match crop {
+        None => place_tile(plane, tile),
+        Some(region) => place_selected_tile(plane, tile, [region.0, region.1, region.2, region.3]),
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == (forall |i: int| 0 <= i < visited.len() ==> visited[i]),
+))]
+fn all_pixels_visited(visited: &[bool]) -> bool {
+    let mut index = 0_usize;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= visited.len(),
+        forall |i: int| 0 <= i < index ==> visited[i],
+        decreases visited.len() - index,
+    ))]
+    while index < visited.len() {
+        if !visited[index] {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures (result, final(plane)@) == crate::specs::part1_collect_assembly_tiles(
+        old(plane)@, assembly_tiles_view(tiles@), component, crop,
+    ),
+    result.is_ok() ==> final(plane).fraction_bits.is_some(),
+))]
+fn collect_assembly_tiles(
+    plane: &mut AssemblyPlane,
+    tiles: &[TileComponent<'_>],
+    component: u16,
+    crop: Option<(u32, u32, u32, u32)>,
+) -> Result<(), DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost original = plane@; }
+    let mut index = 0_usize;
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        crate::proofs::production_impl::production_assembly_tiles_empty(
+            original, assembly_tiles_view(tiles@), component, crop,
+        );
+    }
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant index <= tiles.len(),
+        original == old(plane)@,
+        crate::specs::part1_assembly_tiles_prefix(
+            original, assembly_tiles_view(tiles@), component, crop, index as nat,
+        ) == (Ok(()), plane@),
+        decreases tiles.len() - index,
+    ))]
+    while index < tiles.len() {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = plane@; }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(assembly_tiles_view(tiles@)[index as int] == assembly_tile_view(tiles[index as int]));
+            crate::proofs::production_impl::production_assembly_tiles_step(
+                original, assembly_tiles_view(tiles@), component, crop, index as nat,
+            );
+            assert(crate::specs::part1_assembly_tiles_prefix(
+                original, assembly_tiles_view(tiles@), component, crop, index as nat + 1,
+            ) == crate::specs::part1_assembly_tile_step(
+                before, assembly_tile_view(tiles[index as int]), component, crop,
+            ));
+        }
+        let tile = tiles[index];
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(assembly_tile_view(tile) == assembly_tile_view(tiles[index as int]));
+        }
+        let transition = assembly_tile_step(plane, tile, component, crop);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert((transition, plane@) == crate::specs::part1_assembly_tile_step(
+                before, assembly_tile_view(tile), component, crop,
+            ));
+            assert(assembly_tile_view(tile) == assembly_tile_view(tiles[index as int]));
+        }
+        match transition {
+            Ok(()) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    assert(transition.is_ok());
+                    assert(transition->Ok_0 == ());
+                    assert(transition == Ok(()));
+                    assert((transition, plane@) == crate::specs::part1_assembly_tile_step(
+                        before, assembly_tile_view(tile), component, crop,
+                    ));
+                    assert((Ok(()), plane@) == crate::specs::part1_assembly_tile_step(
+                        before, assembly_tile_view(tiles[index as int]), component, crop,
+                    ));
+                }
+            }
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_assembly_tiles_error_persists(
+                        original, assembly_tiles_view(tiles@), component, crop, index as nat + 1, tiles.len() as nat,
+                    );
+                }
+                return Err(error);
+            }
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(crate::specs::part1_assembly_tiles_prefix(
+                original, assembly_tiles_view(tiles@), component, crop, index as nat + 1,
+            ) == (Ok(()), plane@));
+        }
+        index += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(crate::specs::part1_assembly_tiles_prefix(
+            original, assembly_tiles_view(tiles@), component, crop, tiles.len() as nat,
+        ) == (Ok(()), plane@));
+        assert(assembly_tiles_view(tiles@).len() == tiles.len());
+    }
+    if plane.fraction_bits.is_none() || !all_pixels_visited(&plane.visited) {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(plane.fraction_bits.is_none() || !(forall |i: int|
+                0 <= i < plane.visited@.len() ==> plane.visited@[i]));
+            assert(plane@.2 == plane.fraction_bits);
+            assert(plane@.4 == plane.visited@);
+            assert(crate::specs::part1_assembly_tiles_prefix(
+                original, assembly_tiles_view(tiles@), component, crop, assembly_tiles_view(tiles@).len(),
+            ) == (Ok(()), plane@));
+            assert(crate::specs::part1_collect_assembly_tiles(
+                original, assembly_tiles_view(tiles@), component, crop,
+            ) == (Err(crate::specs::part1_assembly_coverage_error(crop.is_some())), plane@));
+        }
+        return Err(if crop.is_some() {
+            DecodeError::InvalidSelection {
+                reason: crate::SelectionError::RegionOutsideSelectedTiles,
+            }
+        } else {
+            invalid_image()
+        });
+    }
+    Ok(())
+}
