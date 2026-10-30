@@ -9,8 +9,9 @@ use super::{
 #[cfg(verus_keep_ghost)]
 use super::{
     packed_header_frames_outcome, packed_header_frames_view, packed_header_reassembly_outcome,
-    packed_packet_headers_present, packed_packet_headers_view, packet_length_groups_view,
-    packet_length_iter_view, packet_lengths_view, parser_view, segment_view,
+    packed_packet_headers_outcome, packed_packet_headers_present, packed_packet_headers_view,
+    packet_length_groups_view, packet_length_iter_view, packet_length_source_view,
+    packet_lengths_outcome, packet_lengths_view, parser_view, segment_view,
 };
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
@@ -742,6 +743,13 @@ impl<'a> Parser<'a> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures packet_lengths_outcome(result) == crate::specs::part1_finish_packet_lengths(
+            self.input@, tile_header_start, tile_header_end, packet_lengths_view(&main_packet_lengths),
+            plt_seen, plt_packet_count, plt_encoded_bytes, plt_payload_bytes,
+            data_length, packed_header_length, tile_part_offset),
+    ))]
     pub(super) fn finish_packet_lengths(
         &self,
         tile_header_start: usize,
@@ -755,17 +763,25 @@ impl<'a> Parser<'a> {
         packed_header_length: usize,
         tile_part_offset: usize,
     ) -> Result<PacketLengths<'a>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_finish_packet_lengths); }
         let packet_lengths = if plt_seen {
             PacketLengths {
                 source: PacketLengthSource::Plt(
                     self.input
                         .get(tile_header_start..tile_header_end)
-                        .ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(tile_part_offset),
-                                MalformedKind::InvalidTilePart,
-                            )
-                        })?,
+                        .ok_or_else(
+                            #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                                ensures error == crate::specs::part1_packet_input_error(
+                                    tile_part_offset, MalformedKind::InvalidTilePart),
+                            ))]
+                            || {
+                                DecodeError::malformed(
+                                    self.offset(tile_part_offset),
+                                    MalformedKind::InvalidTilePart,
+                                )
+                            },
+                        )?,
                 ),
                 packet_count: plt_packet_count,
                 encoded_bytes: plt_encoded_bytes,
@@ -781,12 +797,18 @@ impl<'a> Parser<'a> {
             };
             let logical_payload_bytes = (data_length as u64)
                 .checked_add(packed_header_length as u64)
-                .ok_or_else(|| {
-                    DecodeError::malformed(
-                        self.offset(tile_part_offset),
-                        MalformedKind::ArithmeticOverflow,
-                    )
-                })?;
+                .ok_or_else(
+                    #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                        ensures error == crate::specs::part1_packet_input_error(
+                            tile_part_offset, MalformedKind::ArithmeticOverflow),
+                    ))]
+                    || {
+                        DecodeError::malformed(
+                            self.offset(tile_part_offset),
+                            MalformedKind::ArithmeticOverflow,
+                        )
+                    },
+                )?;
             if declared_payload_bytes != logical_payload_bytes {
                 return Err(DecodeError::malformed(
                     self.offset(tile_part_offset),
@@ -797,6 +819,12 @@ impl<'a> Parser<'a> {
         Ok(packet_lengths)
     }
 
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures packed_packet_headers_outcome(result) == crate::specs::part1_finish_packed_packet_headers(
+            self.input@, tile_header_start, tile_header_end, packed_packet_headers_view(&main),
+            ppt_fragments, ppt_length, tile_part_offset),
+    ))]
     pub(super) fn finish_packed_packet_headers(
         &self,
         tile_header_start: usize,
@@ -806,18 +834,26 @@ impl<'a> Parser<'a> {
         ppt_length: usize,
         tile_part_offset: usize,
     ) -> Result<PackedPacketHeaders<'a>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_finish_packed_packet_headers); }
         if ppt_fragments == 0 {
             return Ok(main);
         }
         let header = self
             .input
             .get(tile_header_start..tile_header_end)
-            .ok_or_else(|| {
-                DecodeError::malformed(
-                    self.offset(tile_part_offset),
-                    MalformedKind::InvalidTilePart,
-                )
-            })?;
+            .ok_or_else(
+                #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                    ensures error == crate::specs::part1_packet_input_error(
+                        tile_part_offset, MalformedKind::InvalidTilePart),
+                ))]
+                || {
+                    DecodeError::malformed(
+                        self.offset(tile_part_offset),
+                        MalformedKind::InvalidTilePart,
+                    )
+                },
+            )?;
         Ok(PackedPacketHeaders {
             source: PackedPacketHeaderSource::MarkerSegments {
                 header,
@@ -921,7 +957,15 @@ pub(super) fn decode_packet_length(
         }
     }
 }
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_sum_packet_lengths(packet_length_source_view(source)),
+))]
 fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part1_sum_packet_lengths(packet_length_source_view(source)); }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_sum_packet_lengths); }
     let bytes = match source {
         PacketLengthSource::Plm(bytes) => bytes,
         PacketLengthSource::None => return Ok(0),
@@ -938,10 +982,14 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
         verus_keep_ghost,
         verus_spec(
             invariant position <= bytes.len(),
+                goal == crate::specs::part1_sum_packet_lengths(packet_length_source_view(source)),
+                goal == crate::specs::part1_sum_packet_lengths_from(bytes@, position, total),
             decreases bytes.len() - position,
         )
     )]
     while position < bytes.len() {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_sum_packet_lengths_from, 1); }
         let (length, next) = decode_packet_length(bytes, position, bytes.len())?;
         if next <= position || next > bytes.len() {
             return Err(DecodeError::malformed(
@@ -949,10 +997,62 @@ fn sum_packet_lengths(source: PacketLengthSource<'_>) -> Result<u64, DecodeError
                 MalformedKind::InvalidPacketLength,
             ));
         }
-        total = total
-            .checked_add(u64::from(length))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        total = total.checked_add(u64::from(length)).ok_or_else(
+            #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                    ensures error == crate::specs::part1_packet_input_error(
+                        0, MalformedKind::ArithmeticOverflow),
+                ))]
+            || DecodeError::malformed(0, MalformedKind::ArithmeticOverflow),
+        )?;
         position = next;
     }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_sum_packet_lengths_from, 1); }
     Ok(total)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::codestream::tests::reference_packet_sum;
+
+    #[test]
+    fn actual_packet_sum_derives_raw_sources_all_short_varints_and_original_error_offsets() {
+        let mut contexts = 0;
+        for word in 0..=u16::MAX {
+            let bytes = word.to_be_bytes();
+            for end in 0..=bytes.len() {
+                for source in [
+                    PacketLengthSource::None,
+                    PacketLengthSource::Plm(&bytes[..end]),
+                    PacketLengthSource::Plt(&bytes[..end]),
+                ] {
+                    assert_eq!(sum_packet_lengths(source), reference_packet_sum(source));
+                    contexts += 1;
+                }
+            }
+        }
+        assert_eq!(contexts, 589_824);
+        for suffix in [
+            &[0][..],
+            &[0x80],
+            &[0x8f, 0xff, 0xff, 0xff, 0x7f],
+            &[0x90, 0x80, 0x80, 0x80, 0],
+            &[0x80, 0x80, 0x80, 0x80, 0x80, 1],
+        ] {
+            let mut bytes = vec![1, 0x81, 0];
+            bytes.extend(suffix);
+            assert_eq!(
+                sum_packet_lengths(PacketLengthSource::Plm(&bytes)),
+                reference_packet_sum(PacketLengthSource::Plm(&bytes))
+            );
+        }
+        assert_eq!(
+            sum_packet_lengths(PacketLengthSource::Plm(&[1, 0x81, 0, 0])),
+            Err(DecodeError::MalformedInput {
+                offset: 3,
+                kind: MalformedKind::InvalidPacketLength,
+            })
+        );
+    }
 }
