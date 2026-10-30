@@ -133,3 +133,247 @@ jobs:
             target/validation/packaged-proof/**
           if-no-files-found: warn
           retention-days: 14
+
+  public-lifetime-pr3266-build:
+    name: Public PR3266 source build and native lifetime regressions (experimental only)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    permissions:
+      contents: read
+    steps:
+      - name: Initialize isolated public evidence directory
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/public-pr3266-experiment/evidence"
+          python3 -I - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          evidence = Path(os.environ["GITHUB_WORKSPACE"]) / "public-pr3266-experiment/evidence"
+          (evidence / "run-context.json").write_text(json.dumps({
+              "run_id": os.environ["GITHUB_RUN_ID"],
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "workflow_commit": os.environ["GITHUB_SHA"],
+              "job": os.environ["GITHUB_JOB"],
+              "scope": "Public upstream PR-head experiment only; no decoder, primary pin, release or normative qualification.",
+          }, indent=2) + "\n")
+          PY
+      - name: Checkout only pristine public PR3266 head
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
+        with:
+          repository: verus-lang/verus
+          ref: 3c780fab898a3ad42440e1cd4d3f2c6f70b3a020
+          path: public-verus
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Build exact public source and run its six native lifetime regressions once
+        shell: bash
+        run: |
+          WORK="$GITHUB_WORKSPACE/public-pr3266-experiment"
+          mkdir -p "$WORK/home" "$WORK/cargo" "$WORK/rustup" "$WORK/scratch"
+          env -i HOME="$WORK/home" CARGO_HOME="$WORK/cargo" RUSTUP_HOME="$WORK/rustup" \
+            TMPDIR="$WORK/scratch" PATH="/home/runner/.cargo/bin:/usr/local/bin:/usr/bin:/bin" \
+            LANG=C.UTF-8 LC_ALL=C.UTF-8 CARGO_BUILD_JOBS=2 RAYON_NUM_THREADS=2 \
+            CARGO_NET_RETRY=0 CARGO_HTTP_TIMEOUT=60 GIT_TERMINAL_PROMPT=0 \
+            VERUS_KEEP_TEST_DIR=1 RUST_TEST_THREADS=1 \
+            python3 -I - "$GITHUB_WORKSPACE/public-verus" "$WORK" <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          import resource
+          import subprocess
+          import sys
+          import tarfile
+          import time
+          from pathlib import Path
+
+          root, work = map(Path, sys.argv[1:])
+          evidence = work / "evidence"
+          source = root / "source"
+          head = "3c780fab898a3ad42440e1cd4d3f2c6f70b3a020"
+          names = [
+              "verified_module_const_ordering_lifetime",
+              "literal_const_typeck_lifetime",
+              "unused_spec_const_not_evaluated_lifetime",
+              "unused_invalid_exec_const_evaluated_lifetime",
+              "complex_typeck_const_remains_guarded_lifetime",
+              "spec_typeck_const_remains_guarded_lifetime",
+          ]
+          build_command = "set -euo pipefail; source ../tools/activate; vargo build --release"
+          test_command = (
+              "set -euo pipefail; source ../tools/activate; "
+              "vargo test --release -p rust_verify_test -- "
+              "--test consts _lifetime -- --nocapture --test-threads=1"
+          )
+          cpus = sorted(os.sched_getaffinity(0))[:2]
+          os.sched_setaffinity(0, cpus)
+          resource.setrlimit(resource.RLIMIT_AS, (6 * 1024**3, 6 * 1024**3))
+          report = {
+              "scope": "One public upstream proposed PR-head build/native-harness experiment; not project or release qualification.",
+              "public_repository": "https://github.com/verus-lang/verus",
+              "requested_commit": head,
+              "lifetime_checking": "Requested through the unchanged native harness; no extra verifier arguments. Not execution evidence if tests did not run.",
+              "bootstrap": "Only the public source's committed Cargo configuration; no environment override or binary patch.",
+              "limits": {
+                  "job_minutes": 65, "cpu_affinity": cpus, "cargo_jobs": 2,
+                  "per_process_address_space_bytes": 6 * 1024**3,
+                  "cargo_network_retries": 0, "cargo_http_timeout_seconds": 60,
+                  "setup_seconds": 600, "solver_seconds": 180,
+                  "build_seconds": 2100, "test_seconds": 720,
+              },
+              "clean_environment": dict(os.environ),
+              "build_command": build_command,
+              "test_command": test_command,
+              "cases": [], "stages": [], "outcome": "incomplete",
+          }
+
+          def digest(path):
+              h = hashlib.sha256()
+              with path.open("rb") as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          def save():
+              (evidence / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+
+          def command(label, args, cwd, seconds, required=True):
+              record = {"label": label, "argv": args, "cwd": str(cwd), "timeout_seconds": seconds}
+              report["stages"].append(record)
+              save()
+              started = time.monotonic()
+              with (evidence / (label + ".stdout")).open("wb") as out, \
+                   (evidence / (label + ".stderr")).open("wb") as err:
+                  result = subprocess.run(
+                      ["timeout", "--signal=TERM", "--kill-after=15s", str(seconds), *args],
+                      cwd=cwd, stdout=out, stderr=err, check=False,
+                  )
+              record.update(returncode=result.returncode, elapsed_seconds=time.monotonic() - started)
+              record["stdout_sha256"] = digest(evidence / (label + ".stdout"))
+              record["stderr_sha256"] = digest(evidence / (label + ".stderr"))
+              save()
+              print(json.dumps(record), flush=True)
+              if required and result.returncode:
+                  raise RuntimeError(f"{label} failed with exit {result.returncode}; original logs retained")
+              return record
+
+          try:
+              assert not os.environ.get("VERUS_EXTRA_ARGS")
+              assert "RUSTC_BOOTSTRAP" not in os.environ
+              assert "RUSTFLAGS" not in os.environ
+              assert "RUSTUP_TOOLCHAIN" not in os.environ
+              actual = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip()
+              assert actual == head, actual
+              report["actual_commit"] = actual
+              report["tree"] = subprocess.check_output(
+                  ["git", "rev-parse", "HEAD^{tree}"], cwd=root, text=True
+              ).strip()
+              command("pristine-before", ["git", "diff", "--exit-code", "HEAD"], root, 30)
+              paths = subprocess.check_output(["git", "ls-files", "-z"], cwd=root).split(b"\0")
+              source_hashes = {
+                  os.fsdecode(path): digest(root / os.fsdecode(path))
+                  for path in paths if path
+              }
+              (evidence / "source-sha256.json").write_text(json.dumps(source_hashes, indent=2) + "\n")
+              with (evidence / "public-source.tar").open("wb") as out:
+                  subprocess.run(["git", "archive", "--format=tar", "HEAD"], cwd=root, stdout=out, check=True)
+              test_path = source / "rust_verify_test/tests/consts.rs"
+              assert digest(test_path) == "02bfbfce7995eede7e951c5f878fd3fa61e1f0ed7c25166aa351afbbbba04c2c"
+              tests = test_path.read_text()
+              selected = re.findall(r"#\[test\]\s+(\w*?_lifetime)\s+code!", tests)
+              assert selected == names, selected
+              for name in names:
+                  pattern = (
+                      r"test_verify_one_file!\s*\{\s*#\[test\]\s+" + name +
+                      r"\s+code!\s*\{(.*?)\n    \}\s*=> (.*?)\n\}"
+                  )
+                  matches = list(re.finditer(pattern, tests, re.S))
+                  assert len(matches) == 1, name
+                  match = matches[0]
+                  report["cases"].append({
+                      "name": name, "source": "source/rust_verify_test/tests/consts.rs",
+                      "source_file_sha256": digest(test_path),
+                      "source_line": tests[:match.start()].count("\n") + 1,
+                      "test_block_sha256": hashlib.sha256(match[0].encode()).hexdigest(),
+                      "body_sha256": hashlib.sha256(match[1].encode()).hexdigest(),
+                      "unchanged_upstream_expectation": match[2],
+                      "harness_outcome": "not_run",
+                  })
+              save()
+              command("rustup-install", ["rustup", "toolchain", "install"], root, 600)
+              command("rustc-identity", ["rustc", "-vV"], root, 60)
+              command("cargo-identity", ["cargo", "-V"], root, 60)
+              command("rustup-identity", ["rustup", "show"], root, 60)
+              command("get-z3", ["bash", "./tools/get-z3.sh"], source, 180)
+              command("z3-identity", ["./z3", "--version"], source, 30)
+              command("build", ["bash", "-c", build_command], source, 2100)
+              command("verus-identity", ["./target-verus/release/verus", "--version"], source, 60)
+              command("rust-verify-identity", ["./target-verus/release/rust_verify", "--version"], source, 60)
+              result = command("native-harness", ["bash", "-c", test_command], source, 720, required=False)
+              output = (evidence / "native-harness.stdout").read_text(errors="replace")
+              starts = list(re.finditer(r"^test (\w+) \.\.\. ", output, re.M))
+              for index, match in enumerate(starts):
+                  segment = output[match.end():starts[index + 1].start() if index + 1 < len(starts) else len(output)]
+                  status = re.search(r"^(ok|FAILED)\s*$", segment, re.M)
+                  records = [case for case in report["cases"] if case["name"] == match[1]]
+                  if len(records) != 1 or status is None:
+                      raise RuntimeError(f"Unrecognized or incomplete native test result: {match[1]}")
+                  records[0]["harness_outcome"] = status[1]
+              report["native_summary"] = re.findall(r"^test result:.*$", output, re.M)
+              report["observed_test_count"] = len(starts)
+              report["passed"] = sum(case["harness_outcome"] == "ok" for case in report["cases"])
+              report["failed"] = sum(case["harness_outcome"] == "FAILED" for case in report["cases"])
+              save()
+              if (result["returncode"] != 0 or len(starts) != 6 or report["passed"] != 6
+                  or not re.search(r"^test result: ok\. 6 passed; 0 failed;", output, re.M)):
+                  raise RuntimeError("The exact six native regression expectations did not all pass")
+              report["outcome"] = "six_native_public_regressions_passed"
+          except Exception as error:
+              report["outcome"] = "failed"
+              report["failure"] = f"{type(error).__name__}: {error}"
+              print(report["failure"], file=sys.stderr, flush=True)
+          finally:
+              try:
+                  pristine = command("pristine-after", ["git", "diff", "--exit-code", "HEAD"], root, 30, required=False)
+                  if pristine["returncode"] != 0:
+                      report["outcome"] = "failed"
+                      report["source_mutation"] = True
+                  outputs = {}
+                  for path in [
+                      source / "z3", source / "target-verus/release/verus",
+                      source / "target-verus/release/rust_verify",
+                      source / "target-verus/release/libvstd.rlib",
+                      source / "target-verus/release/vstd.vir",
+                      root / "tools/vargo/target/release/vargo",
+                  ]:
+                      if path.is_file():
+                          outputs[str(path.relative_to(root))] = {
+                              "sha256": digest(path), "bytes": path.stat().st_size,
+                          }
+                  report["built_outputs"] = outputs
+                  inputs = source / "target-verus/release/test_inputs"
+                  if inputs.is_dir():
+                      with tarfile.open(evidence / "native-test-inputs.tar.gz", "w:gz") as archive:
+                          archive.add(inputs, arcname="test_inputs")
+              except Exception as error:
+                  report["outcome"] = "failed"
+                  report["retention_failure"] = f"{type(error).__name__}: {error}"
+              save()
+              manifest = {
+                  str(path.relative_to(evidence)): {"sha256": digest(path), "bytes": path.stat().st_size}
+                  for path in sorted(evidence.rglob("*")) if path.is_file()
+              }
+              (evidence / "evidence-sha256.json").write_text(json.dumps(manifest, indent=2) + "\n")
+              print(json.dumps(report, indent=2), flush=True)
+          sys.exit(0 if report["outcome"] == "six_native_public_regressions_passed" else 1)
+          PY
+      - name: Retain original public source build and native regression evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: public-lifetime-pr3266-build
+          path: ${{ github.workspace }}/public-pr3266-experiment/evidence/**
+          if-no-files-found: error
+          retention-days: 14
