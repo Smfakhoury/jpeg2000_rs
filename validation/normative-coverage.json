@@ -768,6 +768,50 @@
       ]
     },
     {
+      "id": "part2-complete-native-raw-decomposition-resolution",
+      "topic": "Source-derived complete actual DFS/ADS first-match borrowed payload lookups, full component setter and raw style/owner resolution Results. Retains earlier membership guarantees, DFS precedence, missing versus empty structures, last-direction repetition, ADS depth-only validation, all u8 levels versus physical direction capacity, local success before commit, earlier component commits on later error, logical u16 count versus all64 physical slots and untouched tails. Shared parser and extension references frame reader, limits, work and all extension fields. Real segment reader and DFS/ADS parser producers feed actual lookups and resolver; actual layout invokes this resolver after COD/COC production. No normalized registry, metadata/result bank, format admission or normative certification; other parser/layout/file/layer and publication joins remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream/decomposition.rs", "symbol": "Parser::resolve_decomposition_structures"},
+        {"path": "src/codestream/decomposition.rs", "symbol": "resolve_decomposition_style"},
+        {"path": "src/codestream/decomposition.rs", "symbol": "Parser::parse_dfs"},
+        {"path": "src/codestream/decomposition.rs", "symbol": "Parser::parse_ads"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_dfs_lookup"},
+        {"path": "specs/mod.rs", "symbol": "part1_ads_lookup"},
+        {"path": "specs/mod.rs", "symbol": "part1_ads_depths_valid"},
+        {"path": "specs/mod.rs", "symbol": "part1_decomposition_directions_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_resolve_decomposition_style"},
+        {"path": "specs/mod.rs", "symbol": "part1_set_component_style"},
+        {"path": "specs/mod.rs", "symbol": "part1_resolve_decompositions_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_resolve_decompositions"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream/extensions.rs", "symbol": "Part2Extensions::decomposition_structure"},
+        {"path": "src/codestream/extensions.rs", "symbol": "Part2Extensions::arbitrary_decomposition"},
+        {"path": "src/codestream/coding_style.rs", "symbol": "ComponentCodingStyles::set"},
+        {"path": "src/codestream/decomposition.rs", "symbol": "resolve_decomposition_style"},
+        {"path": "src/codestream/decomposition.rs", "symbol": "Parser::resolve_decomposition_structures"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream/proof_support.rs", "symbol": "component_style_owner_view"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "dfs_option_view"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "ads_option_view"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "parsed_coding_style_view"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "parsed_coding_style_outcome"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "owned_extensions_view"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream/tests.rs", "symbol": "actual_decomposition_lookups_preserve_first_payload_and_borrow_for_all_ids"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_decomposition_setter_preserves_raw_count_every_slot_and_unused_tail"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_decomposition_style_preserves_all_levels_duplicates_priority_and_full_result"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_decomposition_ads_validates_only_raw_depths_not_levels_or_splits"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_decomposition_owner_preserves_error_prefixes_all_slots_and_immutable_reader"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_decomposition_resolution_consumes_real_dfs_ads_reader_producers"}
+      ]
+    },
+    {
       "id": "part2-complete-native-raw-decomposition-bytes",
       "topic": "Complete actual DFS/ADS payload Results and parser/all8 extension-owner states from raw bytes, current cursor, raw registries and actual limits/work counters. Shared real metadata charge runs first and retains exact partial failure commits. DFS preserves low4 nonzero index/reserved descriptor/depth1..32/header-length order and accepts unused packed slots. ADS preserves index1..127/count-position/expected-length/depth-zero/terminal/padding order and raw zero counts. Generic actual unpacking derives every byte and mask, rejecting depth zero before final padding while allowing zero split codes. Actual first-matching registry entry is replaced, later duplicates/unrelated raw fields retained; absent keys append in order. Sole payload bodies and explicit bounded first-match search supply functional facts without normalized registries/directions, prepared outputs or budget premises. Derived-safe shift/mask arithmetic and proved shared bit primitive retain native outcomes. No new trust/pin/cap/solver/termination opt-out. Remaining metadata/layout/file/layer/F2/F4/final F8 joins remain separate.",
       "implementation_refs": [

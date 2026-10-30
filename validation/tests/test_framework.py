@@ -986,6 +986,12 @@ class FrameworkTests(WorkingFiles):
             framework._DECOMPOSITION_BYTES_CONTRACTS, 5,
         )
 
+    def test_inventory_binds_actual_decomposition_first_payload_setter_and_partial_owner_result(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-raw-decomposition-resolution"},
+            framework._DECOMPOSITION_RESOLUTION_CONTRACTS, 5,
+        )
+
     def test_inventory_binds_raw_cbd_partial_depth_prefix_and_complete_owner_frames(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-component-depth-bytes"},

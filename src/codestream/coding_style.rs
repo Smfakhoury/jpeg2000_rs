@@ -8,8 +8,9 @@ use super::{
 };
 #[cfg(verus_keep_ghost)]
 use super::{
-    coding_style_tier1_result, component_coding_style_result, decomposition_selector_view,
-    precinct_selector_view, progression_change_contains, progression_changes_view,
+    coding_style_tier1_result, component_coding_style_result, component_style_owner_view,
+    decomposition_selector_view, parsed_coding_style_view, precinct_selector_view,
+    progression_change_contains, progression_changes_view,
 };
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
@@ -527,15 +528,23 @@ impl ComponentCodingStyles {
         }
     }
 
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, component_style_owner_view(final(self))) == crate::specs::part1_set_component_style(
+            component_style_owner_view(old(self)), component, parsed_coding_style_view(style)),
+    ))]
     pub(super) fn set(&mut self, component: u16, style: CodingStyle) -> Result<(), DecodeError> {
-        if component >= self.components {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_set_component_style); }
+        if component >= self.components || usize::from(component) >= self.styles.len() {
             return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
         }
-        let slot = self
-            .styles
-            .get_mut(usize::from(component))
-            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidCodingStyle))?;
-        *slot = style;
+        #[cfg(verus_keep_ghost)]
+        proof_decl! { let ghost before = component_style_owner_view(self); }
+        self.styles[usize::from(component)] = style;
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(component_style_owner_view(self).1 =~= before.1.update(component as int, parsed_coding_style_view(style)));
+        }
         Ok(())
     }
 

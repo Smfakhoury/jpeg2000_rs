@@ -1198,6 +1198,34 @@ _COMPONENT_DEPTH_BYTES_CONTRACTS = {
     ),
 }
 
+_DECOMPOSITION_RESOLUTION_CONTRACTS = {
+    ("src/codestream/extensions.rs", "Part2Extensions::decomposition_structure"): (
+        "part1_dfs_lookup", _coverage_call("dfs_option_view", r"\1"), None,
+        _coverage_call("owned_extensions_view", "self") + r"\.decompositions\s*,\s*index\s*,\s*0",
+    ),
+    ("src/codestream/extensions.rs", "Part2Extensions::arbitrary_decomposition"): (
+        "part1_ads_lookup", _coverage_call("ads_option_view", r"\1"), None,
+        _coverage_call("owned_extensions_view", "self") + r"\.arbitrary\s*,\s*index\s*,\s*0",
+    ),
+    ("src/codestream/coding_style.rs", "ComponentCodingStyles::set"): (
+        "part1_set_component_style", r"\1",
+        _coverage_call("component_style_owner_view", _coverage_call("final", "self")),
+        _coverage_call("component_style_owner_view", _coverage_call("old", "self"))
+        + r"\s*,\s*component\s*,\s*" + _coverage_call("parsed_coding_style_view", "style"),
+    ),
+    ("src/codestream/decomposition.rs", "resolve_decomposition_style"): (
+        "part1_resolve_decomposition_style", _coverage_call("parsed_coding_style_outcome", r"\1"), None,
+        _coverage_call("parsed_coding_style_view", "style")
+        + r"\s*,\s*" + _coverage_call("owned_extensions_view", "extensions"),
+    ),
+    ("src/codestream/decomposition.rs", "Parser::resolve_decomposition_structures"): (
+        "part1_resolve_decompositions", r"\1",
+        _coverage_call("component_style_owner_view", _coverage_call("final", "styles")),
+        _coverage_call("component_style_owner_view", _coverage_call("old", "styles"))
+        + r"\s*,\s*" + _coverage_call("owned_extensions_view", "extensions"),
+    ),
+}
+
 _DECOMPOSITION_BYTES_CONTRACTS = {
     ("src/codestream/decomposition.rs", "Parser::unpack_two_bit_values"): (
         "part1_unpack_two_bit_values", _coverage_call("two_bit_values_outcome", r"\1"), None,
@@ -2581,6 +2609,7 @@ def validate_normative_coverage(
                 or _QUANTIZATION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_MARKER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECOMPOSITION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _DECOMPOSITION_RESOLUTION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_DEPTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROFILE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))

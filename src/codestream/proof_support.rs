@@ -108,6 +108,12 @@ verus! {
         }
     }
 
+    pub closed spec fn component_style_owner_view(styles: &ComponentCodingStyles)
+        -> (u16, Seq<crate::specs::Part1ParsedCodingStyle>)
+    {
+        (styles.components, styles.styles@.map_values(|style: CodingStyle| parsed_coding_style_view(style)))
+    }
+
     pub closed spec fn component_coding_style_result(styles: &ComponentCodingStyles, component: u16) -> Result<CodingStyle, DecodeError> {
         if component >= styles.components {
             Err(DecodeError::MalformedInput { offset: 0, kind: MalformedKind::InvalidCodingStyle })
@@ -534,6 +540,18 @@ verus! {
 
     pub closed spec fn owned_arbitrary_decomposition_view(value: &ArbitraryDecomposition) -> (u8, Seq<u8>, Seq<DecompositionDirection>) {
         (value.index, value.sublevel_depths@, value.subband_splits@)
+    }
+
+    pub closed spec fn dfs_option_view(value: Option<&DecompositionStructure>)
+        -> Option<(u8, Seq<DecompositionDirection>)>
+    {
+        match value { None => None, Some(value) => Some(owned_decomposition_view(value)) }
+    }
+
+    pub closed spec fn ads_option_view(value: Option<&ArbitraryDecomposition>)
+        -> Option<(u8, Seq<u8>, Seq<DecompositionDirection>)>
+    {
+        match value { None => None, Some(value) => Some(owned_arbitrary_decomposition_view(value)) }
     }
 
     closed spec fn ads_payload_outcome(result: Result<ArbitraryDecomposition, DecodeError>)
