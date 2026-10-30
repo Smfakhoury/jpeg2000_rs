@@ -133,3 +133,121 @@ jobs:
             target/validation/packaged-proof/**
           if-no-files-found: warn
           retention-days: 14
+  public-lifetime-probe:
+    name: Public lifetime probe (not decoder qualification)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: 1.99.1-x86_64-unknown-linux-gnu
+    steps:
+      - name: Fetch exact public candidate and regression source
+        shell: bash
+        run: |
+          test -z "${VERUS_EXTRA_ARGS:-}"
+          WORK="$RUNNER_TEMP/public-lifetime-probe"
+          mkdir -p "$WORK"
+          curl --fail --location --retry 3 --output "$WORK/verus.zip" \
+            https://github.com/verus-lang/verus/releases/download/release/rolling/0.2026.10.30.3102966/verus-0.2026.10.30.3102966-x86-linux.zip
+          echo "04a5088e43926b9ec3d054b8904a0fe1da52d8f0e46ba86ce28b29c868139d6b  $WORK/verus.zip" | sha256sum --check
+          curl --fail --location --retry 3 --output "$WORK/consts.rs" \
+            https://raw.githubusercontent.com/verus-lang/verus/3c780fab898a3ad42440e1cd4d3f2c6f70b3a020/source/rust_verify_test/tests/consts.rs
+          echo "02bfbfce7995eede7e951c5f878fd3fa61e1f0ed7c25166aa351afbbbba04c2c  $WORK/consts.rs" | sha256sum --check
+          unzip -q "$WORK/verus.zip" -d "$WORK"
+          rustup toolchain install 1.99.1-x86_64-unknown-linux-gnu --profile minimal
+          {
+            ldd --version
+            rustc --version
+            "$WORK/verus-x86-linux/verus" --version
+            sha256sum "$WORK/verus.zip" "$WORK/consts.rs" "$WORK/verus-x86-linux/verus"
+          } > "$WORK/tools.log" 2>&1
+      - name: Execute six public cases with lifetime analysis enabled
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import re
+          import subprocess
+          import time
+          from pathlib import Path
+
+          if os.environ.get("VERUS_EXTRA_ARGS"):
+              raise RuntimeError("Unexpected verifier arguments in the standalone experiment")
+          work = Path(os.environ["RUNNER_TEMP"]) / "public-lifetime-probe"
+          source = (work / "consts.rs").read_text()
+          cases = [
+              ("verified_module_const_ordering_lifetime", None),
+              ("literal_const_typeck_lifetime", None),
+              ("unused_spec_const_not_evaluated_lifetime", None),
+              ("unused_invalid_exec_const_evaluated_lifetime", "attempt to divide `1_usize` by zero"),
+              ("complex_typeck_const_remains_guarded_lifetime", "before ghost-code erasure is initialized"),
+              ("spec_typeck_const_remains_guarded_lifetime", "before ghost-code erasure is initialized"),
+          ]
+          records = []
+          for name, diagnostic in cases:
+              matches = re.findall(r"\#\[test\]\s+" + name + r"\s+code!\s*\{(.*?)\n    \}\s*=>", source, re.S)
+              if len(matches) != 1:
+                  raise ValueError(f"Exact public regression body missing or ambiguous: {name}")
+              path = work / (name + ".rs")
+              path.write_text(matches[0] + "\n")
+              command = [str(work / "verus-x86-linux/verus"), str(path), "--crate-type=lib", "--output-json"]
+              started = time.monotonic()
+              timed_out = False
+              with (work / (name + ".stdout")).open("wb") as out, (work / (name + ".stderr")).open("wb") as err:
+                  try:
+                      result = subprocess.run(command, stdout=out, stderr=err, timeout=60, check=False)
+                      returncode = result.returncode
+                  except subprocess.TimeoutExpired:
+                      timed_out = True
+                      returncode = None
+              stdout = (work / (name + ".stdout")).read_text()
+              stderr = (work / (name + ".stderr")).read_text()
+              verification = None
+              if diagnostic is None:
+                  values = [json.JSONDecoder().raw_decode(stdout[m.start():])[0]
+                            for m in re.finditer(r"(?m)^\{", stdout)]
+                  if len(values) == 1:
+                      verification = values[0].get("verification-results")
+                  matched = (not timed_out and returncode == 0 and verification is not None
+                             and verification["errors"] == 0
+                             and verification["encountered-error"] is False
+                             and verification["encountered-vir-error"] is False
+                             and verification["is-verifying-entire-crate"] is True)
+              else:
+                  matched = not timed_out and returncode not in (0, None) and diagnostic in stdout + stderr
+              records.append({
+                  "case": name, "command": command, "expected_diagnostic": diagnostic,
+                  "returncode": returncode, "timed_out": timed_out, "matched_upstream_expectation": matched,
+                  "elapsed_seconds": time.monotonic() - started, "verification": verification,
+                  "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                  "stdout_sha256": hashlib.sha256((work / (name + ".stdout")).read_bytes()).hexdigest(),
+                  "stderr_sha256": hashlib.sha256((work / (name + ".stderr")).read_bytes()).hexdigest(),
+              })
+          report = {
+              "scope": "Six public upstream regression expectations only; not decoder, release-pin or normative qualification.",
+              "candidate": "release/rolling/0.2026.10.30.3102966",
+              "regression_source": "3c780fab898a3ad42440e1cd4d3f2c6f70b3a020",
+              "lifetime_analysis_disabled": False,
+              "private_repository_checkout": False,
+              "zip_sha256": hashlib.sha256((work / "verus.zip").read_bytes()).hexdigest(),
+              "upstream_source_sha256": hashlib.sha256((work / "consts.rs").read_bytes()).hexdigest(),
+              "records": records,
+          }
+          (work / "report.json").write_text(json.dumps(report, indent=2) + "\n")
+          print(json.dumps({"cases": len(records), "matched": sum(r["matched_upstream_expectation"] for r in records)}))
+          raise SystemExit(0 if all(r["matched_upstream_expectation"] for r in records) else 1)
+          PY
+      - name: Retain standalone public probe originals
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: public-lifetime-probe
+          path: |
+            ${{ runner.temp }}/public-lifetime-probe/report.json
+            ${{ runner.temp }}/public-lifetime-probe/tools.log
+            ${{ runner.temp }}/public-lifetime-probe/*.stdout
+            ${{ runner.temp }}/public-lifetime-probe/*.stderr
+          if-no-files-found: warn
+          retention-days: 14
