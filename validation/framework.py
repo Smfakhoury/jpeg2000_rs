@@ -1198,6 +1198,40 @@ _COMPONENT_DEPTH_BYTES_CONTRACTS = {
     ),
 }
 
+_MAIN_COMPONENT_FINALIZATION_CONTRACTS = {
+    ("src/codestream/coding_style.rs", "new_component_coding_styles"): (
+        "part1_component_styles_new", _coverage_call("parsed_style_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("parsed_coding_style_view", "default"),
+    ),
+    ("src/codestream/quantization.rs", "new_component_quantizations"): (
+        "part1_component_quantizations_new", _coverage_call("parsed_quantization_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("quantization_view", r"&\s*default"),
+    ),
+    ("src/codestream/quantization.rs", "ComponentQuantizations::set"): (
+        "part1_set_component_quantization", r"\1",
+        _coverage_call("parsed_quantization_owner_view", _coverage_call("final", "self")),
+        _coverage_call("parsed_quantization_owner_view", _coverage_call("old", "self"))
+        + r"\s*,\s*component\s*,\s*" + _coverage_call("quantization_view", r"&\s*quantization"),
+    ),
+    ("src/codestream/quantization.rs", "Quantization::is_compatible_with"): (
+        "part1_quantization_compatible", r"\1", None,
+        _coverage_call("quantization_view", r"&\s*self") + r"\s*,\s*"
+        + _coverage_call("decomposition_selector_view", "coding_style"),
+    ),
+    ("src/codestream/coding_style.rs", "Parser::finish_main_component_styles"): (
+        "part1_finish_main_styles", _coverage_call("parsed_style_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("parsed_coding_style_view", "default") + r"\s*,\s*"
+        + _coverage_call("segment_slots_view", r"segments@") + r"\s*,\s*&\s*self\.limits\s*,\s*"
+        + _coverage_call("owned_extensions_view", "extensions"),
+    ),
+    ("src/codestream/quantization.rs", "Parser::finish_main_component_quantizations"): (
+        "part1_finish_main_quantizations", _coverage_call("parsed_quantization_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("quantization_view", r"&\s*default") + r"\s*,\s*"
+        + _coverage_call("component_style_owner_view", "styles") + r"\s*,\s*"
+        + _coverage_call("segment_slots_view", r"segments@"),
+    ),
+}
+
 _DECOMPOSITION_RESOLUTION_CONTRACTS = {
     ("src/codestream/extensions.rs", "Part2Extensions::decomposition_structure"): (
         "part1_dfs_lookup", _coverage_call("dfs_option_view", r"\1"), None,
@@ -2610,6 +2644,7 @@ def validate_normative_coverage(
                 or _COMPONENT_MARKER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECOMPOSITION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECOMPOSITION_RESOLUTION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _MAIN_COMPONENT_FINALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_DEPTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROFILE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))

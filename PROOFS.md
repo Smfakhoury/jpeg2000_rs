@@ -15,6 +15,33 @@ contracts and models. Exact run counts and source/tool hashes belong in fresh
 CI artifacts, not committed result snapshots. Independent model-to-standard
 review and official conformance testing remain separate.
 
+## Actual main component style/quantization finalization
+
+The main-header callsite executes the sole style and quantization finalizers in
+their owning modules. Total Result contracts start from raw defaults, counts and
+borrowed segment slots, not normalized owners or supplied parse outcomes. Style
+factory geometry checks precede COC payload access, all physical style slots are
+filled, positional overrides precede actual DFS/ADS resolution, and QCC uses the
+resolved per-component style before each compatibility check. Quantization
+storage retains its original logical Vec length and original factory bounds.
+Every field and unused tail is retained; internal owners are consumed on errors.
+Shared references without interior mutability frame parser/limits/work, segment
+bytes and extension/style owners. Existing exact getters and producer contracts
+are reused without widening their opaque visibility.
+
+The pinned `verus_spec` frontend cannot resolve associated static constructors
+(`cannot find function new`). Thin existing factory facades therefore call one
+shared executable free-function factory each; no alternate algorithm exists.
+The setter's explicit length check and indexed assignment preserve its former
+`get_mut` error and update order while exposing the complete frame to the solver.
+Native differential tests include raw factory/owner states, lazy payloads,
+precise first errors and real reader/SIZ/COD/COC/QCD/QCC/DFS/ADS joins.
+
+This is local staging dependent on the separately reviewed DFS/ADS producer
+source. Focused pristine-tool queries are partial qualification, not whole-root
+or archive acceptance. No source admission, standard conformance, SOT/layout
+completion, public decoding or publication claim follows from this boundary.
+
 ## Actual DFS/ADS decomposition resolution
 
 The decomposition resolver in `src/codestream/decomposition.rs` has a total
