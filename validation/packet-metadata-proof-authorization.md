@@ -21,13 +21,14 @@ Only these two regular files may be replaced, retaining mode `100644`:
 
 | Path | Required original Git blob | Authorized replacement Git blob |
 |---|---|---|
-| `validation/check-model-review-hold.py` | `bc96700322c051a7dc45c0e5a7ebdc56284025ed` | `85297c4fc897fec8b3d305f18166b2a40bfd8738` |
-| `validation/tests/test_model_review_hold.py` | `ae8df0e88f379c2effdc3d8568043ef8b68a7570` | `b2fe168b3cbfdf5e1d8c96aad8d895ac7444d897` |
+| `validation/check-model-review-hold.py` | `bc96700322c051a7dc45c0e5a7ebdc56284025ed` | `cafe1f2b3b05f57c6e3ad12706c0fe2d551cfb81` |
+| `validation/tests/test_model_review_hold.py` | `ae8df0e88f379c2effdc3d8568043ef8b68a7570` | `7abda2279ca3dc05a2357573f71d6f18057ab94d` |
 
 Replacement bytes are retained in maintenance candidate
-`f3239620550d359131a02bf61e3b8606b3876ddf`. The controller adds only the literal
-seven-path `packet-metadata-finalization` profile:
+`d29a0aa3d7ee21aa0e903ba360fa56f13187cda1`. The controller adds only the literal
+eight-path `packet-metadata-finalization` profile:
 
+- `src/error.rs`
 - `src/codestream/packet_headers.rs`
 - `src/codestream/proof_support.rs`
 - `src/codestream/tests.rs`
@@ -38,11 +39,11 @@ seven-path `packet-metadata-finalization` profile:
 
 This is not a directory, wildcard or generic Rust/model exception. The scope
 is the actual raw packet-length sum and length/packed-header finalizers, their
-source-derived result models and outcomes, native regressions, and strict
-inventory/contract mutation bindings. Existing native behavior and existing
-model meanings must remain unchanged. Models describe the actual executing
-implementation; their independent correspondence with selected standards
-editions remains unreviewed.
+source-derived result models and outcomes, the exact existing malformed-error
+constructor postcondition, native regressions, and strict inventory/contract
+mutation bindings. Existing native behavior and existing model meanings must
+remain unchanged. Models describe the actual executing implementation; their
+independent correspondence with selected standards editions remains unreviewed.
 
 All eight existing profiles, adopted records, registry schema, exact-blob and
 regular-file checks, trusted-main selection and rejection logic remain
@@ -60,8 +61,8 @@ push or administrative/status/settings bypass is authorized.
 ## Qualification and adoption
 
 Before review or adoption, independently accept the maintenance candidate's
-[full CI](https://github.com/microsoft/jpeg2000_rs/actions/runs/41081055146) and
-[repository/actual-archive Verus](https://github.com/microsoft/jpeg2000_rs/actions/runs/41081054826)
+[full CI](https://github.com/microsoft/jpeg2000_rs/actions/runs/41083204428) and
+[repository/actual-archive Verus](https://github.com/microsoft/jpeg2000_rs/actions/runs/41083204801)
 original artifacts, source identities and unchanged limits. Workflow-dispatch
 success is technical evidence, not a PR-policy pass or source approval.
 
