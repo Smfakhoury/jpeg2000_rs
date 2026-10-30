@@ -191,7 +191,7 @@ jobs:
               if len(matches) != 1:
                   raise ValueError(f"Exact public regression body missing or ambiguous: {name}")
               path = work / (name + ".rs")
-              path.write_text(matches[0] + "\n")
+              path.write_text("use vstd::prelude::*;\n" + matches[0] + "\n")
               command = [str(work / "verus-x86-linux/verus"), str(path), "--crate-type=lib", "--output-json"]
               started = time.monotonic()
               timed_out = False
@@ -221,6 +221,8 @@ jobs:
                   "case": name, "command": command, "expected_diagnostic": diagnostic,
                   "returncode": returncode, "timed_out": timed_out, "matched_upstream_expectation": matched,
                   "elapsed_seconds": time.monotonic() - started, "verification": verification,
+                  "upstream_body_sha256": hashlib.sha256(matches[0].encode()).hexdigest(),
+                  "standalone_prelude": "use vstd::prelude::*;",
                   "source_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                   "stdout_sha256": hashlib.sha256((work / (name + ".stdout")).read_bytes()).hexdigest(),
                   "stderr_sha256": hashlib.sha256((work / (name + ".stderr")).read_bytes()).hexdigest(),
