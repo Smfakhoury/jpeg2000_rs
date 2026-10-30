@@ -691,6 +691,14 @@ disagreements remain unqualified failures, never substituted expectations.
 No giant maximum-sized stream, unbounded stress, fuzz-limit replacement or
 cap tuning is authorized by this matrix.
 
+The raw parser retains per-tile component-style cache indices into the latest
+same-tile payload owners instead of duplicating their dense style arrays.
+Bounds, same-tile ownership, latest-owner selection and absence are maintained
+inductively from the real parser updates. This does not skip unselected headers,
+discard unused style fields or change inheritance, error order or resource
+charging. Native RSS and instrumented allocation profiles remain distinct;
+reduced cache storage is not a universal process-memory guarantee.
+
 The eight-component case uses independently encoded planar unsigned16 raw
 samples (`-mct 0`), with each original plane compared exactly against an
 independent PGX decode. Other positive payloads likewise require exact

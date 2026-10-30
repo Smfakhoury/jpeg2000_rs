@@ -158,6 +158,44 @@ numerical, resource and evidence gates remain unchanged.
 Run the controller regressions with
 `python3 -m unittest validation.tests.test_model_review_hold -v`.
 
+## Actual PLT/PPT tile packet admission
+
+The real `read_tile_part` PLT/PPT branches call extracted `Parser::parse_plt`
+and `Parser::parse_ppt` methods in their original order. Their source-derived
+models live in `specs/packet_input.rs`. Raw main source presence, not counts,
+lengths or fragment metadata, rejects conflicts before payload, index, fragment
+or budget errors. Both contracts cover arbitrary internal states without
+validity premises or prepared outcomes.
+
+PLT retains index-only payloads and every raw `u16` next-index value against
+the actual `u8` payload. The index commits before genuine packet-length
+validation and its reader/work charges. Seen commits only after validation
+succeeds; packet-count, encoded-byte and payload-byte additions then commit
+sequentially, retaining earlier fields and untouched tails on overflow.
+The contract binds the result, full reader and all five mutable scalars.
+PPT checks the raw main conflict before calling the existing actual packed
+fragment producer and retains its full result/reader/index/fragment/byte tuple.
+The executable checks, checked additions, slices and error constructors remain
+the original branch operations, with mutable scalar arguments dereferenced.
+Three ghost-only public `verus_spec` closure postconditions expose the original
+overflow error values to `ok_or_else`; their bodies are checked, not trusted.
+The local argument-count lint allowance keeps those raw frames explicit.
+
+Independent native references cover 46,080 PLT source/index contexts, 786,432
+raw-index/empty contexts, 131,072 two-byte varint contexts, 13,500 sequential
+charge/counter contexts, 55,296 PPT conflict/index/fragment contexts, 786,432
+PPT raw-index/empty contexts and 72 budget/overflow contexts. A real segment
+reader joins both producers to both final metadata methods, including full
+reader accounting and borrowed source identity. Strict named-contract mutation
+bindings reject changed initial arguments, final frames, vacuous preconditions,
+partial outcomes and missing actual callers.
+
+These are source-derived local contracts, not model-to-standard review,
+official conformance or document-use authority. The outer
+main/tile/file/parser/F2/F4/F8 proof joins remain separate. The two new models
+are nonrecursive; existing raw validation and packed-fragment models are reused
+without a proof-only decoder or new trust, verifier allowances, caps or pins.
+
 ## Actual packet metadata finalization
 
 The actual packet-length sum consumes raw source variants and the genuine
@@ -191,9 +229,10 @@ repository's `ensures returns` form, avoiding static-receiver inference without
 macro-internal markers or verification allowances.
 
 This source-derived development does not establish model-to-standard review,
-official conformance or document-use rights. Actual PLT production,
-`read_tile_part`, layout/public decoder and F2/F4/F8 composition remain separate;
-the executable caller reference is not a proof of those outer joins.
+official conformance or document-use rights. Actual PLT/PPT admission is
+described above; `read_tile_part`, layout/public decoder and F2/F4/F8 composition
+remain separate; the executable caller reference is not a proof of those outer
+joins.
 
 ## Actual packet-length admission and PLM group production
 
@@ -220,8 +259,8 @@ wide-arithmetic references cover 786,432 short-varint contexts, 12,000
 charge/overflow/limit contexts, 156,672 PLM index/truncation/frame contexts,
 262,144 raw length words and 1,080 PLM partial-commit contexts. A real segment
 reader joins three borrowed groups, including an empty group. These tests
-are not official conformance evidence. PLT production and outer
-parser/F2/F4/F8 joins remain separate.
+are not official conformance evidence. PLT/PPT admission has its own local
+contracts above; outer parser/F2/F4/F8 joins remain separate.
 
 ## Actual packed-header fragment and PPM-frame byte production
 
