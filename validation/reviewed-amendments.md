@@ -18,13 +18,47 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-177-crate-rename` | Proposed exact owner-requested Cargo package/import/tooling rename; no decoder/model/proof Rust change | #177; original CI40789824278 / Verus40789825409; fresh source checks required after adoption |
 | `proposal-180-decode-domains` | Proposed exact JBIG2-style decoder responsibility layout; executing contracts/body tokens and public API paths preserved | #180; original CI40978411701 / Verus40978411630; fresh source checks required after adoption |
 | `proposal-183-remaining-domains` | Proposed exact remaining responsibility modules; existing native contracts/bodies, shared types and original ghost semantics preserved | #183; original CI41024230240 / Verus41024233243; fresh source checks required after adoption |
+| `proposal-193-packet-metadata` | Proposed exact source-derived raw packet sum and metadata finalizers, result models and regressions; no source-integration or normative approval | #193; original CI41084399839 / Verus41084400145; fresh source checks required after adoption |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
 adoption and require fresh complete checks before requesting source review.
 Exact bytes, not a feature name or author's assertion, control eligibility.
-No record permits normative model/proof Rust or controller changes, combined
-amendments, or changed verifier/dependency pins and resource caps.
+No record permits unlisted model/proof Rust or controller changes, combined
+amendments, or changed verifier/dependency pins and resource caps. An explicitly
+adopted source-derived proof profile can admit only its exact listed additions;
+gate eligibility does not establish their correspondence with a standard.
+
+### Source-derived packet metadata finalization
+
+The proposed #193 record covers exactly the eight protected paths of
+`packet-metadata-finalization`. The owner authorized bounded model/proof
+development, and #192 separately adopted the exact controller deployment.
+Fresh actual-main CI41092926417 and Verus41092926296 accepted that deployment:
+315 Python tests without skips, 3,518/0 per source/archive replay and all normal
+gates. The #192 single-use forward permission is spent.
+
+Source `3eb0b67849d3f36428179bc03841ea552d08333d` passed original full
+CI41084399839 and repository/actual-archive Verus41084400145: 311 Python tests
+without skips, 664 library plus six example tests and three doctests on the
+MSRV, 3,519/0 per replay, 173 archive entries with 157 byte-bound Rust files,
+and all existing numerical, HT, consumer and 65-record resource gates.
+All 4,554 prior observed items remain identical and verified; six added pure
+definitions are four result models and two outcome projections. Nonrecursive
+definitions do not each have a standalone SMT job. Source-function coverage
+remains not measured.
+
+The actual raw sum and length/packed-header finalizers derive their complete
+results, original errors, input borrows and reader frames without prepared
+outcomes. Existing model meanings and executing bodies remain unchanged;
+the exact existing malformed-error constructor gains a proved postcondition.
+No internal macro allowance, trust, termination escape, second executable
+decoder, pin, tolerance or resource-policy change is included.
+
+This record does not complete PLT production, inherited configuration, outer
+parser/layout/public composition, independent normative review or official
+conformance. Require separate green record adoption, fresh source qualification,
+ready/green engineering review, guarded source merge and actual-main acceptance.
 
 ### Remaining runtime responsibility layout
 
@@ -1123,6 +1157,49 @@ not independent human/normative approval; no publication is authorized.
         "validation/tests/test_framework.py": {
           "after": "988bfe0a7c7b39dbac2be6e171786b102ca3cfe1",
           "before": "ac92b5cd896d92a9634b8def13d61b4cb47a0956"
+        }
+      }
+    },
+    {
+      "id": "proposal-193-packet-metadata",
+      "profile": "packet-metadata-finalization",
+      "source_pr": 193,
+      "source_head": "3eb0b67849d3f36428179bc03841ea552d08333d",
+      "ci_run": 41084399839,
+      "verus_run": 41084400145,
+      "rationale": "Complete source-derived raw packet sum and metadata finalizers with exact errors, reader/borrow frames, verified recursive sum, and strict binding regressions; no normative correspondence or source-integration approval.",
+      "paths": {
+        "specs/packet_input.rs": {
+          "before": "759a249a7b8075e8364dba02b2af5b7aceb3221d",
+          "after": "e2d981fc32cecdb456b9c9fe7f1dc6ff7f0e9947"
+        },
+        "src/codestream/packet_headers.rs": {
+          "before": "fb96f69f20bbe0e053c1b35860ec238f4c39816c",
+          "after": "e4e05266f7f0a9146c9df0e735ffb388560bfb4a"
+        },
+        "src/codestream/proof_support.rs": {
+          "before": "4a67d35f42dead523b857799582cab86e9bbb8d3",
+          "after": "909b70c57267fc8592e09ec1aaaef7d0ead9f59c"
+        },
+        "src/codestream/tests.rs": {
+          "before": "9317d9d81f43fb8d8d382e2a5733d8583789afc2",
+          "after": "76292936a11333af0afdd8570dfd3aeffda3f16a"
+        },
+        "src/error.rs": {
+          "before": "c901da343f5b8cebccca3e3808ae1aa5de5ccca0",
+          "after": "56ff1537775b82c7eab0f256f3704334d07796ee"
+        },
+        "validation/framework.py": {
+          "before": "c883a6694c1e06e9c604734bf8adf4ed36899e2a",
+          "after": "6f888c3afec04104ffea27d7c307a3a43afb497c"
+        },
+        "validation/normative-coverage.json": {
+          "before": "f474916d1a8c073f16e17e692459674ee770fd22",
+          "after": "ea8103d583f0b2dba9a64ac62bdfdc347f234c87"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "988bfe0a7c7b39dbac2be6e171786b102ca3cfe1",
+          "after": "e260337c210b0c1b7ab0d959b9fd6eebb630cea0"
         }
       }
     }
