@@ -66,7 +66,8 @@ Require the strict original-artifact audit, not a workflow conclusion alone.
 Native evidence binds all 1,636 original declaration projections, including
 four cfg-test helpers not observed by Verus. All 4,554 observed project
 identities must match with only the exact 850 source-derived free-function
-module moves; original canonical method and parent ghost identities remain.
+module moves and 27 same-token constant IDs (26 associated and one local).
+Original canonical method and parent ghost identities remain.
 This is not measured exhaustive source proof coverage or certification.
 
 The first source proof correctly rejected implicit private-trait visibility
