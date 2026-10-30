@@ -10,6 +10,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "validation/reviewed-amendments.md"
 AMENDMENT_PROFILES = {
+    "packet-metadata-finalization": frozenset({
+        "src/codestream/packet_headers.rs", "src/codestream/proof_support.rs",
+        "src/codestream/tests.rs", "specs/packet_input.rs",
+        "validation/framework.py", "validation/normative-coverage.json",
+        "validation/tests/test_framework.py",
+    }),
     "parser-test-extraction": frozenset({
         "src/codestream.rs", "src/codestream/tests.rs",
         "validation/expected-package-files.txt", "validation/normative-coverage.json",
