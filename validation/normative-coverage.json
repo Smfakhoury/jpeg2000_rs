@@ -4,6 +4,49 @@
   "scope": "Technical reference inventory; not exhaustive standards-clause coverage or a conformance claim.",
   "requirements": [
     {
+      "id": "part2-complete-native-component-header-application",
+      "topic": "Source-derived actual main-header component bit-depth and registration application extracted from the sole layout call sites, in the same order, and the actual physical uniform-depth query. Total Result/every ImageSize field, complete physical component array including unused tails, arbitrary logical counts and independent optional uniform flags; missing depth/registration precedes physical slot bounds, partial per-component commits precede later errors, first-component lookup and paired flag updates occur only after a completed nonempty depth application. Empty input preserves all fields; zero logical components with nonempty depths errors at zero, while nonempty registrations succeeds. Every raw u8 precision/bool signedness and u16 registration word is admitted without normalization. Shared immutable Parser receiver frames all input/position/limits/work/packet fields. Existing actual SIZ/CBD/CRG raw producers and exact malformed constructor are reused, with a real reader-to-application regression. This is bounded source correctness, not normative fidelity, whole layout/read_tile_part/public parser/F2/F4/final F8 completion or conformance certification.",
+      "implementation_refs": [
+        {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream/image_header.rs", "symbol": "Parser::apply_component_bit_depths"},
+        {"path": "src/codestream/image_header.rs", "symbol": "Parser::apply_component_registrations"},
+        {"path": "src/codestream/image_header.rs", "symbol": "component_depths_uniform"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_apply_component_depths"},
+        {"path": "specs/mod.rs", "symbol": "part1_apply_component_depths_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_apply_component_registrations"},
+        {"path": "specs/mod.rs", "symbol": "part1_apply_component_registrations_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_component_depths_uniform"},
+        {"path": "specs/mod.rs", "symbol": "part1_component_depths_uniform_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_image_size_component"},
+        {"path": "specs/mod.rs", "symbol": "Part1ParsedImageSize"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_siz"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_cbd"},
+        {"path": "specs/mod.rs", "symbol": "part1_parse_crg"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_malformed"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream/image_header.rs", "symbol": "component_depths_uniform"},
+        {"path": "src/codestream/image_header.rs", "symbol": "Parser::apply_component_bit_depths"},
+        {"path": "src/codestream/image_header.rs", "symbol": "Parser::apply_component_registrations"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream/proof_support.rs", "symbol": "parsed_image_size_view"},
+        {"path": "src/codestream/geometry.rs", "symbol": "ImageSize::component"},
+        {"path": "src/codestream/image_header.rs", "symbol": "Parser::parse_siz"},
+        {"path": "src/codestream/image_header.rs", "symbol": "Parser::parse_cbd"},
+        {"path": "src/codestream/image_header.rs", "symbol": "Parser::parse_crg"},
+        {"path": "src/codestream/reader.rs", "symbol": "Parser::malformed_here"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream/tests.rs", "symbol": "actual_component_uniformity_uses_physical_infos_and_every_raw_first_depth"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_component_depth_application_preserves_prefix_errors_flags_tails_and_reader"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_component_registration_preserves_native_bounds_order_and_every_raw_fraction"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_component_application_consumes_real_siz_cbd_crg_reader_producers"}
+      ]
+    },
+    {
       "id": "part1-complete-native-packet-metadata-finalization",
       "topic": "Actual raw packet-length sum and full packet-length/packed-header final Results. Sum keeps None zero, raw Plt rejection at zero, actual Plm varint errors at their source positions and checked total overflow at zero. PLT overrides main only after genuine input bounds/slice; absent selected lengths skip all range/sum/logical-size checks, while present data derives the actual declared sum and checked data-plus-packed byte comparison in native error order. Raw counts/encoded-byte/source fields are not normalized. PPT zero fragments preserves every arbitrary main field even invalid supplied ranges; nonzero derives the exact borrowed input header, PPT marker, logical start, length and fragment fields. Independent full-reader frames and actual PLM/PPT producer-to-finisher regression; no prepared payload/results, validity premises, new trust/caps/pins/budgets or termination bypass. Actual PLT producer and outer main/tile/file/parser/F2/F4/F8 composition remain separate.",
       "implementation_refs": [

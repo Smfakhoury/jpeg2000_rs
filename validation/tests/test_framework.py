@@ -1193,6 +1193,12 @@ class FrameworkTests(WorkingFiles):
             framework._PACKET_METADATA_FINALIZATION_CONTRACTS, 3,
         )
 
+    def test_inventory_binds_actual_depth_registration_prefix_frames_and_real_uniformity(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-component-header-application"},
+            framework._COMPONENT_HEADER_APPLICATION_CONTRACTS, 3,
+        )
+
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-transform-array-bytes"},
