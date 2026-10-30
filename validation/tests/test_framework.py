@@ -1076,6 +1076,12 @@ class FrameworkTests(WorkingFiles):
             framework._PACKET_LENGTH_ADMISSION_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_actual_plt_ppt_main_conflicts_and_full_sequential_counter_frames(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-tile-packet-admission"},
+            framework._TILE_PACKET_ADMISSION_CONTRACTS, 2,
+        )
+
     def test_inventory_tracks_relocated_parser_tests_and_rejects_stale_or_missing_bindings(self):
         self._assert_relocated_test_bindings(
             "part1-complete-native-packet-length-admission",
