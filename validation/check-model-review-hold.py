@@ -10,6 +10,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "validation/reviewed-amendments.md"
 AMENDMENT_PROFILES = {
+    "component-depth-registration": frozenset({
+        "src/codestream/layout.rs", "src/codestream/image_header.rs",
+        "src/codestream/tests.rs", "specs/mod.rs",
+        "validation/framework.py", "validation/normative-coverage.json",
+        "validation/tests/test_framework.py",
+    }),
     "tile-packet-admission": frozenset({
         "src/codestream/tiles.rs", "src/codestream/packet_headers.rs",
         "src/codestream/tests.rs", "specs/packet_input.rs",
