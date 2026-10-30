@@ -1192,14 +1192,17 @@ class FrameworkTests(WorkingFiles):
             coverage["requirements"][0]["contract_refs"] = [reference] if claimed_consumer else entry["contract_refs"][:1]
             source = framework.ROOT / reference["path"]
             original = source.read_text()
-            actual_callers = [caller for caller in entry["implementation_refs"] if caller != reference and (
-                re.search(rf"\b{re.escape(reference['symbol'].rsplit('::', 1)[-1])}\s*\(",
-                          (framework.ROOT / caller["path"]).read_text())
-                if caller["path"] != reference["path"] else framework._coverage_same_file_call(
-                    original, caller["symbol"], reference["symbol"].rsplit("::", 1)[-1],
-                )
+            def actual_call(caller):
+                caller_source = (framework.ROOT / caller["path"]).read_text()
+                callee = reference["symbol"].rsplit("::", 1)[-1]
+                if caller["path"] == reference["path"] or reference["path"].startswith("src/decode/"):
+                    return framework._coverage_same_file_call(caller_source, caller["symbol"], callee)
+                return re.search(rf"\b{re.escape(callee)}\s*\(", caller_source) is not None
 
-            )]
+            actual_callers = [
+                caller for caller in entry["implementation_refs"]
+                if caller != reference and actual_call(caller)
+            ]
             isolated = coverage["requirements"][0]
             if claimed_consumer:
                 self.assertTrue(actual_callers)
