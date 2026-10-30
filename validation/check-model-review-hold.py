@@ -53,6 +53,14 @@ AMENDMENT_PROFILES = {
         "validation/image-consumer-probe/tests/adapter.rs", "validation/proof-coverage.schema.json",
         "validation/tests/test_packaged_source.py", "validation/tests/test_proof_coverage.py",
     }),
+    "decode-domain-layout": frozenset({
+        "src/decode.rs", "src/decode/api.rs", "src/decode/arithmetic.rs",
+        "src/decode/code_blocks.rs", "src/decode/execution.rs", "src/decode/geometry.rs",
+        "src/decode/output.rs", "src/decode/planning.rs", "src/decode/proof_support.rs",
+        "src/decode/reconstruction.rs", "src/decode/selection.rs", "src/decode/tests.rs",
+        "validation/expected-package-files.txt", "validation/framework.py",
+        "validation/normative-coverage.json", "validation/tests/test_framework.py",
+    }),
 }
 
 
