@@ -760,32 +760,32 @@ def _reconstruction_contracts() -> dict[tuple[str, str], tuple[str, str, str | N
             args(view("decoded_image_view", r"\*\s*" + old("image")), stages, caps)),
     }
     decode_contracts = {
-        "apply_tile_multiple_component_transform": ("part2_mct_prepared_tiles", r"\1",
+        ("src/decode/reconstruction.rs", "apply_tile_multiple_component_transform"): ("part2_mct_prepared_tiles", r"\1",
             args(prepared_map_final, r"\*\s*" + final("work")), args(prepared_map_old, size,
                 view("codestream::multiple_component_transform_view", "transform"), work_old, caps)),
-        "finish_prepared_tile": ("part2_finish_prepared_tile", r"\1",
+        ("src/decode/execution.rs", "finish_prepared_tile"): ("part2_finish_prepared_tile", r"\1",
             args(prepared_final, r"\*\s*" + final("work")),
             args(prepared_old, size, view("tile_mct_option", "mct"), "standard", work_old, caps)),
-        "reconstruct_planned_tile": ("part2_reconstruct_planned_tile", r"\1",
+        ("src/decode/execution.rs", "reconstruct_planned_tile"): ("part2_reconstruct_planned_tile", r"\1",
             args(prepared_final, r"\*\s*" + final("work")),
             args(prepared_old, view("planned_components_view", "plan"), view("prepare_precincts_view", r"plan\.precincts@"),
                  r"first\.component_coding_styles", view("codestream::part2_kernel_registry", r"&\s*first\.part2_extensions"),
                  size, view("tile_part_mct_view", "first"), "standard", work_old, caps)),
-        "apply_prepared_component_transform": ("part1_prepared_standard_transform", r"\1", prepared_final,
+        ("src/decode/execution.rs", "apply_prepared_component_transform"): ("part1_prepared_standard_transform", r"\1", prepared_final,
             args(prepared_old, "transform")),
-        "assemble_prepared_components": ("part2_assemble_prepared", view("crate::image::decoded_image_outcome", r"\1"), None,
+        ("src/decode/reconstruction.rs", "assemble_prepared_components"): ("part2_assemble_prepared", view("crate::image::decoded_image_outcome", r"\1"), None,
             args(view("crate::image::assembly_size_view", "size"), view("prepared_components_view", "prepared@"), "selection", cap("decoded_bytes"))),
-        "decode_prepared_image": ("part1_decode_prepared_image", view("crate::image::decoded_image_outcome", r"\1"), None,
+        ("src/decode/code_blocks.rs", "decode_prepared_image"): ("part1_decode_prepared_image", view("crate::image::decoded_image_outcome", r"\1"), None,
             args(view("crate::image::assembly_size_view", "size"), view("crate::image::assembly_tiles_view", "tile_components@"),
                  "component_transform", cap("decoded_bytes"))),
-        "decode_progression_prepared_image": ("part1_progression_prepared_image", view("crate::image::decoded_image_outcome", r"\1"), None,
+        ("src/decode/reconstruction.rs", "decode_progression_prepared_image"): ("part1_progression_prepared_image", view("crate::image::decoded_image_outcome", r"\1"), None,
             args(view("crate::image::assembly_size_view", "size"),
                  *(view("progression_reconstruction_view", "plan") + rf"\s*\.{index}" for index in range(4)),
                  cap("decoded_bytes"))),
     }
     return {
         **{("src/image.rs", name): recipe for name, recipe in image_contracts.items()},
-        **{("src/decode.rs", name): recipe for name, recipe in decode_contracts.items()},
+        **decode_contracts,
         ("src/codestream.rs", "Part2Extensions::arbitrary_kernel"): (
             "part2_kernel_registry_lookup", view("crate::transform::arbitrary_kernel_option", r"\1"), None,
             args(view("part2_kernel_registry", "self"), "index")),
@@ -795,7 +795,7 @@ def _reconstruction_contracts() -> dict[tuple[str, str], tuple[str, str, str | N
 _RECONSTRUCTION_CONTRACTS = _reconstruction_contracts()
 _RECONSTRUCTION_PROVED_BOUNDARY_APIS = frozenset({
     ("src/image.rs", "apply_multiple_component_transform"),
-    ("src/decode.rs", "decode_progression_prepared_image"),
+    ("src/decode/reconstruction.rs", "decode_progression_prepared_image"),
 })
 
 _LAYER_STATE_CONTRACTS = {
@@ -1316,11 +1316,11 @@ _CODESTREAM_READER_CONTRACTS = {
 }
 
 _TYPED_LAYOUT_CONTRACTS = {
-    ("src/decode.rs", "typed_layout"): (
+    ("src/decode/api.rs", "typed_layout"): (
         "part2_typed_layout", _coverage_call("crate::image::decoded_typed_image_outcome", r"\1"), None,
         r"layout\s*,\s*" + _coverage_call("crate::image::decoded_image_view", "decoded") + r"\s*,\s*limits",
     ),
-    ("src/decode.rs", "decode_typed_layout"): (
+    ("src/decode/api.rs", "decode_typed_layout"): (
         "part2_decode_typed_layout", _coverage_call("crate::image::decoded_typed_image_outcome", r"\1"), None,
         r"input_bytes\s*,\s*layout\s*,\s*limits\s*,\s*requested",
     ),
@@ -1426,18 +1426,18 @@ _NONLINEAR_REGIONS_CONTRACTS = {
         "part2_nonlinear_transform_for", _coverage_call("nonlinear_transform_option_view", r"\1"), None,
         _coverage_call("owned_extensions_view", "self") + r"\.nonlinear\s*,\s*component",
     ),
-    ("src/decode.rs", "nonlinear_component_extent"): (
+    ("src/decode/api.rs", "nonlinear_component_extent"): (
         "part2_nonlinear_component_extent", r"\1", None,
         r"size\s*,\s*" + _coverage_call("crate::image::typed_image_value_view", r"\*\s*image") + r"\s*,\s*component",
     ),
-    ("src/decode.rs", "collect_nonlinear_regions"): (
+    ("src/decode/api.rs", "collect_nonlinear_regions"): (
         "part2_collect_nonlinear_regions", _coverage_call("nonlinear_regions_outcome", r"\1"), None,
         r"layout\s*,\s*" + _coverage_call("crate::image::typed_image_value_view", r"\*\s*image"),
     ),
 }
 
 _OUTPUT_SHAPE_CONTRACTS = {
-    ("src/decode.rs", "validate_part1_output_shape"): (
+    ("src/decode/api.rs", "validate_part1_output_shape"): (
         "part1_validate_typed_output_shape", r"\1", None,
         r"input_bytes\s*,\s*layout\.tile_parts\.len\s*\(\s*\)\s*,\s*layout\.info\.image_size\.components\s*,\s*"
         + _coverage_call("crate::image::typed_image_value_view", r"\*\s*image"),
@@ -1445,11 +1445,11 @@ _OUTPUT_SHAPE_CONTRACTS = {
 }
 
 _LAYOUT_DECODING_CONTRACTS = {
-    ("src/decode.rs", "decode_layout"): (
+    ("src/decode/execution.rs", "decode_layout"): (
         "part2_decode_layout", _coverage_call("crate::image::decoded_image_outcome", r"\1"), None,
         r"layout\s*,\s*limits",
     ),
-    ("src/decode.rs", "decode_layout_selected"): (
+    ("src/decode/execution.rs", "decode_layout_selected"): (
         "part2_decode_layout_selected", _coverage_call("crate::image::decoded_image_outcome", r"\1"), None,
         r"layout\s*,\s*requested\s*,\s*limits",
     ),
@@ -1460,14 +1460,14 @@ _TILE_COLLECTION_CONTRACTS = {
         "part2_tile_part_copy", _coverage_call("tile_part_owned_view", r"&\s*\1"), None,
         _coverage_call("tile_part_owned_view", "self"),
     ),
-    ("src/decode.rs", "collect_tile_parts"): (
+    ("src/decode/execution.rs", "collect_tile_parts"): (
         "part2_collect_tile_parts", _coverage_call("collected_tile_parts_outcome", r"\1"), None,
         _coverage_call("codestream::tile_parts_owned_view", "parts@") + r"\s*,\s*tile",
     ),
 }
 
 _RAW_TILE_DECODING_CONTRACTS = {
-    ("src/decode.rs", "decode_tile_parts_at"): (
+    ("src/decode/execution.rs", "decode_tile_parts_at"): (
         "part2_decode_tile_parts_at", _coverage_call("decoded_layout_tile_outcome", r"\1"), None,
         r"size\s*,\s*tile\s*,\s*parts@\s*,\s*" + _coverage_call("codestream::codestream_profile_capabilities", "profile")
         + r"\s*,\s*discard\s*,\s*limits\s*,\s*" + _coverage_call("prepared_components_view", "prepared@")
@@ -1526,37 +1526,37 @@ _TILE_METADATA_CONTRACTS = {
         _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1\s*,\s*0",
     ),
-    ("src/decode.rs", "optional_multiple_component_transforms_equal"): (
+    ("src/decode/execution.rs", "optional_multiple_component_transforms_equal"): (
         "part2_optional_mct_identity", r"\1", None,
         _coverage_call("tile_mct_option", "left") + r"\s*,\s*" + _coverage_call("tile_mct_option", "right"),
     ),
-    ("src/decode.rs", "wavelet_transforms_equal"): (
+    ("src/decode/arithmetic.rs", "wavelet_transforms_equal"): (
         "part2_decode_wavelet_agreement", r"\1", None, r"left\s*,\s*right",
     ),
-    ("src/decode.rs", "prepare_tile_component_resolutions"): (
+    ("src/decode/execution.rs", "prepare_tile_component_resolutions"): (
         "part2_tile_component_resolutions", _coverage_call("resolution_counts_outcome_for_tile", r"\1"), None,
         r"styles\s*,\s*main\s*,\s*components\s*,\s*discard",
     ),
-    ("src/decode.rs", "prepare_tile_decode_metadata"): (
+    ("src/decode/execution.rs", "prepare_tile_decode_metadata"): (
         "part2_tile_decode_metadata", _coverage_call("tile_decode_metadata_outcome", r"\1"), None,
         r"parts@\s*,\s*components\s*,\s*discard",
     ),
 }
 
 _LAYOUT_ACCOUNTING_CONTRACTS = {
-    ("src/decode.rs", "account_planned_tile"): (
+    ("src/decode/execution.rs", "account_planned_tile"): (
         "part2_planned_tile_accounting", r"\1", None,
         _coverage_call("progression_plan_view", "plan") + r"\s*,\s*"
         + _coverage_call("crate::packet::packet_selection_view", "maximum_resolution_counts") + r"\s*,\s*initial\s*,\s*limits",
     ),
-    ("src/decode.rs", "count_selected_component_blocks"): (
+    ("src/decode/execution.rs", "count_selected_component_blocks"): (
         "part2_selected_component_blocks", r"\1", None,
         _coverage_call("prepare_plan_view", "plan") + r"\s*,\s*0\s*,\s*total",
     ),
 }
 
 _PACKET_RECONSTRUCTION_CONTRACTS = {
-    ("src/decode.rs", "decode_planned_tile_components"): (
+    ("src/decode/execution.rs", "decode_planned_tile_components"): (
         "part2_decode_planned_tile_components", _coverage_call("decoded_tile_components_outcome", r"\1"), None,
         _coverage_call("progression_plan_view", r"&\s*plan")
         + r"\s*,\s*tile_parts@\s*,\s*first\s*,\s*size\s*,\s*standard\s*,\s*"
@@ -1566,18 +1566,18 @@ _PACKET_RECONSTRUCTION_CONTRACTS = {
 }
 
 _COMPONENT_TILE_PLANNING_CONTRACTS = {
-    ("src/decode.rs", "plan_tile_component"): (
+    ("src/decode/planning.rs", "plan_tile_component"): (
         "part2_planned_component", _coverage_call("planned_component_outcome", r"\1"), None,
         r"size\s*,\s*coding_styles\s*,\s*quantizations\s*,\s*roi_shifts\s*,\s*component\s*,\s*selection\s*,\s*policy\s*,\s*"
         + _coverage_call("planning_precincts_view", r"precincts@") + r"\s*,\s*planned_code_blocks\s*,\s*limits",
     ),
-    ("src/decode.rs", "plan_progression_tile_at_selected"): (
+    ("src/decode/planning.rs", "plan_progression_tile_at_selected"): (
         "part2_progression_tile_plan", _coverage_call("progression_plan_outcome", r"\1"), None,
         r"size\s*,\s*coding_style\s*,\s*coding_styles\s*,\s*quantizations\s*,\s*roi_shifts\s*,\s*"
         r"\(\s*tile_index\s*,\s*discard_levels\s*\)\s*,\s*"
         r"\(\s*allow_multiple_ht_sets\s*,\s*ht_magnitude_bound\s*,\s*force_high_throughput\s*\)\s*,\s*limits",
     ),
-    ("src/decode.rs", "plan_progression_tile_at_with_component_overrides"): (
+    ("src/decode/planning.rs", "plan_progression_tile_at_with_component_overrides"): (
         "part2_progression_tile_plan", _coverage_call("progression_plan_outcome", r"\1"), None,
         r"size\s*,\s*coding_style\s*,\s*coding_styles\s*,\s*quantizations\s*,\s*roi_shifts\s*,\s*"
         r"\(\s*tile_index\s*,\s*0\s*\)\s*,\s*\(\s*false\s*,\s*74\s*,\s*false\s*\)\s*,\s*limits",
@@ -1585,18 +1585,18 @@ _COMPONENT_TILE_PLANNING_CONTRACTS = {
 }
 
 _RESOLUTION_PLANNING_CONTRACTS = {
-    ("src/decode.rs", "prepare_resolution_plan_metadata"): (
+    ("src/decode/planning.rs", "prepare_resolution_plan_metadata"): (
         "part2_resolution_plan_metadata", _coverage_call("resolution_plan_metadata_outcome", r"\1"), None,
         r"size\s*,\s*style\s*,\s*component\s*,\s*selection\s*,\s*component_origin",
     ),
-    ("src/decode.rs", "derive_planned_precinct_origin"): (
+    ("src/decode/planning.rs", "derive_planned_precinct_origin"): (
         "part2_planned_precinct_origin", r"\1", None,
         r"first\s*,\s*across\s*,\s*precinct\s*,\s*band_size",
     ),
 }
 
 _PRECINCT_PLANNING_CONTRACTS = {
-    ("src/decode.rs", "plan_packet_precinct"): (
+    ("src/decode/planning.rs", "plan_packet_precinct"): (
         "part2_planned_precinct", _coverage_call("planned_precinct_outcome", r"\1"), None,
         r"band\s*,\s*block_size\s*,\s*subbands@\s*,\s*range\s*,\s*style\s*,\s*policy\s*,\s*location\s*,\s*"
         r"placements@\s*,\s*planned_code_blocks\s*,\s*selected\s*,\s*limits",
@@ -1604,11 +1604,11 @@ _PRECINCT_PLANNING_CONTRACTS = {
 }
 
 _SUBBAND_EXECUTION_CONTRACTS = {
-    ("src/decode.rs", "derive_planned_subband_lattice"): (
+    ("src/decode/planning.rs", "derive_planned_subband_lattice"): (
         "part2_planned_subband_lattice", _coverage_call("planned_subband_lattice_outcome", r"\1"), None,
         r"band\s*,\s*block_size\s*,\s*subband",
     ),
-    ("src/decode.rs", "plan_subband_execution"): (
+    ("src/decode/planning.rs", "plan_subband_execution"): (
         "part2_planned_subband_execution", _coverage_call("planned_subband_execution_outcome", r"\1"), None,
         r"band\s*,\s*block_size\s*,\s*subband\s*,\s*style\s*,\s*policy\s*,\s*indices\s*,\s*"
         r"placements@\s*,\s*planned_code_blocks\s*,\s*selected\s*,\s*limits",
@@ -1616,12 +1616,12 @@ _SUBBAND_EXECUTION_CONTRACTS = {
 }
 
 _CODEBLOCK_VECTOR_CONTRACTS = {
-    ("src/decode.rs", "append_planned_codeblock"): (
+    ("src/decode/planning.rs", "append_planned_codeblock"): (
         "part2_planned_codeblock_cell", _coverage_call("planned_codeblocks_outcome", r"\1"), None,
         r"grid\s*,\s*clip\s*,\s*block\s*,\s*subband\s*,\s*style\s*,\s*policy\s*,\s*indices\s*,\s*"
         + _coverage_call("planned_codeblocks_view", r"&\s*state"),
     ),
-    ("src/decode.rs", "plan_codeblock_decoders"): (
+    ("src/decode/planning.rs", "plan_codeblock_decoders"): (
         "part2_planned_codeblocks", _coverage_call("planned_codeblocks_outcome", r"\1"), None,
         r"grid\s*,\s*clip\s*,\s*blocks\s*,\s*subband\s*,\s*style\s*,\s*policy\s*,\s*indices\s*,\s*"
         r"placements@\s*,\s*planned_code_blocks\s*,\s*selected\s*,\s*limits",
@@ -1636,7 +1636,7 @@ _COMPONENT_PLAN_METADATA_CONTRACTS = {
         "part2_roi_shift", r"\1", None,
         _coverage_call("roi_shifts_view", "self") + r"\s*,\s*component",
     ),
-    ("src/decode.rs", "prepare_component_plan_metadata"): (
+    ("src/decode/planning.rs", "prepare_component_plan_metadata"): (
         "part2_component_plan_metadata", _coverage_call("component_plan_metadata_outcome", r"\1"), None,
         r"size\s*,\s*coding_styles\s*,\s*quantizations\s*,\s*roi_shifts\s*,\s*"
         r"component\s*,\s*selection\s*,\s*force_high_throughput",
@@ -1657,7 +1657,7 @@ _PRECINCT_INITIALIZATION_CONTRACTS = {
 }
 
 _CODEBLOCK_PLANNING_CONTRACTS = {
-    ("src/decode.rs", "derive_planned_codeblock_geometry"): (
+    ("src/decode/planning.rs", "derive_planned_codeblock_geometry"): (
         "part2_planned_codeblock_geometry", r"\1", None, r"grid\s*,\s*clip\s*,\s*block",
     ),
     ("src/tier1.rs", "tier1_configured_decoder"): (
@@ -1694,23 +1694,23 @@ _SUBBAND_VECTOR_CONTRACTS = {
         _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1",
     ),
-    ("src/decode.rs", "derive_subband_resolution"): (
+    ("src/decode/geometry.rs", "derive_subband_resolution"): (
         "part2_subband_resolution", _coverage_call("subbands_outcome", r"\1"), None,
         r"coding_style\s*,\s*component_bounds\s*,\s*component_depth\s*,\s*"
         + _coverage_call("codestream::quantization_view", "quantization")
         + r"\s*,\s*resolution\s*,\s*before\s*@",
     ),
-    ("src/decode.rs", "derive_component_subbands_for"): (
+    ("src/decode/geometry.rs", "derive_component_subbands_for"): (
         "part2_component_subbands", _coverage_call("subbands_outcome", r"\1"), None,
         r"size\s*,\s*coding_style\s*,\s*quantization\s*,\s*component\s*,\s*tile_index\s*,\s*roi_shift",
     ),
-    ("src/decode.rs", "derive_component_subbands"): (
+    ("src/decode/geometry.rs", "derive_component_subbands"): (
         "part2_component_subbands", _coverage_call("subbands_outcome", r"\1"), None,
         r"size\s*,\s*coding_style\s*,\s*quantization\s*,\s*component\s*,\s*None\s*,\s*0",
     ),
 }
 _SUBBAND_VECTOR_PROVED_BOUNDARY_APIS = frozenset({
-    ("src/decode.rs", "derive_component_subbands"),
+    ("src/decode/geometry.rs", "derive_component_subbands"),
 })
 
 _SUBBAND_ADMISSION_CONTRACTS = {
@@ -1718,15 +1718,15 @@ _SUBBAND_ADMISSION_CONTRACTS = {
         "part2_quantization_lookup", r"\1", None,
         _coverage_call("quantization_view", "self") + r"\s*,\s*index",
     ),
-    ("src/decode.rs", "quantization_step_at_index"): (
+    ("src/decode/geometry.rs", "quantization_step_at_index"): (
         "part2_quantization_step_at_index", r"\1", None,
         _coverage_call("codestream::quantization_view", "quantization") + r"\s*,\s*resolution\s*,\s*index",
     ),
-    ("src/decode.rs", "quantization_step_for_subband"): (
+    ("src/decode/geometry.rs", "quantization_step_for_subband"): (
         "part2_quantization_for_subband", r"\1", None,
         _coverage_call("codestream::quantization_view", "quantization") + r"\s*,\s*resolution\s*,\s*orientation",
     ),
-    ("src/decode.rs", "make_subband_geometry"): (
+    ("src/decode/geometry.rs", "make_subband_geometry"): (
         "part2_make_subband_geometry", r"\1", None,
         r"resolution\s*,\s*orientation\s*,\s*bounds\s*,\s*resolution_dimensions\s*,\s*"
         r"low_pass_first\s*,\s*component_depth\s*,\s*"
@@ -1734,16 +1734,16 @@ _SUBBAND_ADMISSION_CONTRACTS = {
     ),
 }
 _SUBBAND_ADMISSION_PROVED_BOUNDARY_APIS = frozenset({
-    ("src/decode.rs", "quantization_step_for_subband"),
+    ("src/decode/geometry.rs", "quantization_step_for_subband"),
 })
 
 _PACKET_GRID_PRODUCER_CONTRACTS = {
-    ("src/decode.rs", "prepare_component_resolution_counts"): (
+    ("src/decode/geometry.rs", "prepare_component_resolution_counts"): (
         "part2_component_resolution_counts",
         _coverage_call("resolution_counts_outcome", r"\1"), None,
         r"components\s*,\s*coding_styles\s*,\s*discard_levels",
     ),
-    ("src/decode.rs", "derive_packet_grid_for_components"): (
+    ("src/decode/geometry.rs", "derive_packet_grid_for_components"): (
         "part2_packet_grid_from_components",
         _coverage_call("crate::packet::packet_grid_outcome", r"\1"), None,
         r"size\s*,\s*coding_styles\s*,\s*layers\s*,\s*limits\s*,\s*tile_index\s*,\s*discard_levels",
@@ -1759,19 +1759,19 @@ def _resolution_geometry_contracts() -> dict[tuple[str, str], tuple[str, str, st
     ))
     geometry = size + r"\s*,\s*" + _coverage_call("resolution_geometry_style", "coding_style")
     return {
-        ("src/decode.rs", "derive_component_resolution_geometry"): (
+        ("src/decode/geometry.rs", "derive_component_resolution_geometry"): (
             "part2_resolution_geometry", r"\1", None,
             geometry + r"\s*,\s*component\s*,\s*resolution\s*,\s*None",
         ),
-        ("src/decode.rs", "derive_component_resolution_geometry_for"): (
+        ("src/decode/geometry.rs", "derive_component_resolution_geometry_for"): (
             "part2_resolution_geometry", r"\1", None,
             geometry + r"\s*,\s*component\s*,\s*resolution\s*,\s*tile_index",
         ),
-        ("src/decode.rs", "component_coordinate_bounds"): (
+        ("src/decode/geometry.rs", "component_coordinate_bounds"): (
             "part2_component_coordinate_bounds", r"\1", None,
             size + r"\s*,\s*component\s*,\s*tile_index",
         ),
-        ("src/decode.rs", "floor_div_u32"): (
+        ("src/decode/arithmetic.rs", "floor_div_u32"): (
             "part2_selection_floor", r"\1", None, r"value\s*,\s*divisor",
         ),
     }
@@ -1779,7 +1779,7 @@ def _resolution_geometry_contracts() -> dict[tuple[str, str], tuple[str, str, st
 
 _RESOLUTION_GEOMETRY_CONTRACTS = _resolution_geometry_contracts()
 _RESOLUTION_GEOMETRY_PROVED_BOUNDARY_APIS = frozenset({
-    ("src/decode.rs", "derive_component_resolution_geometry"),
+    ("src/decode/geometry.rs", "derive_component_resolution_geometry"),
 })
 
 _RESOLUTION_STYLE_CONTRACTS = {
@@ -1805,7 +1805,7 @@ _TILE_COMPONENT_GEOMETRY_CONTRACTS = {
         "part2_registered_component_ceil", r"\1", None,
         r"value\s*,\s*divisor\s*,\s*registration",
     ),
-    ("src/decode.rs", "registered_ceil_div_u32"): (
+    ("src/decode/arithmetic.rs", "registered_ceil_div_u32"): (
         "part2_registered_decode_ceil", r"\1", None,
         r"value\s*,\s*divisor\s*,\s*registration",
     ),
@@ -1934,7 +1934,7 @@ _LAYER_EXTERNAL_ALPHA_CONTRACTS = {
 
 
 _DECODER_ADMISSION_CONTRACTS = {
-    ("src/decode.rs", "validate_part2_coding_style"): (
+    ("src/decode/execution.rs", "validate_part2_coding_style"): (
         "part2_validate_execution_style", r"\1", None,
         r"style\s*,\s*" + _coverage_call("codestream::part2_execution_registry", "extensions")
         + r"\s*,\s*" + _coverage_call("codestream::part2_kernel_registry", "extensions"),
@@ -1946,20 +1946,20 @@ _DECODER_ADMISSION_CONTRACTS = {
 }
 
 _DECODER_LAYOUT_CONTRACTS = {
-    ("src/decode.rs", "validate_part2_component"): (
+    ("src/decode/execution.rs", "validate_part2_component"): (
         "part2_validate_execution_component", r"\1", None,
         _coverage_call("execution_header_view", r"\*\s*styles", "extensions") + r"\s*,\s*component",
     ),
-    ("src/decode.rs", "validate_part2_components"): (
+    ("src/decode/execution.rs", "validate_part2_components"): (
         "part2_execution_components_prefix", r"\1", None,
         _coverage_call("execution_header_view", r"\*\s*styles", "extensions") + r"\s*,\s*count\s+as\s+nat",
     ),
-    ("src/decode.rs", "validate_part2_tile_execution"): (
+    ("src/decode/execution.rs", "validate_part2_tile_execution"): (
         "part2_validate_execution_tile", r"\1", None,
         _coverage_call("execution_header_view", r"part\.component_coding_styles", r"&\s*part\.part2_extensions")
         + r"\s*,\s*" + _coverage_call("codestream::part2_component_depths", "main") + r"\s*,\s*count",
     ),
-    ("src/decode.rs", "validate_part2_execution"): (
+    ("src/decode/execution.rs", "validate_part2_execution"): (
         "part2_validate_execution_layout", r"\1", None,
         r"layout\.info\.image_size\.components\s*,\s*"
         + _coverage_call("execution_header_view", r"layout\.info\.component_coding_styles", r"&\s*layout\.info\.part2_extensions")
@@ -1995,7 +1995,11 @@ def validate_normative_coverage(
             )
         return headers[key]
 
-    def cross_file_call(path: Path, callee: str) -> bool:
+    def cross_file_call(
+        path: Path, caller: str, callee: str, *, require_caller_body: bool,
+    ) -> bool:
+        if require_caller_body:
+            return same_file_call(path, caller, callee)
         text = source_text(path)
         if re.fullmatch(r"\w+", callee) is None:
             return re.search(rf"\b{re.escape(callee)}\s*\(", text) is not None
@@ -2141,17 +2145,17 @@ def validate_normative_coverage(
                 ("src/color.rs", "convert_alpha_channel"): "converted_channel_result",
                 ("src/color.rs", "crop"): "converted_image_result",
                 ("src/color.rs", "crop_plane"): "normalized_plane_result",
-                ("src/decode.rs", "convert_selected_color"): "crate::color::converted_image_result",
-                ("src/decode.rs", "prepare_tile_component"): "prepared_component_outcome",
-                ("src/decode.rs", "initialize_prepare_working"): "prepare_working_outcome",
-                ("src/decode.rs", "collect_prepare_coefficients"): "crate::transform::quantized_coefficients_outcome",
-                ("src/decode.rs", "collect_prepare_cell"): "prepare_cell_outcome",
-                ("src/decode.rs", "copy_prepare_plane"): "prepare_fold_outcome",
-                ("src/decode.rs", "finish_prepared_component"): "prepared_component_outcome",
-                ("src/decode.rs", "as_tile_component"): "crate::image::assembly_tile_view",
-                ("src/decode.rs", "copy_typed_component"): "crate::image::typed_component_output",
-                ("src/decode.rs", "map_palette_component"): "crate::image::typed_component_output",
-                ("src/decode.rs", "apply_jp2_output"): "crate::image::decoded_typed_image_outcome",
+                ("src/decode/output.rs", "convert_selected_color"): "crate::color::converted_image_result",
+                ("src/decode/reconstruction.rs", "prepare_tile_component"): "prepared_component_outcome",
+                ("src/decode/reconstruction.rs", "initialize_prepare_working"): "prepare_working_outcome",
+                ("src/decode/reconstruction.rs", "collect_prepare_coefficients"): "crate::transform::quantized_coefficients_outcome",
+                ("src/decode/reconstruction.rs", "collect_prepare_cell"): "prepare_cell_outcome",
+                ("src/decode/reconstruction.rs", "copy_prepare_plane"): "prepare_fold_outcome",
+                ("src/decode/reconstruction.rs", "finish_prepared_component"): "prepared_component_outcome",
+                ("src/decode/reconstruction.rs", "as_tile_component"): "crate::image::assembly_tile_view",
+                ("src/decode/output.rs", "copy_typed_component"): "crate::image::typed_component_output",
+                ("src/decode/output.rs", "map_palette_component"): "crate::image::typed_component_output",
+                ("src/decode/output.rs", "apply_jp2_output"): "crate::image::decoded_typed_image_outcome",
                 ("src/image.rs", "typed_component_from_parts"): "typed_component_value_view",
                 ("src/image.rs", "typed_image_from_components_with_origin"): "decoded_typed_image_outcome",
                 ("src/image.rs", "assemble_image"): "decoded_image_outcome",
@@ -2218,19 +2222,19 @@ def validate_normative_coverage(
                 ("src/tier1.rs", "scanned"): "tier1_statistics_increment",
                 ("src/tier1.rs", "decoded_symbols"): "tier1_statistics_increment",
                 ("src/tier1.rs", "became_significant"): "tier1_statistics_increment",
-                ("src/decode.rs", "convert_selected_color"): "color_convert_selected",
-                ("src/decode.rs", "prepare_tile_component"): "part1_prepare_standard_component",
-                ("src/decode.rs", "initialize_prepare_working"): "part1_prepare_init_prefix",
-                ("src/decode.rs", "collect_prepare_coefficients"): "part1_prepare_collect_coefficients",
-                ("src/decode.rs", "collect_prepare_cell"): "part1_prepare_signed_cell",
-                ("src/decode.rs", "copy_prepare_plane"): "part1_prepare_copy_plane",
-                ("src/decode.rs", "finish_prepared_component"): "part1_prepare_finish",
-                ("src/decode.rs", "as_tile_component"): "part1_prepared_as_tile",
-                ("src/decode.rs", "copy_typed_component"): "part2_typed_component_copy",
-                ("src/decode.rs", "map_palette_component"): "part2_palette_component",
-                ("src/decode.rs", "apply_jp2_output"): "part2_apply_output_header",
-                ("src/decode.rs", "palette_modulus"): "part2_palette_modulus",
-                ("src/decode.rs", "invalid_jp2_output"): "part2_color_input_error",
+                ("src/decode/output.rs", "convert_selected_color"): "color_convert_selected",
+                ("src/decode/reconstruction.rs", "prepare_tile_component"): "part1_prepare_standard_component",
+                ("src/decode/reconstruction.rs", "initialize_prepare_working"): "part1_prepare_init_prefix",
+                ("src/decode/reconstruction.rs", "collect_prepare_coefficients"): "part1_prepare_collect_coefficients",
+                ("src/decode/reconstruction.rs", "collect_prepare_cell"): "part1_prepare_signed_cell",
+                ("src/decode/reconstruction.rs", "copy_prepare_plane"): "part1_prepare_copy_plane",
+                ("src/decode/reconstruction.rs", "finish_prepared_component"): "part1_prepare_finish",
+                ("src/decode/reconstruction.rs", "as_tile_component"): "part1_prepared_as_tile",
+                ("src/decode/output.rs", "copy_typed_component"): "part2_typed_component_copy",
+                ("src/decode/output.rs", "map_palette_component"): "part2_palette_component",
+                ("src/decode/output.rs", "apply_jp2_output"): "part2_apply_output_header",
+                ("src/decode/output.rs", "palette_modulus"): "part2_palette_modulus",
+                ("src/decode/output.rs", "invalid_jp2_output"): "part2_color_input_error",
                 ("src/image.rs", "typed_component_from_parts"): "part2_typed_component_from_parts",
                 ("src/image.rs", "typed_image_from_components_with_origin"): "part2_typed_image_from_parts",
                 ("src/color.rs", "crop"): "color_crop_image",
@@ -2318,17 +2322,17 @@ def validate_normative_coverage(
                 ("src/transform.rs", "round_shift_i128"): (
                     None, "part2_atk_round_shift", r"value\s*,\s*shift",
                 ),
-                ("src/decode.rs", "prepare_tile_component_with_kernel"): (
+                ("src/decode/reconstruction.rs", "prepare_tile_component_with_kernel"): (
                     "prepared_component_outcome", "part2_prepare_component",
                     r"prepare_plan_view\s*\(\s*plan\s*\)\s*,\s*prepare_precincts_view\s*\(\s*precincts@\s*\)\s*,\s*"
                     r"prepare_style_view\s*\(\s*coding_style\s*\)\s*,\s*" + kernel_option + r"\s*,\s*" + decoded_cap,
                 ),
-                ("src/decode.rs", "reconstruct_prepare_working"): (
+                ("src/decode/reconstruction.rs", "reconstruct_prepare_working"): (
                     "prepare_fold_outcome", "part2_prepare_reconstruct",
                     r"working_bands_view\s*\(\s*working@\s*\)\s*,\s*prepare_plan_view\s*\(\s*plan\s*\)\s*,\s*"
                     r"prepare_style_view\s*\(\s*coding_style\s*\)\s*,\s*reversible\s*,\s*" + kernel_option + r"\s*,\s*" + decoded_cap,
                 ),
-                ("src/decode.rs", "reconstruct_prepare_resolution"): (
+                ("src/decode/reconstruction.rs", "reconstruct_prepare_resolution"): (
                     "prepare_fold_outcome", "part2_prepare_resolution",
                     r"before@\s*,\s*working_bands_view\s*\(\s*working@\s*\)\s*,\s*plan\.subbands@\s*,\s*"
                     r"direction\s*,\s*reversible\s*,\s*" + kernel_option + r"\s*,\s*" + decoded_cap,
@@ -2414,60 +2418,60 @@ def validate_normative_coverage(
                     "decode_selection_value_view", "part2_selection_from_parts",
                     r"tile_selection_view\s*\(\s*&\s*tiles\s*\)\s*,\s*region\s*,\s*discard_levels",
                 ),
-                ("src/decode.rs", "ceil_div_u32"): (None, "part2_selection_ceil", r"value\s*,\s*divisor"),
-                ("src/decode.rs", "tile_list_contains"): (None, "part2_tile_list_contains", r"tiles@\s*,\s*tile"),
-                ("src/decode.rs", "selection_rectangle_area"): (None, "part2_rectangle_area", r"bounds"),
-                ("src/decode.rs", "validate_explicit_tile_indices"): (
+                ("src/decode/arithmetic.rs", "ceil_div_u32"): (None, "part2_selection_ceil", r"value\s*,\s*divisor"),
+                ("src/decode/selection.rs", "tile_list_contains"): (None, "part2_tile_list_contains", r"tiles@\s*,\s*tile"),
+                ("src/decode/selection.rs", "selection_rectangle_area"): (None, "part2_rectangle_area", r"bounds"),
+                ("src/decode/selection.rs", "validate_explicit_tile_indices"): (
                     None, "part2_explicit_tile_prefix", r"explicit_tiles@\s*,\s*tile_count\s*,\s*explicit_tiles@\.len\s*\(\s*\)",
                 ),
-                ("src/decode.rs", "validate_selection_tile_rectangle"): (
+                ("src/decode/selection.rs", "validate_selection_tile_rectangle"): (
                     None, "part2_validate_tile_rectangle", r"explicit_tiles@\s*,\s*tiles_across",
                 ),
-                ("src/decode.rs", "validate_selection_rectangle_cells"): (
+                ("src/decode/selection.rs", "validate_selection_rectangle_cells"): (
                     None, "part2_rectangle_rows",
                     r"explicit_tiles@\s*,\s*tiles_across\s*,\s*bounds\s*,\s*"
                     r"\(\s*bounds\.2\s+as\s+nat\s*-\s*bounds\.0\s+as\s+nat\s*\+\s*1\s*\)\s+as\s+nat",
                 ),
-                ("src/decode.rs", "selection_region"): (
+                ("src/decode/selection.rs", "selection_region"): (
                     "selection_region_outcome", "part2_selection_region",
                     selection_geometry + r"\s*,\s*explicit_tiles@\s*,\s*requested\s*,\s*image_x1\s*,\s*image_y1",
                 ),
-                ("src/decode.rs", "select_intersecting_tiles"): (
+                ("src/decode/selection.rs", "select_intersecting_tiles"): (
                     "selected_tiles_outcome", "part2_select_intersecting_tiles",
                     selection_geometry + r"\s*,\s*explicit_tiles@\s*,\s*region@\s*,\s*tile_count",
                 ),
-                ("src/decode.rs", "explicit_tiles_from_selection"): (
+                ("src/decode/selection.rs", "explicit_tiles_from_selection"): (
                     "selected_tiles_outcome", "part2_selection_explicit",
                     r"crate::options::tile_selection_view\s*\(\s*selection\s*\)",
                 ),
-                ("src/decode.rs", "validate_selection"): (
+                ("src/decode/selection.rs", "validate_selection"): (
                     "validated_selection_outcome", "part2_validate_selection",
                     selection_geometry + r"\s*,\s*" + selection_view,
                 ),
-                ("src/decode.rs", "color_selection_from_validated"): (
+                ("src/decode/output.rs", "color_selection_from_validated"): (
                     "color_selection_outcome", "part2_color_selection_context",
                     r"size\.x_origin\s*,\s*size\.y_origin\s*,\s*crate::codestream::image_size_component_infos\s*\(\s*size\s*\)"
                     r"\s*,\s*size\.components\s*,\s*validated_selection_view\s*\(\s*validated\s*\)",
                 ),
-                ("src/decode.rs", "color_selection_for_size"): (
+                ("src/decode/output.rs", "color_selection_for_size"): (
                     "color_selection_outcome", "part2_color_selection_requested",
                     selection_geometry + r"\s*,\s*crate::codestream::image_size_component_infos\s*\(\s*size\s*\)"
                     r"\s*,\s*size\.components\s*,\s*crate::options::decode_selection_view\s*\(\s*requested\s*\)",
                 ),
-                ("src/decode.rs", "apply_associated_output"): (
+                ("src/decode/output.rs", "apply_associated_output"): (
                     "associated_typed_outcome", "part2_apply_associated_output",
                     r"crate::image::typed_image_value_view\s*\(\s*decoded\s*\)\s*,\s*" + selection_header
                     + r"\s*,\s*crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*" + selection_decoded_cap,
                 ),
-                ("src/decode.rs", "convert_associated_color"): (
+                ("src/decode/output.rs", "convert_associated_color"): (
                     "crate::color::converted_image_result", "part2_convert_associated",
                     selection_image + r"\s*,\s*" + selection_header + r"\s*,\s*" + selection_decoded_cap + r"\s*,\s*" + selection_work_cap,
                 ),
-                ("src/decode.rs", "convert_associated_selected_color"): (
+                ("src/decode/output.rs", "convert_associated_selected_color"): (
                     "crate::color::converted_image_result", "part2_convert_associated_selected",
                     selection_image + r"\s*,\s*" + selection_header + r"\s*,\s*target\s*,\s*" + selection_decoded_cap + r"\s*,\s*" + selection_work_cap,
                 ),
-                ("src/decode.rs", "finish_associated_selected_output"): (
+                ("src/decode/output.rs", "finish_associated_selected_output"): (
                     "crate::color::converted_image_result", "part2_finish_associated_selected_output",
                     r"crate::image::typed_image_value_view\s*\(\s*decoded\s*\)\s*,\s*" + selection_header + r"\s*,\s*target\s*,\s*"
                     r"crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*" + selection_decoded_cap + r"\s*,\s*" + selection_work_cap,
@@ -2919,7 +2923,7 @@ def validate_normative_coverage(
                 "PreparedTileComponent::as_tile_component": (
                     "part1_prepared_as_tile", r"prepared_component_view\s*\(\s*\*\s*self\s*\)",
                 ),
-            }.get(reference["symbol"]) if reference["path"] == "src/decode.rs" else None
+            }.get(reference["symbol"]) if reference["path"] == "src/decode/reconstruction.rs" else None
             prepare_arguments_bound = (
                 prepare_contract_arguments is None
                 or _coverage_result_arguments(
@@ -2927,22 +2931,22 @@ def validate_normative_coverage(
                 )
             )
             component_contract_arguments = {
-                ("src/decode.rs", "copy_typed_component"): (
+                ("src/decode/output.rs", "copy_typed_component"): (
                     "part2_typed_component_copy",
                     r"crate::image::typed_component_output_view\s*\(\s*source\s*\)",
                 ),
-                ("src/decode.rs", "map_palette_component"): (
+                ("src/decode/output.rs", "map_palette_component"): (
                     "part2_palette_component",
                     r"crate::image::typed_component_view\s*\(\s*source\s*\)\s*,\s*"
                     r"crate::jp2::palette_view\s*\(\s*palette\s*\)\s*,\s*column",
                 ),
-                ("src/decode.rs", "palette_modulus"): ("part2_palette_modulus", r"precision"),
-                ("src/decode.rs", "invalid_jp2_output"): ("part2_color_input_error", r""),
+                ("src/decode/output.rs", "palette_modulus"): ("part2_palette_modulus", r"precision"),
+                ("src/decode/output.rs", "invalid_jp2_output"): ("part2_color_input_error", r""),
                 ("src/image.rs", "typed_component_from_parts"): (
                     "part2_typed_component_from_parts",
                     r"width\s*,\s*height\s*,\s*info\s*,\s*typed_samples_view\s*\(\s*&\s*samples\s*\)",
                 ),
-                ("src/decode.rs", "apply_jp2_output"): (
+                ("src/decode/output.rs", "apply_jp2_output"): (
                     "part2_apply_output_header",
                     r"crate::image::typed_image_value_view\s*\(\s*decoded\s*\)\s*,\s*"
                     r"jp2::output_header_view\s*\(\s*header\s*\)\s*,\s*"
@@ -3021,7 +3025,10 @@ def validate_normative_coverage(
                 raise ValueError(f"linked function contract lacks normative spec reference: {short}")
             if claimed_consumer and not any(
                 ref != reference
-                and (cross_file_call((ROOT / ref["path"]).resolve(), short)
+                and (cross_file_call(
+                    (ROOT / ref["path"]).resolve(), ref["symbol"], short,
+                    require_caller_body=reference["path"].startswith("src/decode/"),
+                )
                  if ref["path"] != reference["path"] else
                  same_file_call(path, ref["symbol"], short))
                 for ref in entry["implementation_refs"]

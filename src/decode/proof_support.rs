@@ -130,3 +130,293 @@ verus! {
             match result { Ok(value) => Ok((crate::magnitude::magnitude_limbs(value.magnitude), value.negative)), Err(error) => Err(error) }
         }
 }
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn planning_components_view(values: Seq<PlannedTileComponent>) -> Seq<crate::specs::Part1PreparePlan> {
+        values.map_values(|value: PlannedTileComponent| prepare_plan_view(&value))
+    }
+
+    closed spec fn tile_plan_buffers_view(
+        precincts: Seq<PacketPrecinctDecoder>, components: Seq<PlannedTileComponent>, total: u64,
+    ) -> crate::specs::Part2TilePlanBuffers {
+        crate::specs::Part2TilePlanBuffers {
+            precincts: planning_precincts_view(precincts), components: planning_components_view(components),
+            planned_code_blocks: total,
+        }
+    }
+
+    pub closed spec fn progression_plan_view(value: &ProgressionTilePlan) -> crate::specs::Part2ProgressionTilePlan {
+        crate::specs::Part2ProgressionTilePlan {
+            tile: value.tile_index, coding_style: value.coding_style, coding_styles: value.component_coding_styles,
+            grid: crate::packet::packet_grid_view(&value.grid), precincts: planning_precincts_view(value.precincts@),
+            components: planning_components_view(value.components@),
+        }
+    }
+
+    pub open spec fn progression_plan_outcome(result: Result<ProgressionTilePlan, DecodeError>)
+        -> Result<crate::specs::Part2ProgressionTilePlan, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(progression_plan_view(&value)) }
+    }
+
+    pub closed spec fn planned_subband_lattice_view(value: PlannedSubbandLattice) -> crate::specs::Part2PlannedSubbandLattice {
+        crate::specs::Part2PlannedSubbandLattice { grid: value.grid, clip: value.clip, blocks: value.blocks }
+    }
+
+    pub open spec fn planned_subband_lattice_outcome(result: Result<Option<PlannedSubbandLattice>, DecodeError>)
+        -> Result<Option<crate::specs::Part2PlannedSubbandLattice>, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(None) => Ok(None), Ok(Some(value)) => Ok(Some(planned_subband_lattice_view(value))) }
+    }
+
+    pub closed spec fn resolution_geometry_style(style: CodingStyle) -> crate::specs::Part2ResolutionStyle {
+        let selector = codestream::decomposition_selector_view(style);
+        (selector.0, selector.1, style.code_block_width, style.code_block_height,
+            codestream::precinct_selector_view(style).1)
+    }
+
+    pub open spec fn resolution_counts_outcome(
+        result: Result<(u8, Vec<u8>, Vec<u8>), DecodeError>,
+    ) -> Result<crate::specs::Part2ComponentResolutionCounts, DecodeError> {
+        match result {
+            Err(error) => Err(error),
+            Ok(counts) => Ok((counts.0, counts.1@, counts.2@)),
+        }
+    }
+
+    pub open spec fn subbands_outcome(result: Result<Vec<SubbandGeometry>, DecodeError>)
+        -> Result<Seq<SubbandGeometry>, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(values) => Ok(values@) }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn planning_precincts_view(values: Seq<PacketPrecinctDecoder>) -> Seq<crate::specs::Part1PacketPrecinctState> {
+        values.map_values(|value: PacketPrecinctDecoder| crate::packet::packet_precinct_view(&value))
+    }
+
+    closed spec fn component_plan_builder_view(value: &ComponentPlanBuilder) -> crate::specs::Part2ComponentPlanBuffers {
+        crate::specs::Part2ComponentPlanBuffers {
+            precincts: planning_precincts_view(value.precincts@), placements: value.placements@,
+            planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub closed spec fn planned_component_view(value: &PlannedComponent) -> crate::specs::Part2PlannedComponent {
+        crate::specs::Part2PlannedComponent {
+            component: prepare_plan_view(&value.component), precincts: planning_precincts_view(value.precincts@),
+            planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub open spec fn planned_component_outcome(result: Result<PlannedComponent, DecodeError>)
+        -> Result<crate::specs::Part2PlannedComponent, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(planned_component_view(&value)) }
+    }
+
+    pub closed spec fn resolution_plan_metadata_view(value: &ResolutionPlanMetadata) -> crate::specs::Part2ResolutionPlanMetadata {
+        crate::specs::Part2ResolutionPlanMetadata {
+            geometry: value.geometry, first_subband: value.first_subband, subband_count: value.subband_count,
+            precincts_in_resolution: value.precincts_in_resolution, first_precinct: value.first_precinct,
+            band_size: value.band_size, block_size: value.block_size,
+        }
+    }
+
+    pub open spec fn resolution_plan_metadata_outcome(result: Result<ResolutionPlanMetadata, DecodeError>)
+        -> Result<crate::specs::Part2ResolutionPlanMetadata, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(resolution_plan_metadata_view(&value)) }
+    }
+
+    closed spec fn precinct_plan_builder_view(value: &PrecinctPlanBuilder) -> crate::specs::Part2PrecinctPlanBuilder {
+        crate::specs::Part2PrecinctPlanBuilder {
+            executions: crate::packet::packet_executions_view(value.executions@),
+            placements: value.placements@, decoder_index: value.decoder_index,
+            planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub closed spec fn planned_precinct_view(value: &PlannedPrecinct) -> crate::specs::Part2PlannedPrecinct {
+        crate::specs::Part2PlannedPrecinct {
+            precinct: crate::packet::packet_precinct_view(&value.precinct),
+            placements: value.placements@, planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub open spec fn planned_precinct_outcome(result: Result<PlannedPrecinct, DecodeError>)
+        -> Result<crate::specs::Part2PlannedPrecinct, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(planned_precinct_view(&value)) }
+    }
+
+    pub closed spec fn planned_subband_execution_view(value: &PlannedSubbandExecution) -> crate::specs::Part2PlannedSubbandExecution {
+        crate::specs::Part2PlannedSubbandExecution {
+            execution: match value.execution { None => None, Some(execution) => Some(crate::packet::packet_execution_view(&execution)) },
+            placements: value.placements@, decoder_index: value.decoder_index,
+            planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub open spec fn planned_subband_execution_outcome(result: Result<PlannedSubbandExecution, DecodeError>)
+        -> Result<crate::specs::Part2PlannedSubbandExecution, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(planned_subband_execution_view(&value)) }
+    }
+
+    pub closed spec fn planned_codeblocks_view(value: &PlannedCodeBlocks) -> crate::specs::Part2PlannedCodeBlocks {
+        crate::specs::Part2PlannedCodeBlocks {
+            decoders: value.decoders@.map_values(|decoder: Tier1CodeBlockDecoder| crate::tier1::tier1_decoder_state(&decoder)),
+            placements: value.placements@, decoder_index: value.decoder_index,
+            planned_code_blocks: value.planned_code_blocks,
+        }
+    }
+
+    pub open spec fn planned_codeblocks_outcome(result: Result<PlannedCodeBlocks, DecodeError>)
+        -> Result<crate::specs::Part2PlannedCodeBlocks, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(planned_codeblocks_view(&value)) }
+    }
+
+    pub closed spec fn component_plan_metadata_view(value: &PlannedComponentMetadata) -> crate::specs::Part2ComponentPlanMetadata {
+        crate::specs::Part2ComponentPlanMetadata {
+            coding_style: value.component_coding_style, output_resolution: value.output_resolution,
+            tier1_style: value.tier1_style, bounds: value.bounds, width: value.component_width,
+            height: value.component_height, x: value.component_x, y: value.component_y, subbands: value.subbands@,
+        }
+    }
+
+    pub open spec fn component_plan_metadata_outcome(result: Result<PlannedComponentMetadata, DecodeError>)
+        -> Result<crate::specs::Part2ComponentPlanMetadata, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(value) => Ok(component_plan_metadata_view(&value)) }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub(crate) open spec fn nonlinear_region_view(region: &NonlinearRegion<'_>) -> crate::specs::Part2NonlinearRegion {
+        crate::specs::Part2NonlinearRegion {
+            component: region.component, x0: region.x0, y0: region.y0, x1: region.x1, y1: region.y1,
+            transform: codestream::owned_nonlinear_view(region.transform),
+        }
+    }
+
+    pub(crate) open spec fn nonlinear_regions_view(regions: Seq<NonlinearRegion<'_>>) -> Seq<crate::specs::Part2NonlinearRegion> {
+        regions.map_values(|region: NonlinearRegion<'_>| nonlinear_region_view(&region))
+    }
+
+    pub(crate) open spec fn nonlinear_regions_outcome(result: Result<Vec<NonlinearRegion<'_>>, DecodeError>)
+        -> Result<Seq<crate::specs::Part2NonlinearRegion>, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(regions) => Ok(nonlinear_regions_view(regions@)) }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn validated_selection_view(selection: ValidatedSelection) -> crate::specs::Part2ValidatedSelection {
+        (selection.tiles@, selection.region@, selection.discard_levels)
+    }
+
+    closed spec fn color_selection_outcome(result: Result<(DecodeSelection, [u32; 4]), DecodeError>)
+        -> Result<(crate::specs::Part2DecodeSelection, Seq<u32>), DecodeError>
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok(output) => Ok((crate::options::decode_selection_value_view(output.0), output.1@)),
+        }
+    }
+
+    closed spec fn selection_region_outcome(result: Result<[u32; 4], DecodeError>) -> Result<Seq<u32>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(region) => Ok(region@) }
+    }
+
+    closed spec fn associated_typed_outcome(result: Result<(TypedImage, Option<&jp2::Jp2Header>), DecodeError>)
+        -> Result<(crate::specs::Part1DecodedTypedImage, Option<crate::specs::Part2AssociatedHeader>), DecodeError>
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok(output) => Ok((crate::image::typed_image_value_view(output.0), jp2::associated_header_option(output.1))),
+        }
+    }
+
+    closed spec fn selected_tiles_outcome(result: Result<Vec<u16>, DecodeError>) -> Result<Seq<u16>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(tiles) => Ok(tiles@) }
+    }
+
+    closed spec fn validated_selection_outcome(result: Result<ValidatedSelection, DecodeError>)
+        -> Result<crate::specs::Part2ValidatedSelection, DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(selection) => Ok(validated_selection_view(selection)) }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn tile_decode_metadata_view<'a, 'data>(value: &TileDecodeMetadata<'a, 'data>)
+        -> crate::specs::Part2TileDecodeMetadata {
+        crate::specs::Part2TileDecodeMetadata { first: codestream::tile_part_owned_view(value.first), standard: value.standard, resolution_counts: value.resolution_counts@ }
+    }
+
+    pub open spec fn tile_decode_metadata_outcome<'a, 'data>(result: Result<TileDecodeMetadata<'a, 'data>, DecodeError>)
+        -> Result<crate::specs::Part2TileDecodeMetadata, DecodeError> {
+        match result { Err(error) => Err(error), Ok(value) => Ok(tile_decode_metadata_view(&value)) }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn resolution_counts_outcome_for_tile(result: Result<Vec<u8>, DecodeError>) -> Result<Seq<u8>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(counts) => Ok(counts@) }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub closed spec fn decoded_layout_tile_view(value: &DecodedLayoutTile) -> crate::specs::Part2DecodedLayoutTile {
+        crate::specs::Part2DecodedLayoutTile {
+            prepared: prepared_components_view(value.prepared@), counters: value.counters, mct_work: value.mct_work,
+        }
+    }
+
+    pub open spec fn decoded_layout_tile_outcome(result: Result<DecodedLayoutTile, DecodeError>)
+        -> Result<crate::specs::Part2DecodedLayoutTile, DecodeError> {
+        match result { Err(error) => Err(error), Ok(value) => Ok(decoded_layout_tile_view(&value)) }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub open spec fn collected_tile_parts_outcome(result: Result<Vec<TilePartPayload<'_>>, DecodeError>)
+        -> Result<Seq<crate::specs::Part2OwnedTilePart>, DecodeError> {
+        match result { Err(error) => Err(error), Ok(parts) => Ok(codestream::tile_parts_owned_view(parts@)) }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    closed spec fn layout_accumulation_view(
+        prepared: Seq<PreparedTileComponent>, counters: (u64, u64, u64), work: u64,
+    ) -> crate::specs::Part2DecodedLayoutTile {
+        crate::specs::Part2DecodedLayoutTile { prepared: prepared_components_view(prepared), counters, mct_work: work }
+    }
+}
+
+#[cfg(verus_keep_ghost)]
+verus! {
+    pub(crate) closed spec fn execution_header_view(styles: ComponentCodingStyles, extensions: &codestream::Part2Extensions)
+        -> crate::specs::Part2ExecutionHeader
+    {
+        (styles, codestream::part2_execution_registry(extensions), codestream::part2_kernel_registry(extensions),
+            codestream::part2_component_depths(extensions))
+    }
+
+    pub(crate) closed spec fn execution_tile_headers(parts: Seq<TilePartPayload<'_>>) -> Seq<crate::specs::Part2ExecutionHeader> {
+        Seq::new(parts.len(), |index: int|
+            execution_header_view(parts[index].component_coding_styles, &parts[index].part2_extensions))
+    }
+}
