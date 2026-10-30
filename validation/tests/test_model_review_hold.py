@@ -623,6 +623,65 @@ class ModelReviewHoldTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     model_review_hold.read_reviewed_amendments(self.registry([entry]))
 
+    def remaining_domain_fixture(self):
+        paths = model_review_hold.AMENDMENT_PROFILES["remaining-runtime-domain-layout"]
+        self.assertEqual(len(paths), 124)
+        existing = {
+            "src/codestream.rs", "src/color.rs", "src/image.rs", "src/jp2.rs",
+            "src/jpip.rs", "src/jpx.rs", "src/packet.rs", "src/refinement.rs",
+            "src/tier1.rs", "src/transform.rs", "validation/expected-package-files.txt",
+            "validation/framework.py", "validation/normative-coverage.json",
+            "validation/tests/test_framework.py",
+        }
+        return self.layout_fixture(
+            {path: f"original {path}\n" for path in existing},
+            {path: f"relocated {path}\n" for path in paths},
+            "remaining-runtime-domain-layout",
+            "Exact remaining responsibility modules; unchanged native bodies and contracts.",
+        )
+
+    def test_exact_remaining_domain_record_requires_trusted_adoption(self):
+        base, head, entry = self.remaining_domain_fixture()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(self.repository, base, head)),
+                             set(entry["paths"]))
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_remaining_domain_record_rejects_each_changed_source_or_evidence_identity(self):
+        base, head, entry = self.remaining_domain_fixture()
+        for index, path in enumerate(entry["paths"]):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"changed-remaining-{index}", head)
+                self.write(path, self.git("show", f"{head}:{path}") + "changed\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_remaining_domain_record_does_not_authorize_models_other_modules_or_controller(self):
+        base, head, entry = self.remaining_domain_fixture()
+        for index, path in enumerate((
+            "specs/new.rs", "proofs/new.rs", "src/decode.rs", "src/decode/api.rs",
+            "src/lib.rs", "src/limits.rs", "Cargo.toml",
+            "validation/check-model-review-hold.py", ".github/workflows/verus.yml",
+        )):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"extra-remaining-{index}", head)
+                self.write(path, "unapproved extra change\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_remaining_domain_profile_cannot_expand_to_unknown_modules_or_models(self):
+        _, _, original = self.remaining_domain_fixture()
+        for path in ("src/tier1/unknown.rs", "src/decode.rs", "specs/new.rs",
+                     "proofs/new.rs", "validation/check-model-review-hold.py"):
+            with self.subTest(path=path):
+                entry = copy.deepcopy(original)
+                entry["paths"][path] = entry["paths"].pop("src/tier1/raw.rs")
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
     def test_invalid_trusted_registry_causes_explicit_cli_failure(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
         head = self.commit()
