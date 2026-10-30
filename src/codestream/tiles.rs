@@ -1,0 +1,643 @@
+//! Tile-part header/payload parsing and owned tile-part construction.
+
+use super::mct_resolution::{replace_mct_array, replace_mct_record};
+use super::reader::{is_allowed_tile_header, is_known_segment_marker, read_u16, read_u32};
+use super::{
+    ADS, ATK, CBD, COC, COD, COM, CodingStyle, ComponentCodingStyles, ComponentQuantizations, DFS,
+    DecodeError, MAX_COMPONENTS, MCC, MCO, MCT, MalformedKind, MctParameters, NLT, PLT, POC, PPT,
+    PackedPacketHeaders, PacketLengths, Parser, Part2Extensions, ProgressionChanges, QCC, QCD,
+    Quantization, RGN, RoiShifts, SOD, SOT, TilePart, TilePartPayload,
+};
+#[cfg(verus_keep_ghost)]
+use super::{parser_view, tile_part_owned_view};
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+impl<'a> Clone for TilePartPayload<'a> {
+    #[inline]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures tile_part_owned_view(&result) == crate::specs::part2_tile_part_copy(tile_part_owned_view(self)),
+    ))]
+    fn clone(&self) -> Self {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(tile_part_owned_view); }
+        Self {
+            tile_index: self.tile_index,
+            tile_part_index: self.tile_part_index,
+            tile_part_count: self.tile_part_count,
+            coding_style: self.coding_style,
+            quantization: self.quantization,
+            component_coding_styles: self.component_coding_styles,
+            component_quantizations: self.component_quantizations.clone(),
+            roi_shifts: self.roi_shifts,
+            progression_changes: self.progression_changes.clone(),
+            multiple_component_transform: self.multiple_component_transform.clone(),
+            part2_extensions: self.part2_extensions.clone(),
+            packet_lengths: self.packet_lengths,
+            packed_packet_headers: self.packed_packet_headers,
+            has_functional_header_marker: self.has_functional_header_marker,
+            has_roi_marker: self.has_roi_marker,
+            data: self.data,
+        }
+    }
+}
+impl<'a> TilePartPayload<'a> {
+    pub fn uniform_for_packet_decoding(
+        tile_index: u16,
+        tile_part_index: u8,
+        tile_part_count: u8,
+        components: u16,
+        coding_style: CodingStyle,
+        roi_shifts: RoiShifts,
+        data: &'a [u8],
+    ) -> Result<Self, DecodeError> {
+        let quantization = Quantization::reversible_default(coding_style);
+        Ok(Self {
+            tile_index,
+            tile_part_index,
+            tile_part_count,
+            coding_style,
+            quantization,
+            component_coding_styles: ComponentCodingStyles::uniform(components, coding_style)?,
+            component_quantizations: ComponentQuantizations::uniform(components, quantization)?,
+            roi_shifts,
+            progression_changes: ProgressionChanges::none(),
+            multiple_component_transform: None,
+            part2_extensions: Part2Extensions::default(),
+            packet_lengths: PacketLengths::none(),
+            packed_packet_headers: PackedPacketHeaders::none(),
+            has_functional_header_marker: false,
+            has_roi_marker: false,
+            data,
+        })
+    }
+}
+impl<'a> Parser<'a> {
+    pub(super) fn read_sot(&mut self, tile_count: u64) -> Result<TilePart, DecodeError> {
+        let segment = self.read_segment()?;
+        if segment.marker != SOT || segment.payload.len() != 8 {
+            return Err(DecodeError::malformed(
+                self.offset(segment.offset),
+                MalformedKind::InvalidTilePart,
+            ));
+        }
+        let tile_index = read_u16([segment.payload[0], segment.payload[1]]);
+        let length = read_u32([
+            segment.payload[2],
+            segment.payload[3],
+            segment.payload[4],
+            segment.payload[5],
+        ]);
+        let tile_part_index = segment.payload[6];
+        let tile_part_count = segment.payload[7];
+        if u64::from(tile_index) >= tile_count
+            || (tile_part_count != 0 && tile_part_index >= tile_part_count)
+            || (length != 0 && length < 14)
+        {
+            return Err(DecodeError::malformed(
+                self.offset(segment.offset),
+                MalformedKind::InvalidTilePart,
+            ));
+        }
+        Ok(TilePart {
+            start: segment.offset,
+            length,
+            tile_index,
+            tile_part_index,
+            tile_part_count,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn read_tile_part(
+        &mut self,
+        tile_part: TilePart,
+        default_parameters: (CodingStyle, Quantization),
+        inherited_coding_styles: ComponentCodingStyles,
+        inherited_quantizations: ComponentQuantizations,
+        inherited_roi_shifts: RoiShifts,
+        inherited_progression_changes: ProgressionChanges,
+        mut mct_parameters: MctParameters,
+        mut part2_extensions: Part2Extensions,
+        components: u16,
+        main_packet_lengths: PacketLengths<'a>,
+        main_packed_packet_headers: PackedPacketHeaders<'a>,
+    ) -> Result<(TilePartPayload<'a>, MctParameters, Part2Extensions), DecodeError> {
+        let tile_header_start = self.position;
+        let tile_header_end;
+        let mut tile_coding_style = default_parameters.0;
+        let mut tile_cod_seen = false;
+        let mut qcd_segment = None;
+        let mut coc_segments = [None; MAX_COMPONENTS];
+        let mut qcc_segments = [None; MAX_COMPONENTS];
+        let mut tile_roi_shifts = inherited_roi_shifts;
+        let mut roi_seen = [false; MAX_COMPONENTS];
+        let mut tile_rgn_seen = false;
+        let mut has_functional_header_marker = false;
+        let mut plt_seen = false;
+        let mut next_plt_index = 0_u16;
+        let mut plt_packet_count = 0_u64;
+        let mut plt_encoded_bytes = 0_u64;
+        let mut plt_payload_bytes = 0_u64;
+        let mut ppt_bytes = Vec::new();
+        let mut next_ppt_index = 0_u16;
+        let mut ppt_fragments = 0_u16;
+        let mut progression_changes = inherited_progression_changes;
+        let mut poc_seen = false;
+        let mut tile_mco_seen = false;
+        let mut pending_mct = Vec::new();
+        let mut completed_mct = Vec::new();
+        let mut pending_mcc = Vec::new();
+        let mut completed_mcc = Vec::new();
+        let input_length = self.input.len();
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(decreases input_length as int - self.position as int,)
+        )]
+        loop {
+            let previous_position = self.position;
+            match self.peek_marker()? {
+                SOD => {
+                    tile_header_end = self.position;
+                    self.expect_standalone(SOD)?;
+                    break;
+                }
+                marker if crate::refinement::tile_header_boundary(marker) => {
+                    return Err(self.malformed_here(MalformedKind::InvalidMarkerOrder));
+                }
+                _ => {
+                    let segment = self.read_segment()?;
+                    if !is_known_segment_marker(segment.marker) {
+                        return Err(DecodeError::malformed(
+                            self.offset(segment.offset),
+                            MalformedKind::InvalidMarker,
+                        ));
+                    }
+                    if !is_allowed_tile_header(segment.marker) {
+                        return Err(DecodeError::malformed(
+                            self.offset(segment.offset),
+                            MalformedKind::InvalidMarkerOrder,
+                        ));
+                    }
+                    if segment.marker != COM && segment.marker != PLT {
+                        has_functional_header_marker = true;
+                    }
+                    if segment.marker == COD {
+                        if tile_cod_seen {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerOrder,
+                            ));
+                        }
+                        tile_cod_seen = true;
+                        tile_coding_style = self.parse_cod(segment)?;
+                    } else if segment.marker == COC {
+                        let (component, _) = self.parse_component_index(
+                            segment,
+                            components,
+                            MalformedKind::InvalidCodingStyle,
+                        )?;
+                        let slot =
+                            coc_segments
+                                .get_mut(usize::from(component))
+                                .ok_or_else(|| {
+                                    DecodeError::malformed(
+                                        self.offset(segment.offset),
+                                        MalformedKind::InvalidCodingStyle,
+                                    )
+                                })?;
+                        if slot.is_some() {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerOrder,
+                            ));
+                        }
+                        *slot = Some(segment);
+                    } else if segment.marker == QCD {
+                        if qcd_segment.is_some() {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerOrder,
+                            ));
+                        }
+                        qcd_segment = Some(segment);
+                    } else if segment.marker == QCC {
+                        let (component, _) = self.parse_component_index(
+                            segment,
+                            components,
+                            MalformedKind::InvalidQuantization,
+                        )?;
+                        let slot =
+                            qcc_segments
+                                .get_mut(usize::from(component))
+                                .ok_or_else(|| {
+                                    DecodeError::malformed(
+                                        self.offset(segment.offset),
+                                        MalformedKind::InvalidQuantization,
+                                    )
+                                })?;
+                        if slot.is_some() {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerOrder,
+                            ));
+                        }
+                        *slot = Some(segment);
+                    } else if segment.marker == RGN {
+                        let (component, shift) = self.parse_rgn(segment, components)?;
+                        let index = usize::from(component);
+                        if index >= roi_seen.len() || roi_seen[index] {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerOrder,
+                            ));
+                        }
+                        roi_seen[index] = true;
+                        tile_rgn_seen = true;
+                        tile_roi_shifts.set(component, shift)?;
+                    } else if segment.marker == MCT {
+                        if let Some(array) = self.consume_mct_fragment(
+                            segment,
+                            &mut pending_mct,
+                            &mut completed_mct,
+                        )? {
+                            replace_mct_array(&mut mct_parameters.arrays, array);
+                        }
+                    } else if segment.marker == MCC {
+                        if let Some(record) = self.consume_mcc_fragment(
+                            segment,
+                            components,
+                            &mut pending_mcc,
+                            &mut completed_mcc,
+                        )? {
+                            replace_mct_record(&mut mct_parameters.records, record);
+                        }
+                    } else if segment.marker == MCO {
+                        if tile_mco_seen {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerOrder,
+                            ));
+                        }
+                        tile_mco_seen = true;
+                        mct_parameters.order = self.parse_mco(segment)?;
+                    } else if segment.marker == PLT {
+                        if main_packet_lengths.is_present() {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerOrder,
+                            ));
+                        }
+                        if segment.payload.is_empty() {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerLength,
+                            ));
+                        }
+                        let index = u16::from(segment.payload[0]);
+                        if index != next_plt_index || index > u16::from(u8::MAX) {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerOrder,
+                            ));
+                        }
+                        next_plt_index = next_plt_index.checked_add(1).ok_or_else(|| {
+                            DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::ArithmeticOverflow,
+                            )
+                        })?;
+                        let encoded = segment.payload.get(1..).ok_or_else(|| {
+                            DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerLength,
+                            )
+                        })?;
+                        let (count, total) =
+                            self.validate_packet_lengths(encoded, segment.offset)?;
+                        plt_seen = true;
+                        plt_packet_count =
+                            plt_packet_count.checked_add(count).ok_or_else(|| {
+                                DecodeError::malformed(
+                                    self.offset(segment.offset),
+                                    MalformedKind::ArithmeticOverflow,
+                                )
+                            })?;
+                        plt_encoded_bytes = plt_encoded_bytes
+                            .checked_add(encoded.len() as u64)
+                            .ok_or_else(|| {
+                                DecodeError::malformed(
+                                    self.offset(segment.offset),
+                                    MalformedKind::ArithmeticOverflow,
+                                )
+                            })?;
+                        plt_payload_bytes =
+                            plt_payload_bytes.checked_add(total).ok_or_else(|| {
+                                DecodeError::malformed(
+                                    self.offset(segment.offset),
+                                    MalformedKind::ArithmeticOverflow,
+                                )
+                            })?;
+                    } else if segment.marker == PPT {
+                        if main_packed_packet_headers.is_present() {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerOrder,
+                            ));
+                        }
+                        self.parse_packed_fragment(
+                            segment,
+                            PPT,
+                            &mut next_ppt_index,
+                            &mut ppt_fragments,
+                            &mut ppt_bytes,
+                        )?;
+                    } else if segment.marker == POC {
+                        if poc_seen || tile_part.tile_part_index != 0 {
+                            return Err(DecodeError::malformed(
+                                self.offset(segment.offset),
+                                MalformedKind::InvalidMarkerOrder,
+                            ));
+                        }
+                        poc_seen = true;
+                        progression_changes = self.parse_poc(segment, components)?;
+                    } else if segment.marker == DFS {
+                        self.parse_dfs(segment, &mut part2_extensions)?;
+                    } else if segment.marker == ADS {
+                        self.parse_ads(segment, &mut part2_extensions)?;
+                    } else if segment.marker == NLT {
+                        self.parse_nlt(segment, components, &mut part2_extensions)?;
+                    } else if segment.marker == CBD {
+                        return Err(DecodeError::malformed(
+                            self.offset(segment.offset),
+                            MalformedKind::InvalidMarkerOrder,
+                        ));
+                    } else if segment.marker == ATK {
+                        self.parse_atk(segment, &mut part2_extensions)?;
+                    } else if segment.marker != 0xff64 {
+                        return Err(DecodeError::malformed(
+                            self.offset(segment.offset),
+                            MalformedKind::InvalidMarker,
+                        ));
+                    }
+                }
+            }
+            if !crate::refinement::parser_progress(previous_position, self.position, input_length) {
+                return Err(self.malformed_here(MalformedKind::InvalidTilePart));
+            }
+        }
+        if !pending_mct.is_empty() || !pending_mcc.is_empty() {
+            return Err(self.malformed_here(MalformedKind::MissingRequiredStructure));
+        }
+        let mut component_coding_styles = if tile_cod_seen {
+            ComponentCodingStyles::new(components, tile_coding_style)?
+        } else {
+            inherited_coding_styles
+        };
+        let mut component = 0_u16;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant component <= components,
+                decreases components - component,
+            )
+        )]
+        while component < components {
+            let coc_segment = match coc_segments.get(usize::from(component)) {
+                Some(segment) => *segment,
+                None => None,
+            };
+            if let Some(segment) = coc_segment {
+                let (_, style) = self.parse_coc(segment, components, tile_coding_style)?;
+                component_coding_styles.set(component, style)?;
+            }
+            component = component
+                .checked_add(1)
+                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        }
+        self.resolve_decomposition_structures(&mut component_coding_styles, &part2_extensions)?;
+        let tile_quantization = match qcd_segment {
+            Some(segment) => self.parse_qcd(segment, tile_coding_style)?,
+            None => default_parameters.1,
+        };
+        let mut component_quantizations = if qcd_segment.is_some() {
+            ComponentQuantizations::new(components, tile_quantization)?
+        } else {
+            inherited_quantizations
+        };
+        component = 0;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant component <= components,
+                decreases components - component,
+            )
+        )]
+        while component < components {
+            let qcc_segment = match qcc_segments.get(usize::from(component)) {
+                Some(segment) => *segment,
+                None => None,
+            };
+            if let Some(segment) = qcc_segment {
+                let style = component_coding_styles.style(component)?;
+                let (_, quantization) = self.parse_qcc(segment, components, style)?;
+                component_quantizations.set(component, quantization)?;
+            }
+            if !component_quantizations
+                .quantization(component)?
+                .is_compatible_with(component_coding_styles.style(component)?)
+            {
+                return Err(DecodeError::malformed(
+                    0,
+                    MalformedKind::InvalidQuantization,
+                ));
+            }
+            component = component
+                .checked_add(1)
+                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        }
+        self.validate_progression_changes(
+            &progression_changes,
+            tile_coding_style.layers,
+            &component_coding_styles,
+            tile_part.start,
+        )?;
+        let multiple_component_transform =
+            self.resolve_multiple_component_transform(&mct_parameters)?;
+
+        let data_start = self.position;
+        if tile_part.length == 0 {
+            let end = self.find_eoc()?;
+            self.position = end;
+            let data = self
+                .input
+                .get(data_start..end)
+                .ok_or_else(|| self.malformed_here(MalformedKind::InvalidTilePart))?;
+            let packet_lengths = self.finish_packet_lengths(
+                tile_header_start,
+                tile_header_end,
+                main_packet_lengths,
+                plt_seen,
+                plt_packet_count,
+                plt_encoded_bytes,
+                plt_payload_bytes,
+                data.len(),
+                if main_packed_packet_headers.is_present() {
+                    main_packed_packet_headers.len()
+                } else {
+                    ppt_bytes.len()
+                },
+                tile_part.start,
+            )?;
+            let packed_packet_headers = self.finish_packed_packet_headers(
+                tile_header_start,
+                tile_header_end,
+                main_packed_packet_headers,
+                ppt_fragments,
+                ppt_bytes.len(),
+                tile_part.start,
+            )?;
+            return Ok((
+                TilePartPayload {
+                    tile_index: tile_part.tile_index,
+                    tile_part_index: tile_part.tile_part_index,
+                    tile_part_count: tile_part.tile_part_count,
+                    coding_style: tile_coding_style,
+                    quantization: tile_quantization,
+                    component_coding_styles,
+                    component_quantizations,
+                    roi_shifts: tile_roi_shifts,
+                    progression_changes,
+                    multiple_component_transform,
+                    part2_extensions: part2_extensions.clone(),
+                    packet_lengths,
+                    packed_packet_headers,
+                    has_functional_header_marker,
+                    has_roi_marker: tile_rgn_seen,
+                    data,
+                },
+                mct_parameters,
+                part2_extensions,
+            ));
+        }
+
+        let tile_part_length = usize::try_from(tile_part.length)
+            .map_err(|_| self.malformed_here(MalformedKind::InvalidTilePart))?;
+        let end = tile_part
+            .start
+            .checked_add(tile_part_length)
+            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        if end < self.position || end > self.input.len() {
+            return Err(DecodeError::malformed(
+                self.offset(tile_part.start),
+                MalformedKind::InvalidTilePart,
+            ));
+        }
+        let data = self
+            .input
+            .get(data_start..end)
+            .ok_or_else(|| self.malformed_here(MalformedKind::InvalidTilePart))?;
+        let packet_lengths = self.finish_packet_lengths(
+            tile_header_start,
+            tile_header_end,
+            main_packet_lengths,
+            plt_seen,
+            plt_packet_count,
+            plt_encoded_bytes,
+            plt_payload_bytes,
+            data.len(),
+            if main_packed_packet_headers.is_present() {
+                main_packed_packet_headers.len()
+            } else {
+                ppt_bytes.len()
+            },
+            tile_part.start,
+        )?;
+        let packed_packet_headers = self.finish_packed_packet_headers(
+            tile_header_start,
+            tile_header_end,
+            main_packed_packet_headers,
+            ppt_fragments,
+            ppt_bytes.len(),
+            tile_part.start,
+        )?;
+        self.position = end;
+        Ok((
+            TilePartPayload {
+                tile_index: tile_part.tile_index,
+                tile_part_index: tile_part.tile_part_index,
+                tile_part_count: tile_part.tile_part_count,
+                coding_style: tile_coding_style,
+                quantization: tile_quantization,
+                component_coding_styles,
+                component_quantizations,
+                roi_shifts: tile_roi_shifts,
+                progression_changes,
+                multiple_component_transform,
+                part2_extensions: part2_extensions.clone(),
+                packet_lengths,
+                packed_packet_headers,
+                has_functional_header_marker,
+                has_roi_marker: tile_rgn_seen,
+                data,
+            },
+            mct_parameters,
+            part2_extensions,
+        ))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self))) == crate::specs::part1_codestream_find_eoc(parser_view(old(self))),
+    ))]
+    pub(super) fn find_eoc(&mut self) -> Result<usize, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost input = parser_view(self);
+            let ghost goal = crate::specs::part1_codestream_find_eoc(input);
+        }
+        let input_len = self.input.len();
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant input == parser_view(old(self)),
+                    self.input@ == input.input, self.limits == input.limits,
+                    self.packet_length_bytes == input.packet_length_bytes,
+                    self.packet_lengths == input.packet_lengths,
+                    input_len == input.input.len(),
+                    goal == crate::specs::part1_codestream_find_eoc(input),
+                    goal == crate::specs::part1_codestream_find_eoc(parser_view(self)),
+                decreases input_len as int - self.position as int,
+            )
+        )]
+        while self.position < input_len {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_codestream_find_eoc, 1); }
+            if input_len - self.position < 2 {
+                return Err(self.malformed_here(MalformedKind::Truncated));
+            }
+            let next_position = self
+                .position
+                .checked_add(1)
+                .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            if self.position >= self.input.len() || next_position >= self.input.len() {
+                return Err(self.malformed_here(MalformedKind::Truncated));
+            }
+            let is_eoc = self.input[self.position] == 0xff && self.input[next_position] == 0xd9;
+            self.charge_work(1)?;
+            if is_eoc {
+                return Ok(self.position);
+            }
+            if next_position <= self.position || next_position > input_len {
+                return Err(self.malformed_here(MalformedKind::ArithmeticOverflow));
+            }
+            self.position = next_position;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(self.position >= input_len || (input_len as int) - (self.position as int) < 2);
+            reveal_with_fuel(crate::specs::part1_codestream_find_eoc, 1);
+            assert(goal == (Err(crate::specs::part1_codestream_malformed(self.position, MalformedKind::Truncated)), parser_view(self)));
+        }
+        Err(self.malformed_here(MalformedKind::Truncated))
+    }
+}
