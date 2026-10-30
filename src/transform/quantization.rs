@@ -1,0 +1,321 @@
+use super::arithmetic::{arithmetic_overflow, invalid_transform, validate_quantization_size};
+use super::{FIXED_BITS, FIXED_ONE, QuantizationStep, ReconstructedPlane, SignedMagnitude};
+#[cfg(verus_keep_ghost)]
+use super::{quantized_coefficients_view, reconstruction_outcome};
+use crate::{DecodeError, ResourceLimits};
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_integer_quantization(
+        coefficients@, step.exponent, step.mantissa, dynamic_range, reversible, roi_shift,
+        crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+pub fn inverse_quantize(
+    coefficients: &[i64],
+    step: QuantizationStep,
+    dynamic_range: u8,
+    reversible: bool,
+    roi_shift: u8,
+    limits: &ResourceLimits,
+) -> Result<ReconstructedPlane, DecodeError> {
+    inverse_quantize_values(
+        coefficients,
+        step,
+        dynamic_range,
+        reversible,
+        roi_shift,
+        limits.maximum_decoded_bytes(),
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_integer_quantization(
+        coefficients@, step.exponent, step.mantissa, dynamic_range, reversible, roi_shift, maximum_decoded_bytes,
+    ),
+))]
+fn inverse_quantize_values(
+    coefficients: &[i64],
+    step: QuantizationStep,
+    dynamic_range: u8,
+    reversible: bool,
+    roi_shift: u8,
+    maximum_decoded_bytes: u64,
+) -> Result<ReconstructedPlane, DecodeError> {
+    let mut wide = Vec::with_capacity(coefficients.len());
+    let mut index = 0;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant index <= coefficients.len(),
+            wide.len() == index,
+            forall |i: int| 0 <= i < index ==> coefficients[i] != i64::MIN,
+            forall |i: int| 0 <= i < index ==>
+                quantized_coefficients_view(wide@)[i] == crate::specs::part1_integer_coefficients(coefficients@)[i],
+            decreases coefficients.len() - index,
+        )
+    )]
+    while index < coefficients.len() {
+        let value = coefficients[index];
+        if value == i64::MIN {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(exists |i: int| 0 <= i < coefficients.len() && coefficients[i] == i64::MIN);
+            }
+            return Err(arithmetic_overflow());
+        }
+        let magnitude = checked_magnitude(value)? as u64;
+        wide.push(SignedMagnitude {
+            magnitude: crate::magnitude::magnitude_from_u64(magnitude),
+            negative: value < 0,
+        });
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! {
+        assert(quantized_coefficients_view(wide@) =~= crate::specs::part1_integer_coefficients(coefficients@));
+    }
+    inverse_quantize_plane(
+        &wide,
+        step,
+        dynamic_range,
+        reversible,
+        roi_shift,
+        maximum_decoded_bytes,
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_quantization(
+        quantized_coefficients_view(coefficients@), step.exponent, step.mantissa,
+        dynamic_range, reversible, roi_shift, crate::limits::resource_decoded_bytes_limit(limits),
+    ),
+))]
+pub(crate) fn inverse_quantize_magnitudes(
+    coefficients: &[SignedMagnitude],
+    step: QuantizationStep,
+    dynamic_range: u8,
+    reversible: bool,
+    roi_shift: u8,
+    limits: &ResourceLimits,
+) -> Result<ReconstructedPlane, DecodeError> {
+    inverse_quantize_plane(
+        coefficients,
+        step,
+        dynamic_range,
+        reversible,
+        roi_shift,
+        limits.maximum_decoded_bytes(),
+    )
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures reconstruction_outcome(result) == crate::specs::part1_inverse_quantization(
+        quantized_coefficients_view(coefficients@), step.exponent, step.mantissa,
+        dynamic_range, reversible, roi_shift, maximum_decoded_bytes,
+    ),
+))]
+pub(super) fn inverse_quantize_plane(
+    coefficients: &[SignedMagnitude],
+    step: QuantizationStep,
+    dynamic_range: u8,
+    reversible: bool,
+    roi_shift: u8,
+    maximum_decoded_bytes: u64,
+) -> Result<ReconstructedPlane, DecodeError> {
+    if dynamic_range == 0 || dynamic_range > 38 || step.mantissa > 0x07ff {
+        return Err(invalid_transform());
+    }
+    if step.exponent > 31 {
+        return Err(invalid_transform());
+    }
+    validate_quantization_size(coefficients.len(), maximum_decoded_bytes)?;
+    let step_size = if reversible {
+        1
+    } else {
+        quantization_step_q16(step, dynamic_range)?
+    };
+    let mut samples = Vec::with_capacity(coefficients.len());
+    let mut index = 0;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant index <= coefficients.len(),
+            samples.len() == index,
+            0 < dynamic_range <= 38,
+            step.mantissa <= 2047,
+            step.exponent <= 31,
+            crate::specs::part1_quantization_budget(coefficients.len() as nat, maximum_decoded_bytes) == Ok(()),
+            if reversible { step_size == 1 } else {
+                crate::specs::part1_quantization_step(step.exponent, step.mantissa, dynamic_range) == Ok(step_size)
+            },
+            crate::specs::part1_quantized_prefix(
+                quantized_coefficients_view(coefficients@), roi_shift, step_size, reversible, index as nat,
+            ) == Ok(samples@),
+            decreases coefficients.len() - index,
+        )
+    )]
+    while index < coefficients.len() {
+        let sample = match quantize_magnitude_sample(
+            coefficients[index],
+            roi_shift,
+            step_size,
+            reversible,
+        ) {
+            Ok(sample) => sample,
+            Err(error) => {
+                #[cfg(verus_keep_ghost)]
+                proof! {
+                    crate::proofs::production_impl::production_quantization_error_persists(
+                        quantized_coefficients_view(coefficients@), roi_shift, step_size, reversible,
+                        index as nat + 1, coefficients.len() as nat, error,
+                    );
+                }
+                return Err(error);
+            }
+        };
+        samples.push(sample);
+        index = index.checked_add(1).ok_or_else(arithmetic_overflow)?;
+    }
+    if coefficients.len() > u32::MAX as usize {
+        return Err(arithmetic_overflow());
+    }
+    Ok(ReconstructedPlane {
+        width: coefficients.len() as u32,
+        height: 1,
+        fraction_bits: if reversible { 0 } else { FIXED_BITS },
+        samples,
+    })
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_quantized_sample(
+        (crate::magnitude::magnitude_limbs(value.magnitude), value.negative), shift, step_size, reversible,
+    ),
+))]
+fn quantize_magnitude_sample(
+    value: SignedMagnitude,
+    shift: u8,
+    step_size: i64,
+    reversible: bool,
+) -> Result<i64, DecodeError> {
+    let coefficient = undo_maxshift_magnitude(value, shift)?;
+    if reversible || coefficient == 0 {
+        return Ok(crate::refinement::reversible_inverse_quantize(coefficient));
+    }
+    let magnitude = checked_magnitude(coefficient)?;
+    if magnitude < 0 || step_size < 0 {
+        return Err(arithmetic_overflow());
+    }
+    let centered = crate::refinement::irreversible_centered(magnitude);
+    let product = centered
+        .checked_mul(step_size as i128)
+        .ok_or_else(arithmetic_overflow)?;
+    if product < 0 {
+        return Err(arithmetic_overflow());
+    }
+    let scaled = crate::refinement::irreversible_scale(product);
+    if scaled > i64::MAX as i128 {
+        return Err(arithmetic_overflow());
+    }
+    let scaled = scaled as i64;
+    if coefficient < 0 {
+        0_i64.checked_sub(scaled).ok_or_else(arithmetic_overflow)
+    } else {
+        Ok(scaled)
+    }
+}
+
+pub fn undo_maxshift(value: i64, shift: u8) -> Result<i64, DecodeError> {
+    let magnitude = u64::try_from(checked_magnitude(value)?).map_err(|_| arithmetic_overflow())?;
+    let restored = crate::refinement::maxshift_restore(magnitude, shift);
+    let restored = i64::try_from(restored).map_err(|_| arithmetic_overflow())?;
+    if value < 0 {
+        0_i64.checked_sub(restored).ok_or_else(arithmetic_overflow)
+    } else {
+        Ok(restored)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_roi_coefficient(
+        crate::magnitude::magnitude_limbs(value.magnitude), value.negative, shift,
+    ),
+))]
+pub(crate) fn undo_maxshift_magnitude(
+    value: SignedMagnitude,
+    shift: u8,
+) -> Result<i64, DecodeError> {
+    if value.magnitude.is_zero() {
+        return Ok(0);
+    }
+    let threshold = crate::magnitude::magnitude_single_bit(shift as u16)?;
+    let restored = if shift == 0 || value.magnitude.less_than(threshold) {
+        value.magnitude
+    } else {
+        value.magnitude.shift_right(shift as u16)
+    };
+    let magnitude = restored.to_u64().ok_or_else(arithmetic_overflow)?;
+    if magnitude > i64::MAX as u64 {
+        return Err(arithmetic_overflow());
+    }
+    let magnitude = magnitude as i64;
+    if value.negative {
+        0_i64.checked_sub(magnitude).ok_or_else(arithmetic_overflow)
+    } else {
+        Ok(magnitude)
+    }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == if value == i64::MIN {
+        Err(crate::specs::part1_transform_error(true))
+    } else {
+        Ok((if value < 0 { -(value as int) } else { value as int }) as i64)
+    },
+))]
+fn checked_magnitude(value: i64) -> Result<i64, DecodeError> {
+    if value == i64::MIN {
+        return Err(arithmetic_overflow());
+    }
+    if value < 0 { Ok(-value) } else { Ok(value) }
+}
+
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_quantization_step(step.exponent, step.mantissa, dynamic_range),
+))]
+fn quantization_step_q16(step: QuantizationStep, dynamic_range: u8) -> Result<i64, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof! { assert(FIXED_ONE == 65536) by(compute); }
+    let base_value = 2048_u32
+        .checked_add(step.mantissa as u32)
+        .ok_or_else(arithmetic_overflow)?;
+    let base = (base_value as i64)
+        .checked_mul(FIXED_ONE)
+        .ok_or_else(arithmetic_overflow)?
+        / 2048;
+    if dynamic_range >= step.exponent {
+        let shift = dynamic_range - step.exponent;
+        if shift > 38 {
+            return Err(invalid_transform());
+        }
+        base.checked_mul(1_i64 << (shift as u32))
+            .ok_or_else(arithmetic_overflow)
+    } else {
+        let shift = step.exponent - dynamic_range;
+        if shift > 62 {
+            return Err(invalid_transform());
+        }
+        let divisor = 1_i64 << (shift as u32);
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(divisor > 0) by(bit_vector)
+                requires shift <= 62, divisor == 1i64 << (shift as u32);
+        }
+        if divisor == 0 {
+            return Err(arithmetic_overflow());
+        }
+        Ok(base / divisor)
+    }
+}

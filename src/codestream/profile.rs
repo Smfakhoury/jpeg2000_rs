@@ -1,0 +1,676 @@
+//! Profile markers, extended capabilities and block-coding compatibility.
+
+use super::reader::{read_u16, read_u32};
+use super::{
+    CodestreamBlockCoding, CodestreamProfile, ComponentCodingStyles, DecodeError,
+    ExtendedCapabilities, HT_RSIZ_FLAG, MalformedKind, PART_15_CAPABILITY_FLAG, Parser,
+    Part15BlockMode, ProfileNumber, RoiShifts, Segment, Tier1BlockCoding, TilePartPayload,
+    WaveletTransform,
+};
+#[cfg(verus_keep_ghost)]
+use super::{
+    cap_payload_outcome, codestream_profile_capabilities, extended_capabilities_view,
+    marker_words_outcome, profile_number_outcome, profile_number_view, segment_view,
+};
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+impl ExtendedCapabilities {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == extended_capabilities_view(self).0,
+    ))]
+    pub const fn p_cap(&self) -> u32 {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(extended_capabilities_view); }
+        self.p_cap
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result@ == extended_capabilities_view(self).1,
+    ))]
+    pub fn c_capabilities(&self) -> &[u16] {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(extended_capabilities_view); }
+        &self.c_capabilities
+    }
+
+    pub const fn advertises_part15(&self) -> bool {
+        self.p_cap & PART_15_CAPABILITY_FLAG != 0
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_capability_value(extended_capabilities_view(self), 15),
+    ))]
+    pub fn part15_value(&self) -> Option<u16> {
+        self.capability_for_part(15)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_capability_block_mode(extended_capabilities_view(self)),
+    ))]
+    pub fn part15_block_mode(&self) -> Option<Part15BlockMode> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_capability_block_mode); }
+        match self.part15_value()? >> 14 {
+            0 => Some(Part15BlockMode::HtOnly),
+            2 => Some(Part15BlockMode::HtDeclared),
+            3 => Some(Part15BlockMode::Mixed),
+            _ => None,
+        }
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_capability_multiple_sets(extended_capabilities_view(self)),
+    ))]
+    pub fn part15_allows_multiple_ht_sets(&self) -> bool {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_capability_multiple_sets); }
+        matches!(self.part15_value(), Some(value) if value & 0x2000 != 0)
+    }
+
+    pub fn part15_allows_roi(&self) -> bool {
+        matches!(self.part15_value(), Some(value) if value & 0x1000 != 0)
+    }
+
+    pub fn part15_allows_heterogeneous_headers(&self) -> bool {
+        matches!(self.part15_value(), Some(value) if value & 0x0800 != 0)
+    }
+
+    pub fn part15_allows_irreversible_ht(&self) -> bool {
+        matches!(self.part15_value(), Some(value) if value & 0x0020 != 0)
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_capability_magnitude_bound(extended_capabilities_view(self)),
+    ))]
+    pub fn part15_magnitude_bound(&self) -> Option<u8> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part2_capability_magnitude_bound); }
+        let value = self.part15_value()?;
+        #[cfg(verus_keep_ghost)]
+        proof! { assert(value & 0x1fu16 <= 31u16) by(bit_vector); }
+        let parameter = (value & 0x1f) as u8;
+        Some(crate::refinement::part15_magnitude_bound(parameter))
+    }
+
+    #[allow(clippy::manual_map, clippy::question_mark)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_capability_value(extended_capabilities_view(self), part),
+    ))]
+    pub fn capability_for_part(&self, part: u8) -> Option<u16> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(extended_capabilities_view); reveal(crate::specs::part2_capability_value); }
+        if part == 0 || part > 32 {
+            return None;
+        }
+        let mut index = 0_usize;
+        let mut current = 1_u8;
+        let mut mask = 0x8000_0000_u32;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant current <= part,
+                    part > 0, part <= 32,
+                    crate::specs::part2_capability_value(extended_capabilities_view(self), part)
+                        == crate::specs::part2_capability_lookup_run(
+                            self.p_cap, self.c_capabilities@, part, current, mask, index,
+                        ),
+                decreases part - current,
+            )
+        )]
+        while current < part {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part2_capability_lookup_run, 1); }
+            if self.p_cap & mask != 0 {
+                index = match index.checked_add(1) {
+                    Some(value) => value,
+                    None => return None,
+                };
+            }
+            mask >>= 1;
+            current = match current.checked_add(1) {
+                Some(value) => value,
+                None => return None,
+            };
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal_with_fuel(crate::specs::part2_capability_lookup_run, 1);
+            assert(current == part);
+        }
+        if self.p_cap & mask == 0 {
+            return None;
+        }
+        match self.c_capabilities.get(index) {
+            Some(value) => Some(*value),
+            None => None,
+        }
+    }
+}
+impl ProfileNumber {
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result@ == profile_number_view(self),
+    ))]
+    pub fn words(&self) -> &[u16] {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(profile_number_view); }
+        &self.words
+    }
+}
+impl CodestreamProfile {
+    pub fn is_part15(&self) -> bool {
+        match self.extended_capabilities.as_ref() {
+            Some(capabilities) => capabilities.advertises_part15(),
+            None => false,
+        }
+    }
+
+    pub const fn uses_high_throughput(&self) -> bool {
+        !matches!(self.block_coding, CodestreamBlockCoding::Legacy)
+    }
+
+    pub const fn extended_capabilities(&self) -> Option<&ExtendedCapabilities> {
+        self.extended_capabilities.as_ref()
+    }
+
+    pub const fn profile(&self) -> Option<&ProfileNumber> {
+        self.profile.as_ref()
+    }
+
+    pub const fn corresponding_profile(&self) -> Option<&ProfileNumber> {
+        self.corresponding_profile.as_ref()
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_profile_multiple_sets(codestream_profile_capabilities(self)),
+    ))]
+    pub fn part15_allows_multiple_ht_sets(&self) -> bool {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(codestream_profile_capabilities); reveal(crate::specs::part2_profile_multiple_sets); }
+        match self.extended_capabilities.as_ref() {
+            Some(capabilities) => capabilities.part15_allows_multiple_ht_sets(),
+            None => false,
+        }
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_profile_magnitude_bound(codestream_profile_capabilities(self)),
+    ))]
+    pub fn part15_magnitude_bound(&self) -> u8 {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(codestream_profile_capabilities); reveal(crate::specs::part2_profile_magnitude_bound); }
+        match self.extended_capabilities.as_ref() {
+            None => 74,
+            Some(capabilities) => capabilities.part15_magnitude_bound().unwrap_or(74),
+        }
+    }
+
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == crate::specs::part2_profile_force_ht(codestream_profile_capabilities(self)),
+    ))]
+    pub fn part15_requires_all_ht_blocks(&self) -> bool {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(codestream_profile_capabilities); reveal(crate::specs::part2_profile_force_ht); }
+        match self.extended_capabilities.as_ref() {
+            None => false,
+            Some(capabilities) => matches!(
+                capabilities.part15_block_mode(),
+                Some(Part15BlockMode::HtOnly)
+            ),
+        }
+    }
+}
+impl<'a> Parser<'a> {
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures cap_payload_outcome(result) == crate::specs::part1_parse_cap(segment_view(segment)),
+    ))]
+    pub(super) fn parse_cap(
+        &self,
+        segment: Segment<'a>,
+    ) -> Result<ExtendedCapabilities, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_cap); reveal(extended_capabilities_view); }
+        if segment.payload.len() < 4 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+        }
+        let p_cap = read_u32([
+            segment.payload[0],
+            segment.payload[1],
+            segment.payload[2],
+            segment.payload[3],
+        ]);
+        if p_cap == 0 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidProfile));
+        }
+        let capability_count = count_set_bits(p_cap);
+        let expected_length = crate::refinement::part15_cap_payload_length(capability_count);
+        if segment.payload.len() != expected_length {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+        }
+        let c_capabilities = self.read_marker_words(segment, 4)?;
+        Ok(ExtendedCapabilities {
+            p_cap,
+            c_capabilities,
+        })
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures profile_number_outcome(result) == crate::specs::part1_parse_profile_number(segment_view(segment)),
+    ))]
+    pub(super) fn parse_profile_number(
+        &self,
+        segment: Segment<'a>,
+    ) -> Result<ProfileNumber, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_profile_number); reveal(profile_number_view); }
+        let remainder = segment.payload.len() % 2;
+        if segment.payload.len() < 2 || remainder != 0 {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+        }
+        let words = self.read_marker_words(segment, 0)?;
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_marker_words); }
+        if matches!(words.last(), Some(value) if *value == 0) {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidProfile));
+        }
+        Ok(ProfileNumber { words })
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures marker_words_outcome(result) == crate::specs::part1_marker_words(segment_view(segment), start),
+    ))]
+    pub(super) fn read_marker_words(
+        &self,
+        segment: Segment<'a>,
+        start: usize,
+    ) -> Result<Vec<u16>, DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_marker_words); }
+        if start > segment.payload.len() {
+            return Err(self.malformed_at(segment.offset, MalformedKind::InvalidMarkerLength));
+        }
+        let mut words = Vec::with_capacity((segment.payload.len() - start) / 2);
+        let mut position = start;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant
+                    start <= position <= segment.payload.len(),
+                    (position - start) % 2 == 0,
+                    words@ == crate::specs::part1_marker_word_sequence(
+                        segment.payload@.subrange(start as int, position as int)),
+                decreases segment.payload.len() - position,
+            )
+        )]
+        while position < segment.payload.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal(crate::specs::part1_segment_byte);
+                reveal(crate::specs::part1_marker_words);
+            }
+            let next = match position.checked_add(1) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
+            let first = self.segment_byte(segment, position, 0)?;
+            let second = match self.segment_byte(segment, next, 0) {
+                Ok(value) => value,
+                Err(error) => {
+                    #[cfg(verus_keep_ghost)]
+                    proof! {
+                        assert(next == segment.payload.len());
+                        assert((segment.payload.len() - start) % 2 == 1);
+                    }
+                    return Err(error);
+                }
+            };
+            words.push(read_u16([first, second]));
+            let next_position = match position.checked_add(2) {
+                Some(value) => value,
+                None => {
+                    return Err(
+                        self.malformed_at(segment.offset, MalformedKind::ArithmeticOverflow)
+                    );
+                }
+            };
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                let raw = segment.payload@;
+                let previous = crate::specs::part1_marker_word_sequence(raw.subrange(start as int, position as int));
+                let next_words = crate::specs::part1_marker_word_sequence(raw.subrange(start as int, next_position as int));
+                assert(next_words =~= previous.push(crate::specs::part1_marker_value(raw[position as int], raw[position as int + 1]))) by {
+                    assert forall|index: int| 0 <= index < next_words.len() implies
+                        next_words[index] == previous.push(crate::specs::part1_marker_value(raw[position as int], raw[position as int + 1]))[index] by {
+                        if index >= previous.len() { assert(2 * index == position - start); }
+                    };
+                }
+            }
+            position = next_position;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(segment.payload@.subrange(start as int, position as int)
+                =~= segment.payload@.subrange(start as int, segment.payload.len() as int));
+        }
+        Ok(words)
+    }
+}
+#[allow(clippy::too_many_arguments)]
+pub(super) fn classify_codestream_profile(
+    r_siz: u16,
+    extended_capabilities: Option<ExtendedCapabilities>,
+    profile: Option<ProfileNumber>,
+    corresponding_profile: Option<ProfileNumber>,
+    main_styles: &ComponentCodingStyles,
+    main_roi_shifts: &RoiShifts,
+    tile_parts: &[TilePartPayload<'_>],
+    components: u16,
+    main_has_roi_marker: bool,
+) -> Result<CodestreamProfile, DecodeError> {
+    let mut has_legacy = false;
+    let mut has_ht_only = false;
+    let mut has_mixed = false;
+    let mut component = 0_u16;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant component <= components,
+            decreases components - component,
+        )
+    )]
+    while component < components {
+        observe_block_coding(
+            main_styles.style(component)?.code_block_style,
+            &mut has_legacy,
+            &mut has_ht_only,
+            &mut has_mixed,
+        )?;
+        component = component
+            .checked_add(1)
+            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+    }
+    let mut tile_part_index = 0_usize;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant tile_part_index <= tile_parts.len(),
+            decreases tile_parts.len() - tile_part_index,
+        )
+    )]
+    while tile_part_index < tile_parts.len() {
+        let tile_part = tile_parts
+            .get(tile_part_index)
+            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        component = 0;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant component <= components,
+                decreases components - component,
+            )
+        )]
+        while component < components {
+            observe_block_coding(
+                tile_part
+                    .component_coding_styles
+                    .style(component)?
+                    .code_block_style,
+                &mut has_legacy,
+                &mut has_ht_only,
+                &mut has_mixed,
+            )?;
+            component = component
+                .checked_add(1)
+                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        }
+        tile_part_index = tile_part_index
+            .checked_add(1)
+            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+    }
+
+    let cap_part15 = match &extended_capabilities {
+        Some(capabilities) => capabilities.advertises_part15(),
+        None => false,
+    };
+    let r_siz_part15 = r_siz & HT_RSIZ_FLAG != 0;
+    let styles_part15 = has_ht_only || has_mixed;
+    if !crate::refinement::part15_signaling_valid(
+        r_siz_part15,
+        cap_part15,
+        styles_part15,
+        corresponding_profile.is_some(),
+    ) {
+        return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
+    }
+    if cap_part15 {
+        let capabilities = extended_capabilities
+            .as_ref()
+            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidProfile))?;
+        let value = capabilities
+            .part15_value()
+            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidProfile))?;
+        if !crate::refinement::part15_capability_fields_valid(
+            (value >> 14) as u8,
+            ((value & 0x07c0) >> 6) as u8,
+            (value & 0x1f) as u8,
+        ) {
+            return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
+        }
+        let block_mode = capabilities
+            .part15_block_mode()
+            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidProfile))?;
+        let mode = match block_mode {
+            Part15BlockMode::HtOnly => 0,
+            Part15BlockMode::HtDeclared => 2,
+            Part15BlockMode::Mixed => 3,
+        };
+        if !crate::refinement::part15_mode_allows(mode, has_legacy, has_mixed) {
+            return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
+        }
+        if !capabilities.part15_allows_roi()
+            && (main_has_roi_marker || tile_parts.iter().any(|part| part.has_roi_marker))
+        {
+            return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
+        }
+        if !crate::refinement::part15_headers_allowed(
+            capabilities.part15_allows_heterogeneous_headers(),
+            tile_parts
+                .iter()
+                .any(|part| part.has_functional_header_marker),
+        ) {
+            return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
+        }
+        validate_part15_component_capabilities(
+            capabilities,
+            main_styles,
+            main_roi_shifts,
+            components,
+            main_has_roi_marker,
+        )?;
+        let mut tile_part_index = 0_usize;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant tile_part_index <= tile_parts.len(),
+                decreases tile_parts.len() - tile_part_index,
+            )
+        )]
+        while tile_part_index < tile_parts.len() {
+            let tile_part = tile_parts
+                .get(tile_part_index)
+                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            validate_part15_component_capabilities(
+                capabilities,
+                &tile_part.component_coding_styles,
+                &tile_part.roi_shifts,
+                components,
+                tile_part.has_roi_marker,
+            )?;
+            tile_part_index += 1;
+        }
+    } else if styles_part15 {
+        return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
+    }
+    let block_coding =
+        match crate::refinement::part15_codestream_class(has_legacy, has_ht_only, has_mixed) {
+            2 => CodestreamBlockCoding::Mixed,
+            1 => CodestreamBlockCoding::HighThroughput,
+            _ => CodestreamBlockCoding::Legacy,
+        };
+    Ok(CodestreamProfile {
+        r_siz,
+        block_coding,
+        extended_capabilities,
+        profile,
+        corresponding_profile,
+    })
+}
+fn validate_part15_component_capabilities(
+    capabilities: &ExtendedCapabilities,
+    styles: &ComponentCodingStyles,
+    roi_shifts: &RoiShifts,
+    components: u16,
+    has_roi_marker: bool,
+) -> Result<(), DecodeError> {
+    let mut component = 0_u16;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant component <= components,
+            decreases components - component,
+        )
+    )]
+    while component < components {
+        let style = styles.style(component)?;
+        let roi_shift = roi_shifts.shift(component)?;
+        let block_coding = Tier1BlockCoding::from_code_block_style(style.code_block_style)
+            .map_err(|_| DecodeError::malformed(0, MalformedKind::InvalidCodingStyle))?;
+        if !crate::refinement::part15_component_allowed(
+            capabilities.part15_allows_roi(),
+            has_roi_marker,
+            roi_shift,
+            capabilities.part15_allows_irreversible_ht(),
+            block_coding.uses_high_throughput(),
+            matches!(style.transform, WaveletTransform::Irreversible9x7),
+        ) {
+            return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
+        }
+        component = component
+            .checked_add(1)
+            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+    }
+    if has_roi_marker && !capabilities.part15_allows_roi() {
+        return Err(DecodeError::malformed(0, MalformedKind::InvalidProfile));
+    }
+    Ok(())
+}
+fn observe_block_coding(
+    style: u8,
+    has_legacy: &mut bool,
+    has_ht_only: &mut bool,
+    has_mixed: &mut bool,
+) -> Result<(), DecodeError> {
+    match Tier1BlockCoding::from_code_block_style(style) {
+        Ok(Tier1BlockCoding::Legacy) => *has_legacy = true,
+        Ok(Tier1BlockCoding::HighThroughput) => *has_ht_only = true,
+        Ok(Tier1BlockCoding::Mixed) => *has_mixed = true,
+        Err(_) => return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)),
+    }
+    Ok(())
+}
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result as nat == crate::specs::part1_set_bits_prefix(value, 32),
+        result <= 32,
+))]
+pub(super) fn count_set_bits(value: u32) -> u8 {
+    let mut count = 0_u8;
+    let mut bit = 0_u8;
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant bit <= 32, count <= bit,
+                count as nat == crate::specs::part1_set_bits_prefix(value, bit as nat),
+            decreases 32 - bit,
+        )
+    )]
+    while bit < 32 {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_set_bits_prefix, 1); }
+        if value & (1_u32 << u32::from(bit)) != 0 {
+            count = match count.checked_add(1) {
+                Some(value) => value,
+                None => return count,
+            };
+        }
+
+        bit += 1;
+    }
+
+    count
+}
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_maximum_u32_for_bits(bits),
+))]
+pub(super) fn maximum_u32_for_bits(bits: u8) -> Result<u32, DecodeError> {
+    if bits == 0 || bits > 31 {
+        return Err(DecodeError::MalformedInput {
+            offset: 0,
+            kind: MalformedKind::ArithmeticOverflow,
+        });
+    }
+    let mut value = 0_u32;
+    let mut bit = 0_u8;
+    #[cfg(verus_keep_ghost)]
+    proof! { assert((1u64 << 0u8) == 1u64) by (bit_vector); }
+    #[cfg_attr(
+        verus_keep_ghost,
+        verus_spec(
+            invariant bit <= bits, 0 < bits <= 31,
+                value as u64 == (1u64 << bit) - 1,
+            decreases bits - bit,
+        )
+    )]
+    while bit < bits {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            assert(bit < 31 ==> (1u64 << bit) - 1 <= 1073741823u64) by (bit_vector);
+            assert(bit < 31 ==> ((1u64 << bit) - 1) * 2 + 1 == (1u64 << (bit + 1)) - 1) by (bit_vector);
+        }
+        let doubled = match value.checked_mul(2) {
+            Some(value) => value,
+            None => {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+        };
+        value = match doubled.checked_add(1) {
+            Some(value) => value,
+            None => {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+        };
+        bit = match bit.checked_add(1) {
+            Some(value) => value,
+            None => {
+                return Err(DecodeError::MalformedInput {
+                    offset: 0,
+                    kind: MalformedKind::ArithmeticOverflow,
+                });
+            }
+        };
+    }
+    Ok(value)
+}

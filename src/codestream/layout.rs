@@ -1,0 +1,676 @@
+//! Codestream entry points and main-header/layout orchestration.
+
+use super::mct_resolution::{
+    validate_unique_mct_array_indexes, validate_unique_mct_record_indexes,
+};
+use super::profile::classify_codestream_profile;
+use super::reader::{is_allowed_main_header, is_known_segment_marker, new_parser};
+use super::{
+    ADS, ATK, CAP, CBD, COC, COD, CPF, CRG, CodestreamInfo, CodestreamLayout,
+    ComponentCodingStyles, ComponentQuantizations, DFS, DecodeError, EOC, MAX_COMPONENTS, MCC, MCO,
+    MCT, MalformedKind, MctParameters, NLT, PLM, POC, PPM, PRF, PackedPacketHeaderSource,
+    PackedPacketHeaders, PacketLengths, Parser, Part2Extensions, ProgressionChanges, QCC, QCD, RGN,
+    Resource, ResourceLimits, RoiShifts, SIZ, SOC, SOT, TLM,
+};
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+pub fn parse(input: &[u8], limits: &ResourceLimits) -> Result<CodestreamInfo, DecodeError> {
+    Ok(parse_layout(input, limits)?.info)
+}
+pub fn parse_layout<'a>(
+    input: &'a [u8],
+    limits: &'a ResourceLimits,
+) -> Result<CodestreamLayout<'a>, DecodeError> {
+    new_parser(input, limits)?.parse_layout()
+}
+impl<'a> Parser<'a> {
+    fn parse_layout(self) -> Result<CodestreamLayout<'a>, DecodeError> {
+        let mut parser = self;
+        parser.expect_standalone(SOC)?;
+        let siz = parser.read_segment()?;
+        if siz.marker != SIZ {
+            return Err(DecodeError::malformed(
+                parser.offset(siz.offset),
+                MalformedKind::InvalidMarkerOrder,
+            ));
+        }
+        let (mut image_size, r_siz) = parser.parse_siz(siz)?;
+        let main_header_start = parser.position;
+        let mut main_header_segments = 1_u64;
+        let mut coding_style = None;
+        let mut qcd_segment = None;
+        let mut coc_segments = [None; MAX_COMPONENTS];
+        let mut qcc_segments = [None; MAX_COMPONENTS];
+        let mut roi_shifts = RoiShifts::none();
+        let mut roi_seen = [false; MAX_COMPONENTS];
+        let mut plm_groups = Vec::new();
+        let mut next_plm_index = 0_u16;
+        let mut plm_seen = false;
+        let mut ppm_bytes = Vec::new();
+        let mut next_ppm_index = 0_u16;
+        let mut ppm_fragments = 0_u16;
+        let mut progression_changes = ProgressionChanges::none();
+        let mut poc_seen = false;
+        let mut mct_arrays = Vec::new();
+        let mut mct_records = Vec::new();
+        let mut mct_order = None;
+        let mut pending_mct = Vec::new();
+        let mut completed_mct = Vec::new();
+        let mut pending_mcc = Vec::new();
+        let mut completed_mcc = Vec::new();
+        let mut extended_capabilities = None;
+        let mut profile = None;
+        let mut corresponding_profile = None;
+        let mut part2_extensions = Part2Extensions::default();
+        let mut next_tlm_index = 0_u16;
+        let input_length = parser.input.len();
+
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(decreases input_length as int - parser.position as int,)
+        )]
+        loop {
+            let previous_position = parser.position;
+            let marker = parser.peek_marker()?;
+            if marker == SOT {
+                break;
+            }
+            if crate::refinement::main_header_boundary(marker) {
+                return Err(parser.malformed_here(MalformedKind::InvalidMarkerOrder));
+            }
+            let segment = parser.read_segment()?;
+            main_header_segments = main_header_segments
+                .checked_add(1)
+                .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            if !is_known_segment_marker(segment.marker) {
+                return Err(DecodeError::malformed(
+                    parser.offset(segment.offset),
+                    MalformedKind::InvalidMarker,
+                ));
+            }
+            if !is_allowed_main_header(segment.marker) {
+                return Err(DecodeError::malformed(
+                    parser.offset(segment.offset),
+                    MalformedKind::InvalidMarkerOrder,
+                ));
+            }
+            match segment.marker {
+                CAP if extended_capabilities.is_some() => {
+                    return Err(DecodeError::malformed(
+                        parser.offset(segment.offset),
+                        MalformedKind::InvalidMarkerOrder,
+                    ));
+                }
+                CAP => extended_capabilities = Some(parser.parse_cap(segment)?),
+                PRF if profile.is_some() => {
+                    return Err(DecodeError::malformed(
+                        parser.offset(segment.offset),
+                        MalformedKind::InvalidMarkerOrder,
+                    ));
+                }
+                PRF => profile = Some(parser.parse_profile_number(segment)?),
+                CPF if corresponding_profile.is_some() => {
+                    return Err(DecodeError::malformed(
+                        parser.offset(segment.offset),
+                        MalformedKind::InvalidMarkerOrder,
+                    ));
+                }
+                CPF => corresponding_profile = Some(parser.parse_profile_number(segment)?),
+                COD if coding_style.is_some() => {
+                    return Err(DecodeError::malformed(
+                        parser.offset(segment.offset),
+                        MalformedKind::InvalidMarkerOrder,
+                    ));
+                }
+                COD => coding_style = Some(parser.parse_cod(segment)?),
+                COC => {
+                    let (component, _) = parser.parse_component_index(
+                        segment,
+                        image_size.components,
+                        MalformedKind::InvalidCodingStyle,
+                    )?;
+                    let slot = coc_segments
+                        .get_mut(usize::from(component))
+                        .ok_or_else(|| {
+                            DecodeError::malformed(
+                                parser.offset(segment.offset),
+                                MalformedKind::InvalidCodingStyle,
+                            )
+                        })?;
+                    if slot.is_some() {
+                        return Err(DecodeError::malformed(
+                            parser.offset(segment.offset),
+                            MalformedKind::InvalidMarkerOrder,
+                        ));
+                    }
+                    *slot = Some(segment);
+                }
+                QCD if qcd_segment.is_some() => {
+                    return Err(DecodeError::malformed(
+                        parser.offset(segment.offset),
+                        MalformedKind::InvalidMarkerOrder,
+                    ));
+                }
+                QCD => qcd_segment = Some(segment),
+                QCC => {
+                    let (component, _) = parser.parse_component_index(
+                        segment,
+                        image_size.components,
+                        MalformedKind::InvalidQuantization,
+                    )?;
+                    let slot = qcc_segments
+                        .get_mut(usize::from(component))
+                        .ok_or_else(|| {
+                            DecodeError::malformed(
+                                parser.offset(segment.offset),
+                                MalformedKind::InvalidQuantization,
+                            )
+                        })?;
+                    if slot.is_some() {
+                        return Err(DecodeError::malformed(
+                            parser.offset(segment.offset),
+                            MalformedKind::InvalidMarkerOrder,
+                        ));
+                    }
+                    *slot = Some(segment);
+                }
+                RGN => {
+                    let (component, shift) = parser.parse_rgn(segment, image_size.components)?;
+                    let index = usize::from(component);
+                    if index >= roi_seen.len() || roi_seen[index] {
+                        return Err(DecodeError::malformed(
+                            parser.offset(segment.offset),
+                            MalformedKind::InvalidMarkerOrder,
+                        ));
+                    }
+                    roi_seen[index] = true;
+                    roi_shifts.set(component, shift)?;
+                }
+                PLM => {
+                    plm_seen = true;
+                    parser.parse_plm(segment, &mut next_plm_index, &mut plm_groups)?;
+                }
+                PPM => {
+                    parser.parse_packed_fragment(
+                        segment,
+                        PPM,
+                        &mut next_ppm_index,
+                        &mut ppm_fragments,
+                        &mut ppm_bytes,
+                    )?;
+                }
+                POC => {
+                    if poc_seen {
+                        return Err(DecodeError::malformed(
+                            parser.offset(segment.offset),
+                            MalformedKind::InvalidMarkerOrder,
+                        ));
+                    }
+                    poc_seen = true;
+                    progression_changes = parser.parse_poc(segment, image_size.components)?;
+                }
+                TLM => parser.parse_tlm(
+                    segment,
+                    &mut next_tlm_index,
+                    image_size.tile_count()?,
+                    &mut part2_extensions,
+                )?,
+                CRG => parser.parse_crg(segment, image_size.components, &mut part2_extensions)?,
+                DFS => parser.parse_dfs(segment, &mut part2_extensions)?,
+                ADS => parser.parse_ads(segment, &mut part2_extensions)?,
+                NLT => parser.parse_nlt(segment, image_size.components, &mut part2_extensions)?,
+                CBD => parser.parse_cbd(segment, image_size.components, &mut part2_extensions)?,
+                ATK => parser.parse_atk(segment, &mut part2_extensions)?,
+                MCT => {
+                    if let Some(array) = parser.consume_mct_fragment(
+                        segment,
+                        &mut pending_mct,
+                        &mut completed_mct,
+                    )? {
+                        mct_arrays.push(array);
+                        validate_unique_mct_array_indexes(&mct_arrays, segment.offset)?;
+                    }
+                }
+                MCC => {
+                    if let Some(record) = parser.consume_mcc_fragment(
+                        segment,
+                        image_size.components,
+                        &mut pending_mcc,
+                        &mut completed_mcc,
+                    )? {
+                        mct_records.push(record);
+                        validate_unique_mct_record_indexes(&mct_records, segment.offset)?;
+                    }
+                }
+                MCO => {
+                    if mct_order.is_some() {
+                        return Err(DecodeError::malformed(
+                            parser.offset(segment.offset),
+                            MalformedKind::InvalidMarkerOrder,
+                        ));
+                    }
+                    mct_order = Some(parser.parse_mco(segment)?);
+                }
+                0xff64 => {}
+                marker => {
+                    let _ = marker;
+                    return Err(DecodeError::malformed(
+                        parser.offset(segment.offset),
+                        MalformedKind::InvalidMarker,
+                    ));
+                }
+            }
+            if !crate::refinement::parser_progress(previous_position, parser.position, input_length)
+            {
+                return Err(parser.malformed_here(MalformedKind::InvalidMarkerLength));
+            }
+        }
+        if !pending_mct.is_empty() || !pending_mcc.is_empty() {
+            return Err(parser.malformed_here(MalformedKind::MissingRequiredStructure));
+        }
+        if !part2_extensions.component_bit_depths.is_empty() {
+            let mut component = 0_u16;
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant component <= image_size.components,
+                    decreases image_size.components - component,
+                )
+            )]
+            while component < image_size.components {
+                let depth = *part2_extensions
+                    .component_bit_depths
+                    .get(usize::from(component))
+                    .ok_or_else(|| {
+                        parser.malformed_here(MalformedKind::MissingRequiredStructure)
+                    })?;
+                let info = image_size
+                    .component_info
+                    .get_mut(usize::from(component))
+                    .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidImageGeometry))?;
+                info.precision = depth.precision;
+                info.signed = depth.signed;
+                component = component
+                    .checked_add(1)
+                    .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            }
+            let first = image_size.component(0)?;
+            let uniform = (1..image_size.components).all(|component| {
+                matches!(
+                    image_size.component(component),
+                    Ok(info) if info.precision == first.precision && info.signed == first.signed
+                )
+            });
+            image_size.uniform_bit_depth = if uniform { Some(first.precision) } else { None };
+            image_size.uniform_signed = if uniform { Some(first.signed) } else { None };
+        }
+        let main_header_end = parser.position;
+        let ppm_frames = parser.parse_ppm_frames(&ppm_bytes, ppm_fragments)?;
+        let main_header = parser
+            .input
+            .get(main_header_start..main_header_end)
+            .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidPackedPacketHeader))?;
+
+        let coding_style = coding_style
+            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
+        let qcd_segment = qcd_segment
+            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
+        let quantization = parser.parse_qcd(qcd_segment, coding_style)?;
+        let mut component_coding_styles =
+            ComponentCodingStyles::new(image_size.components, coding_style)?;
+        let mut component = 0_u16;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant component <= image_size.components,
+                decreases image_size.components - component,
+            )
+        )]
+        while component < image_size.components {
+            let coc_segment = match coc_segments.get(usize::from(component)) {
+                Some(segment) => *segment,
+                None => None,
+            };
+            if let Some(segment) = coc_segment {
+                let (_, style) = parser.parse_coc(segment, image_size.components, coding_style)?;
+                component_coding_styles.set(component, style)?;
+            }
+            component = component
+                .checked_add(1)
+                .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        }
+        parser.resolve_decomposition_structures(&mut component_coding_styles, &part2_extensions)?;
+        let mut component_quantizations =
+            ComponentQuantizations::new(image_size.components, quantization)?;
+        component = 0;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant component <= image_size.components,
+                decreases image_size.components - component,
+            )
+        )]
+        while component < image_size.components {
+            let qcc_segment = match qcc_segments.get(usize::from(component)) {
+                Some(segment) => *segment,
+                None => None,
+            };
+            if let Some(segment) = qcc_segment {
+                let style = component_coding_styles.style(component)?;
+                let (_, component_quantization) =
+                    parser.parse_qcc(segment, image_size.components, style)?;
+                component_quantizations.set(component, component_quantization)?;
+            }
+            if !component_quantizations
+                .quantization(component)?
+                .is_compatible_with(component_coding_styles.style(component)?)
+            {
+                return Err(DecodeError::malformed(
+                    0,
+                    MalformedKind::InvalidQuantization,
+                ));
+            }
+            component = component
+                .checked_add(1)
+                .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        }
+        parser.validate_progression_changes(
+            &progression_changes,
+            coding_style.layers,
+            &component_coding_styles,
+            0,
+        )?;
+        if (!mct_arrays.is_empty() || !mct_records.is_empty()) && mct_order.is_none() {
+            return Err(DecodeError::malformed(
+                0,
+                MalformedKind::MissingRequiredStructure,
+            ));
+        }
+        if !part2_extensions.component_registrations.is_empty() {
+            let mut component = 0_u16;
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant component <= image_size.components,
+                    decreases image_size.components - component,
+                )
+            )]
+            while component < image_size.components {
+                let registration = *part2_extensions
+                    .component_registrations
+                    .get(usize::from(component))
+                    .ok_or_else(|| {
+                        parser.malformed_here(MalformedKind::MissingRequiredStructure)
+                    })?;
+                let info = image_size
+                    .component_info
+                    .get_mut(usize::from(component))
+                    .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidImageGeometry))?;
+                info.x_registration = registration.horizontal;
+                info.y_registration = registration.vertical;
+                component = component
+                    .checked_add(1)
+                    .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
+            }
+        }
+        let main_mct_parameters = MctParameters {
+            arrays: mct_arrays,
+            records: mct_records,
+            order: mct_order.unwrap_or_default(),
+        };
+        let multiple_component_transform =
+            parser.resolve_multiple_component_transform(&main_mct_parameters)?;
+        let tile_count = image_size.tile_count()?;
+        let mut tile_parts = 0_u32;
+        let mut tile_part_payloads = Vec::new();
+        let tile_state_count = usize::try_from(tile_count)
+            .map_err(|_| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
+        let mut tile_roi_shifts = vec![None; tile_state_count];
+        let mut tile_coding_styles = vec![None; tile_state_count];
+        let mut tile_quantizations = vec![None; tile_state_count];
+        let mut tile_component_coding_styles = vec![None; tile_state_count];
+        let mut tile_component_quantizations: Vec<Option<ComponentQuantizations>> =
+            vec![None; tile_state_count];
+        let mut tile_progression_changes: Vec<Option<ProgressionChanges>> =
+            vec![None; tile_state_count];
+        let mut tile_mct_parameters: Vec<Option<MctParameters>> = vec![None; tile_state_count];
+        let mut tile_part2_extensions: Vec<Option<Part2Extensions>> = vec![None; tile_state_count];
+
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(decreases input_length as int - parser.position as int,)
+        )]
+        loop {
+            let previous_position = parser.position;
+            match parser.peek_marker()? {
+                SOT => {
+                    tile_parts = tile_parts
+                        .checked_add(1)
+                        .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
+                    if tile_parts > parser.limits.maximum_tile_parts() {
+                        return Err(DecodeError::limit(
+                            Resource::TileParts,
+                            u64::from(parser.limits.maximum_tile_parts()),
+                            u64::from(tile_parts),
+                        ));
+                    }
+                    let tile_part = parser.read_sot(tile_count)?;
+                    if !part2_extensions.tile_part_lengths.is_empty() {
+                        let entry_index = usize::try_from(tile_parts - 1).map_err(|_| {
+                            parser.malformed_here(MalformedKind::ArithmeticOverflow)
+                        })?;
+                        let entry = part2_extensions
+                            .tile_part_lengths
+                            .get(entry_index)
+                            .ok_or_else(|| {
+                                DecodeError::malformed(
+                                    parser.offset(tile_part.start),
+                                    MalformedKind::InvalidTilePart,
+                                )
+                            })?;
+                        if entry.length != tile_part.length
+                            || matches!(entry.tile_index, Some(index) if index != tile_part.tile_index)
+                        {
+                            return Err(DecodeError::malformed(
+                                parser.offset(tile_part.start),
+                                MalformedKind::InvalidTilePart,
+                            ));
+                        }
+                    }
+                    let main_packet_lengths = if plm_seen {
+                        *plm_groups
+                            .get(usize::try_from(tile_parts - 1).map_err(|_| {
+                                parser.malformed_here(MalformedKind::ArithmeticOverflow)
+                            })?)
+                            .ok_or_else(|| {
+                                DecodeError::malformed(
+                                    parser.offset(tile_part.start),
+                                    MalformedKind::InvalidPacketLength,
+                                )
+                            })?
+                    } else {
+                        PacketLengths::none()
+                    };
+                    let packed_packet_headers = if ppm_fragments != 0 {
+                        let frame = *ppm_frames
+                            .get(usize::try_from(tile_parts - 1).map_err(|_| {
+                                parser.malformed_here(MalformedKind::ArithmeticOverflow)
+                            })?)
+                            .ok_or_else(|| {
+                                DecodeError::malformed(
+                                    parser.offset(tile_part.start),
+                                    MalformedKind::InvalidPackedPacketHeader,
+                                )
+                            })?;
+                        PackedPacketHeaders {
+                            source: PackedPacketHeaderSource::MarkerSegments {
+                                header: main_header,
+                                marker: PPM,
+                                logical_start: frame.start,
+                            },
+                            length: frame.length,
+                            fragments: ppm_fragments,
+                        }
+                    } else {
+                        PackedPacketHeaders::none()
+                    };
+                    let tile_index = usize::from(tile_part.tile_index);
+                    let previous_roi_shifts = match tile_roi_shifts.get(tile_index) {
+                        Some(state) => *state,
+                        None => {
+                            return Err(parser.malformed_here(MalformedKind::InvalidTilePart));
+                        }
+                    };
+                    let inherited_roi_shifts = match previous_roi_shifts {
+                        Some(shifts) => shifts,
+                        None => roi_shifts,
+                    };
+                    let inherited_default_style = match tile_coding_styles.get(tile_index) {
+                        Some(Some(style)) => *style,
+                        _ => coding_style,
+                    };
+                    let inherited_default_quantization = match tile_quantizations.get(tile_index) {
+                        Some(Some(value)) => *value,
+                        _ => quantization,
+                    };
+                    let inherited_component_styles =
+                        match tile_component_coding_styles.get(tile_index) {
+                            Some(Some(styles)) => *styles,
+                            _ => component_coding_styles,
+                        };
+                    let inherited_component_quantizations =
+                        match tile_component_quantizations.get(tile_index) {
+                            Some(Some(quantizations)) => quantizations.clone(),
+                            _ => component_quantizations.clone(),
+                        };
+                    let inherited_progression_changes =
+                        match tile_progression_changes.get(tile_index) {
+                            Some(Some(changes)) => changes.clone(),
+                            _ => progression_changes.clone(),
+                        };
+                    let inherited_mct_parameters = match tile_mct_parameters.get(tile_index) {
+                        Some(Some(parameters)) => parameters.clone(),
+                        _ => main_mct_parameters.clone(),
+                    };
+                    let inherited_part2_extensions = match tile_part2_extensions.get(tile_index) {
+                        Some(Some(extensions)) => extensions.clone(),
+                        _ => part2_extensions.clone(),
+                    };
+                    let (payload, tile_parameters, tile_extensions) = parser.read_tile_part(
+                        tile_part,
+                        (inherited_default_style, inherited_default_quantization),
+                        inherited_component_styles,
+                        inherited_component_quantizations,
+                        inherited_roi_shifts,
+                        inherited_progression_changes,
+                        inherited_mct_parameters,
+                        inherited_part2_extensions,
+                        image_size.components,
+                        main_packet_lengths,
+                        packed_packet_headers,
+                    )?;
+                    let roi_consistent = match previous_roi_shifts {
+                        Some(previous) => previous.equals(&payload.roi_shifts),
+                        None => true,
+                    };
+                    if !roi_consistent {
+                        return Err(DecodeError::malformed(
+                            parser.offset(tile_part.start),
+                            MalformedKind::InvalidRegionOfInterest,
+                        ));
+                    }
+                    let state = tile_roi_shifts
+                        .get_mut(tile_index)
+                        .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))?;
+                    *state = Some(payload.roi_shifts);
+                    *tile_coding_styles
+                        .get_mut(tile_index)
+                        .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
+                        Some(payload.coding_style);
+                    *tile_quantizations
+                        .get_mut(tile_index)
+                        .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
+                        Some(payload.quantization);
+                    *tile_component_coding_styles
+                        .get_mut(tile_index)
+                        .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
+                        Some(payload.component_coding_styles);
+                    *tile_component_quantizations
+                        .get_mut(tile_index)
+                        .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
+                        Some(payload.component_quantizations.clone());
+                    *tile_progression_changes
+                        .get_mut(tile_index)
+                        .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
+                        Some(payload.progression_changes.clone());
+                    *tile_mct_parameters
+                        .get_mut(tile_index)
+                        .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
+                        Some(tile_parameters);
+                    *tile_part2_extensions
+                        .get_mut(tile_index)
+                        .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidTilePart))? =
+                        Some(tile_extensions);
+                    tile_part_payloads.push(payload);
+                }
+                EOC => {
+                    if tile_parts == 0 {
+                        return Err(parser.malformed_here(MalformedKind::InvalidMarkerOrder));
+                    }
+                    parser.expect_standalone(EOC)?;
+                    if plm_seen && plm_groups.len() != tile_parts as usize {
+                        return Err(parser.malformed_here(MalformedKind::InvalidPacketLength));
+                    }
+                    if ppm_fragments != 0 && ppm_frames.len() != tile_parts as usize {
+                        return Err(parser.malformed_here(MalformedKind::InvalidPackedPacketHeader));
+                    }
+                    if !part2_extensions.tile_part_lengths.is_empty()
+                        && part2_extensions.tile_part_lengths.len() != tile_parts as usize
+                    {
+                        return Err(parser.malformed_here(MalformedKind::InvalidTilePart));
+                    }
+                    if parser.position != parser.input.len() {
+                        return Err(parser.malformed_here(MalformedKind::TrailingData));
+                    }
+                    break;
+                }
+                _ => return Err(parser.malformed_here(MalformedKind::InvalidMarkerOrder)),
+            }
+            if !crate::refinement::parser_progress(previous_position, parser.position, input_length)
+            {
+                return Err(parser.malformed_here(MalformedKind::InvalidTilePart));
+            }
+        }
+
+        let codestream_profile = classify_codestream_profile(
+            r_siz,
+            extended_capabilities,
+            profile,
+            corresponding_profile,
+            &component_coding_styles,
+            &roi_shifts,
+            &tile_part_payloads,
+            image_size.components,
+            roi_seen.iter().any(|seen| *seen),
+        )?;
+        Ok(CodestreamLayout {
+            info: CodestreamInfo {
+                image_size,
+                coding_style,
+                quantization,
+                component_coding_styles,
+                component_quantizations,
+                roi_shifts,
+                progression_changes,
+                multiple_component_transform,
+                part2_extensions,
+                profile: codestream_profile,
+                main_header_segments,
+                tile_parts,
+                consumed_bytes: parser.offset(parser.position),
+            },
+            tile_parts: tile_part_payloads,
+        })
+    }
+}

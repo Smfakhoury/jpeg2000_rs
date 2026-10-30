@@ -88,7 +88,7 @@ it does not establish how compressed bits became those numbers.
 **Question to audit:** what changes when parsing fails partway through?
 
 A PLM marker carries encoded packet-length information. Start with
-`Parser::parse_plm` in [the parser](../src/codestream.rs), then compare it
+`Parser::parse_plm` in [packet-header parsing](../src/codestream/packet_headers.rs), then compare it
 with the [packet-length models](mod.rs).
 
 Do not check only the successful result. For example, a group is appended

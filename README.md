@@ -151,6 +151,24 @@ provided. See [supported profiles and limitations](SUPPORTED.md) for details.
   Contracts and loop invariants remain attached to those executing bodies.
   [Proof support](src/decode/proof_support.rs) stays ghost-only; the private
   [tests](src/decode/tests.rs) retain their logical `decode::tests` identity.
+- The other decoder components use the same parent/child organization:
+
+  | Parent facade | Responsibility-based implementation |
+  |---|---|
+  | [codestream.rs](src/codestream.rs) | [Marker parsing, geometry and profile admission](src/codestream/) |
+  | [packet.rs](src/packet.rs) | [Headers, tag trees, progression and retained bodies](src/packet/) |
+  | [tier1.rs](src/tier1.rs) | [Legacy passes, HT streams, cleanup and refinement](src/tier1/) |
+  | [image.rs](src/image.rs) | [Typed layouts, component transforms and image composition](src/image/) |
+  | [transform.rs](src/transform.rs) | [Quantization, wavelets and arbitrary kernels](src/transform/) |
+  | [color.rs](src/color.rs) | [Channel admission, conversion and crop](src/color/) |
+  | [jp2.rs](src/jp2.rs), [jpx.rs](src/jpx.rs), [jpip.rs](src/jpip.rs) | [JP2 boxes](src/jp2/), [JPX layers and frames](src/jpx/), [JPIP messages and databins](src/jpip/) |
+  | [refinement.rs](src/refinement.rs) | [Executable model-linked helpers](src/refinement/), not a second decoder |
+
+  Shared types and existing public paths remain in their parent namespaces.
+  Executing bodies are real Rust modules, not included source fragments.
+  Private test files and ghost-only proof support are separate; ghost includes
+  retain their original logical parent namespace. The mathematical model files
+  are not split or substituted to meet a runtime-file size target.
 - [specs/](specs/) and [proofs/](proofs/) contain maintained semantic models
   and proofs, not generated run results.
 - [validation/](validation/) contains the reusable harness, regression tests,

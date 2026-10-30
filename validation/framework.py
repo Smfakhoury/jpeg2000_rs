@@ -276,12 +276,39 @@ def _coverage_function_body(text: str, header: re.Match[str] | None) -> str | No
     return text[body_start + 1:body_start + 1 + closing.start()]
 
 
-def _coverage_same_file_call(text: str, caller: str, callee: str) -> bool:
+def _coverage_same_file_call(
+    text: str, caller: str, callee: str, *, distinct_file: bool = False,
+) -> bool:
     """Check another formatted function body, not the callee declaration."""
-    if caller.rsplit("::", 1)[-1] == callee:
+    same_name = caller.rsplit("::", 1)[-1] == callee
+    if same_name and not distinct_file:
         return False
     body = _coverage_function_body(text, _coverage_function_header(text, caller))
-    return body is not None and re.search(rf"\b{re.escape(callee)}\s*\(", body) is not None
+    prefix = r"(?<![\w.])" if same_name else r"\b"
+    return body is not None and re.search(rf"{prefix}{re.escape(callee)}\s*\(", body) is not None
+
+
+def _coverage_definition_path(parent: str, symbol: str) -> str:
+    root = ROOT / parent
+    directory = root.parent / root.stem
+    candidates = [root]
+    parent_text = root.read_text(encoding="utf-8")
+    for path in sorted(directory.glob("*.rs")):
+        if path.name in {"tests.rs", "proof_support.rs"}:
+            continue
+        if re.search(rf"(?m)^\s*(?:pub(?:\([^)]*\))?\s+)?mod\s+{re.escape(path.stem)}\s*;", parent_text):
+            candidates.append(path)
+    matches = [
+        path for path in candidates
+        if _coverage_function_header(path.read_text(encoding="utf-8"), symbol) is not None
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"expected exactly one executing definition for {parent}::{symbol}")
+    return matches[0].relative_to(ROOT).as_posix()
+
+
+def _coverage_named_caller_required(path: str) -> bool:
+    return path == "src/tier1.rs" or (path.startswith("src/") and path.count("/") > 1)
 
 
 def _coverage_result_arguments(
@@ -461,8 +488,8 @@ def _packet_header_contracts() -> dict[tuple[str, str], tuple[str, str, str | No
             "part1_tier1_block_coding_byte", r"\1", None, "value"),
     }
     return {
-        **{("src/packet.rs", name): value for name, value in packet_contracts.items()},
-        **{("src/tier1.rs", name): value for name, value in tier1_contracts.items()},
+        **{(_coverage_definition_path("src/packet.rs", name), name): value for name, value in packet_contracts.items()},
+        **{(_coverage_definition_path("src/tier1.rs", name), name): value for name, value in tier1_contracts.items()},
     }
 
 
@@ -607,8 +634,8 @@ def _packet_progression_contracts() -> dict[tuple[str, str], tuple[str, str, str
             "part1_packet_length_decode", r"\1", None, args("encoded@", "start", "end")),
     }
     return {
-        **{("src/packet.rs", name): value for name, value in packet_contracts.items()},
-        **{("src/codestream.rs", name): value for name, value in input_contracts.items()},
+        **{(_coverage_definition_path("src/packet.rs", name), name): value for name, value in packet_contracts.items()},
+        **{(_coverage_definition_path("src/codestream.rs", name), name): value for name, value in input_contracts.items()},
     }
 
 
@@ -702,14 +729,14 @@ def _packet_wrapper_contracts() -> dict[tuple[str, str], tuple[str, str, str | N
                  view("crate::codestream::coding_style_packet_markers", r"&\s*params\.part\.coding_style") + r"\.1",
                  r"params\.offset", cap("packet_header_byte", "params.limits"), parameter_caps)),
     }
-    return {("src/packet.rs", name): value for name, value in values.items()}
+    return {(_coverage_definition_path("src/packet.rs", name), name): value for name, value in values.items()}
 
 
 _PACKET_WRAPPER_CONTRACTS = _packet_wrapper_contracts()
 _PACKET_EXECUTION_BUNDLE_FIELDS = frozenset({"states", "inclusion_tree", "zero_bitplane_tree", "decoders"})
 _PACKET_PROVED_BOUNDARY_APIS = frozenset({
-    ("src/packet.rs", "decode_single_code_block_packet"),
-    ("src/packet.rs", "decode_multi_code_block_packet"),
+    ("src/packet/multi_packet.rs", "decode_single_code_block_packet"),
+    ("src/packet/multi_packet.rs", "decode_multi_code_block_packet"),
 })
 
 def _reconstruction_contracts() -> dict[tuple[str, str], tuple[str, str, str | None, str]]:
@@ -784,9 +811,9 @@ def _reconstruction_contracts() -> dict[tuple[str, str], tuple[str, str, str | N
                  cap("decoded_bytes"))),
     }
     return {
-        **{("src/image.rs", name): recipe for name, recipe in image_contracts.items()},
+        **{(_coverage_definition_path("src/image.rs", name), name): recipe for name, recipe in image_contracts.items()},
         **decode_contracts,
-        ("src/codestream.rs", "Part2Extensions::arbitrary_kernel"): (
+        ("src/codestream/extensions.rs", "Part2Extensions::arbitrary_kernel"): (
             "part2_kernel_registry_lookup", view("crate::transform::arbitrary_kernel_option", r"\1"), None,
             args(view("part2_kernel_registry", "self"), "index")),
     }
@@ -794,12 +821,12 @@ def _reconstruction_contracts() -> dict[tuple[str, str], tuple[str, str, str | N
 
 _RECONSTRUCTION_CONTRACTS = _reconstruction_contracts()
 _RECONSTRUCTION_PROVED_BOUNDARY_APIS = frozenset({
-    ("src/image.rs", "apply_multiple_component_transform"),
+    ("src/image/mct.rs", "apply_multiple_component_transform"),
     ("src/decode/reconstruction.rs", "decode_progression_prepared_image"),
 })
 
 _LAYER_STATE_CONTRACTS = {
-    ("src/jpx.rs", "apply_chroma_key"): (
+    ("src/jpx/chroma.rs", "apply_chroma_key"): (
         "part2_apply_chroma_key", r"\1",
         _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
         _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*keys\s*@",
@@ -807,46 +834,46 @@ _LAYER_STATE_CONTRACTS = {
 }
 
 _TRANSFORM_ARRAY_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "read_u64"): (
+    ("src/codestream/reader.rs", "read_u64"): (
         "part1_codestream_u64", r"\1", None, r"bytes\s*@",
     ),
-    ("src/codestream.rs", "signed_u16"): (
+    ("src/codestream/reader.rs", "signed_u16"): (
         "part1_signed_u16", r"\1", None, "value",
     ),
-    ("src/codestream.rs", "fixed_from_binary"): (
+    ("src/codestream/mct_markers.rs", "fixed_from_binary"): (
         "part1_fixed_from_binary", r"\1", None, r"negative\s*,\s*significand\s*,\s*binary_exponent",
     ),
-    ("src/codestream.rs", "float32_to_fixed"): (
+    ("src/codestream/mct_markers.rs", "float32_to_fixed"): (
         "part1_float32_to_fixed", r"\1", None, "bits",
     ),
-    ("src/codestream.rs", "float64_to_fixed"): (
+    ("src/codestream/mct_markers.rs", "float64_to_fixed"): (
         "part1_float64_to_fixed", r"\1", None, "bits",
     ),
-    ("src/codestream.rs", "Parser::decode_mct_element"): (
+    ("src/codestream/mct_markers.rs", "Parser::decode_mct_element"): (
         "part1_mct_element", r"\1", None, r"offset\s*,\s*data\s*@\s*,\s*position\s*,\s*numeric_format",
     ),
-    ("src/codestream.rs", "Parser::parse_mct"): (
+    ("src/codestream/mct_markers.rs", "Parser::parse_mct"): (
         "part1_parse_mct", _coverage_call("mct_array_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*self\.limits",
     ),
 }
 
 _COLLECTION_FRAGMENT_CONTRACTS = {
-    ("src/codestream.rs", "find_mcc_fragment"): (
+    ("src/codestream/mct_markers.rs", "find_mcc_fragment"): (
         "part1_mcc_fragment_find", r"\1", None,
         _coverage_call("mcc_pending_view", r"pending\s*@") + r"\s*,\s*index\s*,\s*0",
     ),
-    ("src/codestream.rs", "u8_list_contains"): (
+    ("src/codestream/mct_resolution.rs", "u8_list_contains"): (
         "part1_byte_list_contains", r"\1", None, r"values\s*@\s*,\s*value",
     ),
-    ("src/codestream.rs", "Parser::prepare_mcc_fragment"): (
+    ("src/codestream/mct_markers.rs", "Parser::prepare_mcc_fragment"): (
         "part1_prepare_mcc_fragment", r"\1",
         _coverage_call("mcc_pending_view", _coverage_call("final", "pending") + r"\s*@"),
         _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*"
         + _coverage_call("mcc_pending_view", _coverage_call("old", "pending") + r"\s*@")
         + r"\s*,\s*completed\s*@",
     ),
-    ("src/codestream.rs", "Parser::consume_mcc_fragment"): (
+    ("src/codestream/mct_markers.rs", "Parser::consume_mcc_fragment"): (
         "part1_consume_mcc_fragment", _coverage_call("mcc_fragment_outcome", r"\1"),
         _coverage_call("mcc_pending_view", _coverage_call("final", "pending") + r"\s*@")
         + r"\s*,\s*" + _coverage_call("final", "completed") + r"\s*@",
@@ -857,7 +884,7 @@ _COLLECTION_FRAGMENT_CONTRACTS = {
 }
 
 _PACKED_HEADER_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_packed_fragment"): (
+    ("src/codestream/packet_headers.rs", "Parser::parse_packed_fragment"): (
         "part1_parse_packed_fragment", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self"))
         + r"\s*,\s*\*\s*" + _coverage_call("final", "next_index")
@@ -869,20 +896,20 @@ _PACKED_HEADER_BYTES_CONTRACTS = {
         + r"\s*,\s*\*\s*" + _coverage_call("old", "fragments")
         + r"\s*,\s*" + _coverage_call("old", "bytes") + r"\s*@",
     ),
-    ("src/codestream.rs", "Parser::parse_ppm_frames"): (
+    ("src/codestream/packet_headers.rs", "Parser::parse_ppm_frames"): (
         "part1_parse_ppm_frames", _coverage_call("packed_header_frames_outcome", r"\1"), None,
         r"bytes\s*@\s*,\s*fragments\s*,\s*self\.limits",
     ),
 }
 
 _PACKET_LENGTH_ADMISSION_CONTRACTS = {
-    ("src/codestream.rs", "Parser::validate_packet_lengths"): (
+    ("src/codestream/packet_headers.rs", "Parser::validate_packet_lengths"): (
         "part1_validate_packet_lengths", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")),
         _coverage_call("parser_view", _coverage_call("old", "self"))
         + r"\s*,\s*encoded\s*@\s*,\s*marker_offset",
     ),
-    ("src/codestream.rs", "Parser::parse_plm"): (
+    ("src/codestream/packet_headers.rs", "Parser::parse_plm"): (
         "part1_parse_plm", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self"))
         + r"\s*,\s*\*\s*" + _coverage_call("final", "next_index")
@@ -897,77 +924,77 @@ _PACKET_LENGTH_ADMISSION_CONTRACTS = {
 }
 
 _TRANSFORM_GRAPH_CONTRACTS = {
-    ("src/codestream.rs", "Parser::expected_mct_elements"): (
+    ("src/codestream/mct_resolution.rs", "Parser::expected_mct_elements"): (
         "part1_mct_graph_element_count", r"\1", None,
         r"rows\s*,\s*columns\s*,\s*kind\s*,\s*reversible",
     ),
-    ("src/codestream.rs", "Parser::resolve_mct_collection"): (
+    ("src/codestream/mct_resolution.rs", "Parser::resolve_mct_collection"): (
         "part1_mct_graph_collection", _coverage_call("mct_collection_outcome", r"\1"), None,
         _coverage_call("mcc_collection_reference_view", "reference") + r"\s*,\s*"
         + _coverage_call("mct_arrays_view", r"arrays\s*@"),
     ),
-    ("src/codestream.rs", "Parser::resolve_mct_stage"): (
+    ("src/codestream/mct_resolution.rs", "Parser::resolve_mct_stage"): (
         "part1_mct_graph_stage", _coverage_call("mct_stage_outcome", r"\1"), None,
         _coverage_call("mct_record_view", "record") + r"\s*,\s*"
         + _coverage_call("mct_arrays_view", r"arrays\s*@"),
     ),
-    ("src/codestream.rs", "Parser::resolve_multiple_component_transform"): (
+    ("src/codestream/mct_resolution.rs", "Parser::resolve_multiple_component_transform"): (
         "part1_mct_graph", _coverage_call("mct_graph_outcome", r"\1"), None,
         _coverage_call("mct_parameters_view", "parameters"),
     ),
 }
 
 _TRANSFORM_REGISTRY_CONTRACTS = {
-    ("src/codestream.rs", "find_mct_array_index"): (
+    ("src/codestream/mct_resolution.rs", "find_mct_array_index"): (
         "part1_mct_registry_array_find", r"\1", None,
         _coverage_call("mct_arrays_view", r"arrays\s*@") + r"\s*,\s*index\s*,\s*0",
     ),
-    ("src/codestream.rs", "find_mct_record_index"): (
+    ("src/codestream/mct_resolution.rs", "find_mct_record_index"): (
         "part1_mct_registry_record_find", r"\1", None,
         _coverage_call("mct_records_view", r"records\s*@") + r"\s*,\s*index\s*,\s*0",
     ),
-    ("src/codestream.rs", "validate_unique_mct_array_indexes"): (
+    ("src/codestream/mct_resolution.rs", "validate_unique_mct_array_indexes"): (
         "part1_mct_registry_unique_array", r"\1", None,
         _coverage_call("mct_arrays_view", r"arrays\s*@") + r"\s*,\s*marker_offset",
     ),
-    ("src/codestream.rs", "validate_unique_mct_record_indexes"): (
+    ("src/codestream/mct_resolution.rs", "validate_unique_mct_record_indexes"): (
         "part1_mct_registry_unique_record", r"\1", None,
         _coverage_call("mct_records_view", r"records\s*@") + r"\s*,\s*marker_offset",
     ),
-    ("src/codestream.rs", "replace_mct_array"): (
+    ("src/codestream/mct_resolution.rs", "replace_mct_array"): (
         "part1_mct_registry_replace_array", r"\(\s*\)",
         _coverage_call("mct_arrays_view", _coverage_call("final", "arrays") + r"\s*@"),
         _coverage_call("mct_arrays_view", _coverage_call("old", "arrays") + r"\s*@")
         + r"\s*,\s*" + _coverage_call("mct_array_view", r"&\s*replacement"),
     ),
-    ("src/codestream.rs", "replace_mct_record"): (
+    ("src/codestream/mct_resolution.rs", "replace_mct_record"): (
         "part1_mct_registry_replace_record", r"\(\s*\)",
         _coverage_call("mct_records_view", _coverage_call("final", "records") + r"\s*@"),
         _coverage_call("mct_records_view", _coverage_call("old", "records") + r"\s*@")
         + r"\s*,\s*" + _coverage_call("mct_record_view", r"&\s*replacement"),
     ),
-    ("src/codestream.rs", "referenced_mct_array"): (
+    ("src/codestream/mct_resolution.rs", "referenced_mct_array"): (
         "part1_mct_registry_reference", _coverage_call("mct_array_reference_outcome", r"\1"), None,
         _coverage_call("mct_arrays_view", r"arrays\s*@") + r"\s*,\s*index\s*,\s*kind",
     ),
 }
 
 _TRANSFORM_FRAGMENT_CONTRACTS = {
-    ("src/codestream.rs", "find_mct_fragment"): (
+    ("src/codestream/mct_markers.rs", "find_mct_fragment"): (
         "part1_mct_fragment_find", r"\1", None,
         _coverage_call("mct_pending_view", r"pending\s*@") + r"\s*,\s*index\s*,\s*0",
     ),
-    ("src/codestream.rs", "u8_list_contains"): _COLLECTION_FRAGMENT_CONTRACTS[
-        ("src/codestream.rs", "u8_list_contains")
+    ("src/codestream/mct_resolution.rs", "u8_list_contains"): _COLLECTION_FRAGMENT_CONTRACTS[
+        ("src/codestream/mct_resolution.rs", "u8_list_contains")
     ],
-    ("src/codestream.rs", "Parser::prepare_mct_fragment"): (
+    ("src/codestream/mct_markers.rs", "Parser::prepare_mct_fragment"): (
         "part1_prepare_mct_fragment", r"\1",
         _coverage_call("mct_pending_view", _coverage_call("final", "pending") + r"\s*@"),
         _coverage_call("segment_view", "segment") + r"\s*,\s*self\.limits\s*,\s*"
         + _coverage_call("mct_pending_view", _coverage_call("old", "pending") + r"\s*@")
         + r"\s*,\s*completed\s*@",
     ),
-    ("src/codestream.rs", "Parser::consume_mct_fragment"): (
+    ("src/codestream/mct_markers.rs", "Parser::consume_mct_fragment"): (
         "part1_consume_mct_fragment", _coverage_call("mct_fragment_outcome", r"\1"),
         _coverage_call("mct_pending_view", _coverage_call("final", "pending") + r"\s*@")
         + r"\s*,\s*" + _coverage_call("final", "completed") + r"\s*@",
@@ -978,66 +1005,66 @@ _TRANSFORM_FRAGMENT_CONTRACTS = {
 }
 
 _TRANSFORM_COLLECTION_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "signed_u32"): (
+    ("src/codestream/reader.rs", "signed_u32"): (
         "part1_signed_u32", r"\1", None, "value",
     ),
-    ("src/codestream.rs", "component_lists_overlap"): (
+    ("src/codestream/mct_resolution.rs", "component_lists_overlap"): (
         "part1_mcc_lists_overlap", r"\1", None, r"left\s*@\s*,\s*right\s*@",
     ),
-    ("src/codestream.rs", "validate_parallel_collections"): (
+    ("src/codestream/mct_resolution.rs", "validate_parallel_collections"): (
         "part1_mcc_parallel_collections", r"\1", None,
         _coverage_call("mcc_collection_references_view", r"collections\s*@") + r"\s*,\s*marker_offset",
     ),
-    ("src/codestream.rs", "Parser::decode_mcc_collection"): (
+    ("src/codestream/mct_markers.rs", "Parser::decode_mcc_collection"): (
         "part1_mcc_collection", _coverage_call("mcc_collection_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*start",
     ),
-    ("src/codestream.rs", "Parser::parse_mcc"): (
+    ("src/codestream/mct_markers.rs", "Parser::parse_mcc"): (
         "part1_parse_mcc", _coverage_call("mcc_record_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*self\.limits",
     ),
 }
 
 _TRANSFORM_ROUTING_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_mco"): (
+    ("src/codestream/mct_markers.rs", "Parser::parse_mco"): (
         "part1_parse_mco", _coverage_call("segment_tail_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "parse_mcc_component_list"): (
+    ("src/codestream/mct_markers.rs", "parse_mcc_component_list"): (
         "part1_parse_mcc_component_list", _coverage_call("marker_words_outcome", r"\1"),
         r"\*\s*" + _coverage_call("final", "position"),
         r"payload\s*@\s*,\s*\*\s*" + _coverage_call("old", "position")
         + r"\s*,\s*components\s*,\s*marker_offset",
     ),
-    ("src/codestream.rs", "u16_list_contains"): (
+    ("src/codestream/mct_markers.rs", "u16_list_contains"): (
         "part1_mcc_reference_present", r"\1", None, r"values\s*@\s*,\s*value",
     ),
 }
 
 _PROGRESSION_ADMISSION_CONTRACTS = {
-    ("src/codestream.rs", "Parser::progression_validation_shape"): (
+    ("src/codestream/coding_markers.rs", "Parser::progression_validation_shape"): (
         "part1_poc_validation_shape", r"\1", None,
         r"offset\s*,\s*layers\s*,\s*component_styles\s*,\s*0\s*,\s*0\s*,\s*0",
     ),
-    ("src/codestream.rs", "Parser::mark_progression_resolutions"): (
+    ("src/codestream/coding_markers.rs", "Parser::mark_progression_resolutions"): (
         "part1_poc_mark_resolutions", r"\1", _coverage_call("final", "owners") + r"\s*@",
         r"offset\s*,\s*record\s*,\s*coordinate\s*,\s*0\s*,\s*"
         + _coverage_call("old", "owners") + r"\s*@\s*,\s*progress",
     ),
-    ("src/codestream.rs", "Parser::mark_progression_layers"): (
+    ("src/codestream/coding_markers.rs", "Parser::mark_progression_layers"): (
         "part1_poc_mark_layers", r"\1", _coverage_call("final", "owners") + r"\s*@",
         r"offset\s*,\s*record\s*,\s*coordinate\s*,\s*layers\s*,\s*0\s*,\s*"
         + _coverage_call("old", "owners") + r"\s*@\s*,\s*progress",
     ),
-    ("src/codestream.rs", "Parser::mark_progression_record"): (
+    ("src/codestream/coding_markers.rs", "Parser::mark_progression_record"): (
         "part1_poc_mark_record", r"\1", _coverage_call("final", "owners") + r"\s*@",
         r"offset\s*,\s*record\s*,\s*layers\s*,\s*component_styles\s*,\s*"
         + _coverage_call("old", "owners") + r"\s*@",
     ),
-    ("src/codestream.rs", "progression_owners_complete"): (
+    ("src/codestream/coding_markers.rs", "progression_owners_complete"): (
         "part1_progression_owners_complete", r"\1", None, r"owners\s*@",
     ),
-    ("src/codestream.rs", "Parser::validate_progression_changes"): (
+    ("src/codestream/coding_markers.rs", "Parser::validate_progression_changes"): (
         "part1_validate_progression_changes", r"\1", None,
         r"offset\s*,\s*" + _coverage_call("progression_changes_view", "changes")
         + r"\s*,\s*layers\s*,\s*component_styles\s*,\s*self\.limits",
@@ -1045,36 +1072,36 @@ _PROGRESSION_ADMISSION_CONTRACTS = {
 }
 
 _PROGRESSION_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::read_poc_byte"): (
+    ("src/codestream/coding_markers.rs", "Parser::read_poc_byte"): (
         "part1_poc_byte", r"\1", None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*position",
     ),
-    ("src/codestream.rs", "Parser::read_poc_component"): (
+    ("src/codestream/coding_markers.rs", "Parser::read_poc_component"): (
         "part1_poc_component", r"\1", None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*position\s*,\s*width",
     ),
-    ("src/codestream.rs", "Parser::parse_poc"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_poc"): (
         "part1_parse_poc", _coverage_call("parsed_progression_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*components",
     ),
 }
 
 _KERNEL_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::read_kernel_coefficient"): (
+    ("src/codestream/part2_transforms.rs", "Parser::read_kernel_coefficient"): (
         "part1_kernel_coefficient", _coverage_call("kernel_coefficient_outcome", r"\1"), None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
         + r"\s*,\s*position\s*,\s*width\s*,\s*coefficient_type",
     ),
-    ("src/codestream.rs", "Parser::decode_atk_step"): (
+    ("src/codestream/part2_transforms.rs", "Parser::decode_atk_step"): (
         "part1_atk_step", _coverage_call("kernel_step_outcome", r"\1"), None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
         + r"\s*,\s*start\s*,\s*width\s*,\s*coefficient_type\s*,\s*reversible\s*,\s*whole_sample_filter",
     ),
-    ("src/codestream.rs", "Parser::decode_atk_payload"): (
+    ("src/codestream/part2_transforms.rs", "Parser::decode_atk_payload"): (
         "part1_atk_payload", _coverage_call("atk_payload_outcome", r"\1"), None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "Parser::parse_atk"): (
+    ("src/codestream/part2_transforms.rs", "Parser::parse_atk"): (
         "part1_parse_atk", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1085,7 +1112,7 @@ _KERNEL_BYTES_CONTRACTS = {
 }
 
 _TILE_LENGTH_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_tlm"): (
+    ("src/codestream/image_header.rs", "Parser::parse_tlm"): (
         "part1_parse_tlm", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*\*\s*"
         + _coverage_call("final", "next_index") + r"\s*,\s*"
@@ -1098,21 +1125,21 @@ _TILE_LENGTH_BYTES_CONTRACTS = {
 }
 
 _NONLINEAR_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "maximum_u32_for_bits"): (
+    ("src/codestream/profile.rs", "maximum_u32_for_bits"): (
         "part1_maximum_u32_for_bits", r"\1", None, "bits",
     ),
-    ("src/codestream.rs", "Parser::copy_segment_tail"): (
+    ("src/codestream/reader.rs", "Parser::copy_segment_tail"): (
         "part1_copy_segment_tail", _coverage_call("segment_tail_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*start",
     ),
-    ("src/codestream.rs", "Parser::decode_nlt_gamma"): (
+    ("src/codestream/part2_transforms.rs", "Parser::decode_nlt_gamma"): (
         "part1_nlt_gamma", r"\1", None, _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "Parser::decode_nlt_payload"): (
+    ("src/codestream/part2_transforms.rs", "Parser::decode_nlt_payload"): (
         "part1_nlt_payload", _coverage_call("nlt_payload_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*components",
     ),
-    ("src/codestream.rs", "Parser::parse_nlt"): (
+    ("src/codestream/part2_transforms.rs", "Parser::parse_nlt"): (
         "part1_parse_nlt", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1123,25 +1150,25 @@ _NONLINEAR_BYTES_CONTRACTS = {
 }
 
 _PROFILE_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "count_set_bits"): (
+    ("src/codestream/profile.rs", "count_set_bits"): (
         "part1_set_bits_prefix", r"\1\s+as\s+nat", None, r"value\s*,\s*32",
     ),
-    ("src/codestream.rs", "Parser::read_marker_words"): (
+    ("src/codestream/profile.rs", "Parser::read_marker_words"): (
         "part1_marker_words", _coverage_call("marker_words_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*start",
     ),
-    ("src/codestream.rs", "Parser::parse_cap"): (
+    ("src/codestream/profile.rs", "Parser::parse_cap"): (
         "part1_parse_cap", _coverage_call("cap_payload_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "Parser::parse_profile_number"): (
+    ("src/codestream/profile.rs", "Parser::parse_profile_number"): (
         "part1_parse_profile_number", _coverage_call("profile_number_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment"),
     ),
 }
 
 _COMPONENT_DEPTH_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_cbd"): (
+    ("src/codestream/image_header.rs", "Parser::parse_cbd"): (
         "part1_parse_cbd", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1152,20 +1179,20 @@ _COMPONENT_DEPTH_BYTES_CONTRACTS = {
 }
 
 _DECOMPOSITION_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::unpack_two_bit_values"): (
+    ("src/codestream/decomposition.rs", "Parser::unpack_two_bit_values"): (
         "part1_unpack_two_bit_values", _coverage_call("two_bit_values_outcome", r"\1"), None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
         + r"\s*,\s*start\s*,\s*count\s*,\s*allow_terminal",
     ),
-    ("src/codestream.rs", "Parser::decode_dfs_payload"): (
+    ("src/codestream/decomposition.rs", "Parser::decode_dfs_payload"): (
         "part1_dfs_payload", _coverage_call("dfs_payload_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "Parser::decode_ads_payload"): (
+    ("src/codestream/decomposition.rs", "Parser::decode_ads_payload"): (
         "part1_ads_payload", _coverage_call("ads_payload_outcome", r"\1"), None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment"),
     ),
-    ("src/codestream.rs", "Parser::parse_dfs"): (
+    ("src/codestream/decomposition.rs", "Parser::parse_dfs"): (
         "part1_parse_dfs", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1173,7 +1200,7 @@ _DECOMPOSITION_BYTES_CONTRACTS = {
         + _coverage_call("segment_view", "segment") + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("old", "extensions")),
     ),
-    ("src/codestream.rs", "Parser::parse_ads"): (
+    ("src/codestream/decomposition.rs", "Parser::parse_ads"): (
         "part1_parse_ads", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1187,12 +1214,12 @@ _COMPONENT_MARKER_BYTES_CONTRACTS = {
     ("src/limits.rs", "ResourceLimits::maximum_metadata_bytes"): (
         "part1_metadata_byte_limit", r"\1", None, "self",
     ),
-    ("src/codestream.rs", "Parser::segment_byte"): (
+    ("src/codestream/reader.rs", "Parser::segment_byte"): (
         "part1_segment_byte", r"\1", None,
         r"self\.position\s*,\s*" + _coverage_call("segment_view", "segment")
         + r"\s*,\s*position\s*,\s*relative",
     ),
-    ("src/codestream.rs", "Parser::charge_extension_metadata"): (
+    ("src/codestream/reader.rs", "Parser::charge_extension_metadata"): (
         "part1_charge_extension_metadata", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1200,7 +1227,7 @@ _COMPONENT_MARKER_BYTES_CONTRACTS = {
         + _coverage_call("segment_view", "segment") + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("old", "extensions")),
     ),
-    ("src/codestream.rs", "Parser::parse_crg"): (
+    ("src/codestream/image_header.rs", "Parser::parse_crg"): (
         "part1_parse_crg", r"\1",
         _coverage_call("parser_view", _coverage_call("final", "self")) + r"\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("final", "extensions")),
@@ -1208,24 +1235,24 @@ _COMPONENT_MARKER_BYTES_CONTRACTS = {
         + _coverage_call("segment_view", "segment") + r"\s*,\s*components\s*,\s*"
         + _coverage_call("owned_extensions_view", _coverage_call("old", "extensions")),
     ),
-    ("src/codestream.rs", "Parser::parse_rgn"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_rgn"): (
         "part1_parse_rgn", r"\1", None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components",
     ),
 }
 
 _QUANTIZATION_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_qcd"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_qcd"): (
         "part1_parse_qcd_payload", _coverage_call("parsed_quantization_outcome", r"\1"), None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*"
         + _coverage_call("parsed_coding_style_view", "coding_style"),
     ),
-    ("src/codestream.rs", "Parser::parse_qcd_payload"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_qcd_payload"): (
         "part1_parse_qcd_payload", _coverage_call("parsed_quantization_outcome", r"\1"), None,
         r"segment_offset\s*,\s*payload\s*@\s*,\s*"
         + _coverage_call("parsed_coding_style_view", "coding_style"),
     ),
-    ("src/codestream.rs", "Parser::parse_qcc"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_qcc"): (
         "part1_parse_qcc", _coverage_call("parsed_component_quantization_outcome", r"\1"), None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*"
         + _coverage_call("parsed_coding_style_view", "coding_style"),
@@ -1233,16 +1260,16 @@ _QUANTIZATION_BYTES_CONTRACTS = {
 }
 
 _COMPONENT_STYLE_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::prepare_coc_payload"): (
+    ("src/codestream/coding_markers.rs", "Parser::prepare_coc_payload"): (
         "part1_coc_prepare", _coverage_call("parsed_component_coding_style_payload_outcome", r"\1"), None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*"
         + _coverage_call("parsed_coding_style_view", "default"),
     ),
-    ("src/codestream.rs", "Parser::parse_component_index"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_component_index"): (
         "part1_parse_component_index", r"\1", None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*invalid_kind",
     ),
-    ("src/codestream.rs", "Parser::parse_coc"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_coc"): (
         "part1_parse_coc", _coverage_call("parsed_component_coding_style_outcome", r"\1"), None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*components\s*,\s*"
         + _coverage_call("parsed_coding_style_view", "default") + r"\s*,\s*self\.limits",
@@ -1250,67 +1277,67 @@ _COMPONENT_STYLE_BYTES_CONTRACTS = {
 }
 
 _CODING_STYLE_BYTES_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_cod"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_cod"): (
         "part1_parse_cod_payload", _coverage_call("parsed_coding_style_outcome", r"\1"), None,
         r"segment\.offset\s*,\s*segment\.payload\s*@\s*,\s*self\.limits",
     ),
-    ("src/codestream.rs", "Parser::parse_cod_payload"): (
+    ("src/codestream/coding_markers.rs", "Parser::parse_cod_payload"): (
         "part1_parse_cod_payload", _coverage_call("parsed_coding_style_outcome", r"\1"), None,
         r"segment_offset\s*,\s*payload\s*@\s*,\s*self\.limits",
     ),
 }
 
 _SIZ_GEOMETRY_CONTRACTS = {
-    ("src/codestream.rs", "Parser::parse_siz"): (
+    ("src/codestream/image_header.rs", "Parser::parse_siz"): (
         "part1_parse_siz", _coverage_call("parsed_siz_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment") + r"\s*,\s*self\.limits",
     ),
-    ("src/codestream.rs", "Parser::malformed_at"): (
+    ("src/codestream/reader.rs", "Parser::malformed_at"): (
         "part1_codestream_malformed", r"\1", None, r"value\s*,\s*kind",
     ),
-    ("src/codestream.rs", "read_u32"): (
+    ("src/codestream/reader.rs", "read_u32"): (
         "part1_codestream_u32", r"\1", None,
         r"bytes\s*\[\s*0\s*\]\s*,\s*bytes\s*\[\s*1\s*\]\s*,\s*bytes\s*\[\s*2\s*\]\s*,\s*bytes\s*\[\s*3\s*\]",
     ),
-    ("src/codestream.rs", "ceil_div"): (
+    ("src/codestream/geometry.rs", "ceil_div"): (
         "part1_image_ceil_div", r"\1", None, r"value\s*,\s*divisor",
     ),
 }
 
 _CODESTREAM_READER_CONTRACTS = {
-    ("src/codestream.rs", "new_parser"): (
+    ("src/codestream/reader.rs", "new_parser"): (
         "part1_codestream_reader_new", _coverage_call("parser_initial_outcome", r"\1"), None, r"input\s*@\s*,\s*limits",
     ),
-    ("src/codestream.rs", "Parser::peek_marker"): (
+    ("src/codestream/reader.rs", "Parser::peek_marker"): (
         "part1_codestream_peek_marker", r"\1", None, _coverage_call("parser_view", "self"),
     ),
-    ("src/codestream.rs", "Parser::expect_standalone"): (
+    ("src/codestream/reader.rs", "Parser::expect_standalone"): (
         "part1_codestream_expect_standalone", r"\1", _coverage_call("parser_view", _coverage_call("final", "self")),
         _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*expected",
     ),
-    ("src/codestream.rs", "Parser::read_segment"): (
+    ("src/codestream/reader.rs", "Parser::read_segment"): (
         "part1_codestream_read_segment", _coverage_call("segment_outcome", r"\1"),
         _coverage_call("parser_view", _coverage_call("final", "self")),
         _coverage_call("parser_view", _coverage_call("old", "self")),
     ),
-    ("src/codestream.rs", "Parser::find_eoc"): (
+    ("src/codestream/tiles.rs", "Parser::find_eoc"): (
         "part1_codestream_find_eoc", r"\1", _coverage_call("parser_view", _coverage_call("final", "self")),
         _coverage_call("parser_view", _coverage_call("old", "self")),
     ),
-    ("src/codestream.rs", "Parser::charge_work"): (
+    ("src/codestream/reader.rs", "Parser::charge_work"): (
         "part1_codestream_charge_work", r"\1", _coverage_call("parser_view", _coverage_call("final", "self")),
         _coverage_call("parser_view", _coverage_call("old", "self")) + r"\s*,\s*amount",
     ),
-    ("src/codestream.rs", "Parser::malformed_here"): (
+    ("src/codestream/reader.rs", "Parser::malformed_here"): (
         "part1_codestream_malformed", r"\1", None, r"self\.position\s*,\s*kind",
     ),
-    ("src/codestream.rs", "Parser::offset"): (
+    ("src/codestream/reader.rs", "Parser::offset"): (
         "part1_codestream_offset", r"\1", None, r"value",
     ),
-    ("src/codestream.rs", "is_standalone_marker"): (
+    ("src/codestream/reader.rs", "is_standalone_marker"): (
         "part1_codestream_standalone", r"\1", None, r"marker",
     ),
-    ("src/codestream.rs", "read_u16"): (
+    ("src/codestream/reader.rs", "read_u16"): (
         "part1_marker_value", r"\1", None, r"bytes\s*\[\s*0\s*\]\s*,\s*bytes\s*\[\s*1\s*\]",
     ),
 }
@@ -1327,7 +1354,7 @@ _TYPED_LAYOUT_CONTRACTS = {
 }
 
 _NONLINEAR_APPLICATION_CONTRACTS = {
-    ("src/image.rs", "TypedImage::apply_nonlinear_regions"): (
+    ("src/image/nonlinear.rs", "TypedImage::apply_nonlinear_regions"): (
         "part2_apply_nonlinear_regions", r"\1",
         _coverage_call("typed_image_value_view", r"\*\s*" + _coverage_call("final", "self")),
         _coverage_call("typed_image_value_view", r"\*\s*" + _coverage_call("old", "self"))
@@ -1335,7 +1362,7 @@ _NONLINEAR_APPLICATION_CONTRACTS = {
         + r"\s*,\s*" + _coverage_call("crate::limits::resource_decoded_bytes_limit", "limits")
         + r"\s*,\s*" + _coverage_call("crate::limits::resource_work_limit", "limits"),
     ),
-    ("src/image.rs", "TypedComponent::apply_nonlinear_regions"): (
+    ("src/image/nonlinear.rs", "TypedComponent::apply_nonlinear_regions"): (
         "part2_nlt_component_mutation", r"\1",
         _coverage_call("typed_component_view", _coverage_call("final", "self")),
         _coverage_call("typed_component_view", _coverage_call("old", "self")) + r"\s*,\s*component_number\s*,\s*"
@@ -1346,83 +1373,83 @@ _NONLINEAR_APPLICATION_CONTRACTS = {
 }
 
 _NONLINEAR_SCALAR_CONTRACTS = {
-    ("src/image.rs", "nlt_gamma_parameter"): (
+    ("src/image/nonlinear_math.rs", "nlt_gamma_parameter"): (
         "part2_nlt_gamma_parameter", r"\1", None, r"raw",
     ),
-    ("src/image.rs", "nlt_gamma_curve"): (
+    ("src/image/nonlinear_math.rs", "nlt_gamma_curve"): (
         "part2_nlt_gamma_curve", r"\1", None,
         r"normalized\s*,\s*exponent\s*,\s*slope\s*,\s*threshold\s*,\s*a\s*,\s*b",
     ),
-    ("src/image.rs", "inverse_nlt_gamma_sample"): (
+    ("src/image/nonlinear_math.rs", "inverse_nlt_gamma_sample"): (
         "part2_nlt_gamma_sample", r"\1", None,
         r"source\s*,\s*source_info\s*,\s*" + _coverage_call("crate::codestream::owned_nonlinear_view", "transform"),
     ),
-    ("src/image.rs", "inverse_nlt_sample"): (
+    ("src/image/nonlinear_math.rs", "inverse_nlt_sample"): (
         "part2_nlt_inverse_sample", r"\1", None,
         r"source\s*,\s*source_info\s*,\s*" + _coverage_call("crate::codestream::owned_nonlinear_view", "transform"),
     ),
 }
 
 _NONLINEAR_LOG_EXP_CONTRACTS = {
-    ("src/image.rs", "nlt_ln_normalize"): (
+    ("src/image/nonlinear_math.rs", "nlt_ln_normalize"): (
         "part2_nlt_ln_normalize", r"\1", None, r"initial",
     ),
-    ("src/image.rs", "nlt_ln_series"): (
+    ("src/image/nonlinear_math.rs", "nlt_ln_series"): (
         "part2_nlt_ln_series", r"\1", None, r"squared\s*,\s*scale\s*,\s*0\s*,\s*initial\s*,\s*0",
     ),
-    ("src/image.rs", "nlt_fixed_ln_q32"): (
+    ("src/image/nonlinear_math.rs", "nlt_fixed_ln_q32"): (
         "part2_nlt_fixed_ln_q32", r"\1", None, r"value",
     ),
-    ("src/image.rs", "nlt_exp_series"): (
+    ("src/image/nonlinear_math.rs", "nlt_exp_series"): (
         "part2_nlt_exp_series", r"\1", None, r"remainder\s*,\s*1\s*,\s*4294967296\s*,\s*4294967296",
     ),
-    ("src/image.rs", "nlt_fixed_exp_q32"): (
+    ("src/image/nonlinear_math.rs", "nlt_fixed_exp_q32"): (
         "part2_nlt_fixed_exp_q32", r"\1", None, r"value",
     ),
-    ("src/image.rs", "nlt_fixed_pow_reciprocal_q32"): (
+    ("src/image/nonlinear_math.rs", "nlt_fixed_pow_reciprocal_q32"): (
         "part2_nlt_fixed_pow_reciprocal_q32", r"\1", None, r"base\s*,\s*exponent",
     ),
 }
 
 _NONLINEAR_LUT_CONTRACTS = {
-    ("src/image.rs", "inverse_nlt_lut_sample"): (
+    ("src/image/nonlinear_math.rs", "inverse_nlt_lut_sample"): (
         "part2_nlt_lut_sample", r"\1", None,
         r"source\s*,\s*source_info\s*,\s*" + _coverage_call("crate::codestream::owned_nonlinear_view", "transform"),
     ),
-    ("src/image.rs", "nlt_lut_interpolate_values"): (
+    ("src/image/nonlinear_math.rs", "nlt_lut_interpolate_values"): (
         "part2_nlt_lut_interpolate_values", r"\1", None,
         r"left\s*,\s*right\s*,\s*denominator\s*,\s*remainder",
     ),
-    ("src/image.rs", "nlt_lut_position"): (
+    ("src/image/nonlinear_math.rs", "nlt_lut_position"): (
         "part2_nlt_lut_position", r"\1", None,
         r"points\s*@\s*,\s*source_scale\s*,\s*nominal\s*,\s*minimum\s*,\s*maximum",
     ),
-    ("src/image.rs", "nlt_lut_coordinates"): (
+    ("src/image/nonlinear_math.rs", "nlt_lut_coordinates"): (
         "part2_nlt_lut_coordinates", r"\1", None,
         r"source_scale\s*,\s*nominal\s*,\s*minimum\s*,\s*maximum\s*,\s*last_index\s+as\s+nat",
     ),
-    ("src/image.rs", "nlt_checked_rem"): (
+    ("src/image/nonlinear_math.rs", "nlt_checked_rem"): (
         "part2_nlt_checked_rem", r"\1", None, r"numerator\s*,\s*denominator",
     ),
 }
 
 _NONLINEAR_ARITHMETIC_CONTRACTS = {
-    ("src/image.rs", "nlt_round_ratio"): (
+    ("src/image/nonlinear_math.rs", "nlt_round_ratio"): (
         "part2_nlt_round_ratio", r"\1", None, r"numerator\s*,\s*denominator",
     ),
-    ("src/image.rs", "nlt_power_of_two"): (
+    ("src/image/nonlinear_math.rs", "nlt_power_of_two"): (
         "part2_nlt_power_of_two", r"\1", None, r"exponent",
     ),
-    ("src/image.rs", "nlt_fixed_mul_q32"): (
+    ("src/image/nonlinear_math.rs", "nlt_fixed_mul_q32"): (
         "part2_nlt_fixed_mul_q32", r"\1", None, r"left\s*,\s*right",
     ),
-    ("src/image.rs", "nlt_fixed_div_q32"): (
+    ("src/image/nonlinear_math.rs", "nlt_fixed_div_q32"): (
         "part2_nlt_fixed_div_q32", r"\1", None, r"left\s*,\s*right",
     ),
 }
 
 _NONLINEAR_REGIONS_CONTRACTS = {
-    ("src/codestream.rs", "Part2Extensions::nonlinear_transform_for"): (
+    ("src/codestream/extensions.rs", "Part2Extensions::nonlinear_transform_for"): (
         "part2_nonlinear_transform_for", _coverage_call("nonlinear_transform_option_view", r"\1"), None,
         _coverage_call("owned_extensions_view", "self") + r"\.nonlinear\s*,\s*component",
     ),
@@ -1456,7 +1483,7 @@ _LAYOUT_DECODING_CONTRACTS = {
 }
 
 _TILE_COLLECTION_CONTRACTS = {
-    ("src/codestream.rs", "TilePartPayload::clone"): (
+    ("src/codestream/tiles.rs", "TilePartPayload::clone"): (
         "part2_tile_part_copy", _coverage_call("tile_part_owned_view", r"&\s*\1"), None,
         _coverage_call("tile_part_owned_view", "self"),
     ),
@@ -1476,52 +1503,52 @@ _RAW_TILE_DECODING_CONTRACTS = {
 }
 
 _PROFILE_POLICY_CONTRACTS = {
-    ("src/codestream.rs", "ExtendedCapabilities::capability_for_part"): (
+    ("src/codestream/profile.rs", "ExtendedCapabilities::capability_for_part"): (
         "part2_capability_value", r"\1", None,
         _coverage_call("extended_capabilities_view", "self") + r"\s*,\s*part",
     ),
-    ("src/codestream.rs", "ExtendedCapabilities::part15_value"): (
+    ("src/codestream/profile.rs", "ExtendedCapabilities::part15_value"): (
         "part2_capability_value", r"\1", None,
         _coverage_call("extended_capabilities_view", "self") + r"\s*,\s*15",
     ),
-    ("src/codestream.rs", "ExtendedCapabilities::part15_block_mode"): (
+    ("src/codestream/profile.rs", "ExtendedCapabilities::part15_block_mode"): (
         "part2_capability_block_mode", r"\1", None, _coverage_call("extended_capabilities_view", "self"),
     ),
-    ("src/codestream.rs", "ExtendedCapabilities::part15_allows_multiple_ht_sets"): (
+    ("src/codestream/profile.rs", "ExtendedCapabilities::part15_allows_multiple_ht_sets"): (
         "part2_capability_multiple_sets", r"\1", None, _coverage_call("extended_capabilities_view", "self"),
     ),
-    ("src/codestream.rs", "ExtendedCapabilities::part15_magnitude_bound"): (
+    ("src/codestream/profile.rs", "ExtendedCapabilities::part15_magnitude_bound"): (
         "part2_capability_magnitude_bound", r"\1", None, _coverage_call("extended_capabilities_view", "self"),
     ),
-    ("src/codestream.rs", "CodestreamProfile::part15_allows_multiple_ht_sets"): (
+    ("src/codestream/profile.rs", "CodestreamProfile::part15_allows_multiple_ht_sets"): (
         "part2_profile_multiple_sets", r"\1", None, _coverage_call("codestream_profile_capabilities", "self"),
     ),
-    ("src/codestream.rs", "CodestreamProfile::part15_magnitude_bound"): (
+    ("src/codestream/profile.rs", "CodestreamProfile::part15_magnitude_bound"): (
         "part2_profile_magnitude_bound", r"\1", None, _coverage_call("codestream_profile_capabilities", "self"),
     ),
-    ("src/codestream.rs", "CodestreamProfile::part15_requires_all_ht_blocks"): (
+    ("src/codestream/profile.rs", "CodestreamProfile::part15_requires_all_ht_blocks"): (
         "part2_profile_force_ht", r"\1", None, _coverage_call("codestream_profile_capabilities", "self"),
     ),
 }
 
 _TILE_METADATA_CONTRACTS = {
-    ("src/codestream.rs", "MctArray::equals"): (
+    ("src/codestream/mct.rs", "MctArray::equals"): (
         "part2_mct_array_identity", r"\1", None,
         _coverage_call("mct_array_view", "self") + r"\s*,\s*" + _coverage_call("mct_array_view", "other"),
     ),
-    ("src/codestream.rs", "MctCollection::equals"): (
+    ("src/codestream/mct.rs", "MctCollection::equals"): (
         "part2_mct_collection_identity", r"\1", None,
         _coverage_call("mct_collection_view", "self") + r"\s*,\s*" + _coverage_call("mct_collection_view", "other"),
     ),
-    ("src/codestream.rs", "MctStage::equals"): (
+    ("src/codestream/mct.rs", "MctStage::equals"): (
         "part2_mct_stage_identity", r"\1", None,
         _coverage_call("mct_stage_view", "self") + r"\s*,\s*" + _coverage_call("mct_stage_view", "other"),
     ),
-    ("src/codestream.rs", "MultipleComponentTransform::equals"): (
+    ("src/codestream/mct.rs", "MultipleComponentTransform::equals"): (
         "part2_mct_identity", r"\1", None,
         _coverage_call("multiple_component_transform_view", "self") + r"\s*,\s*" + _coverage_call("multiple_component_transform_view", "other"),
     ),
-    ("src/codestream.rs", "CodingStyle::maximum_isotropic_reduction"): (
+    ("src/codestream/coding_style.rs", "CodingStyle::maximum_isotropic_reduction"): (
         "part2_maximum_isotropic_reduction", r"\1", None,
         _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1\s*,\s*0",
@@ -1629,10 +1656,10 @@ _CODEBLOCK_VECTOR_CONTRACTS = {
 }
 
 _COMPONENT_PLAN_METADATA_CONTRACTS = {
-    ("src/codestream.rs", "ComponentQuantizations::quantization"): (
+    ("src/codestream/quantization.rs", "ComponentQuantizations::quantization"): (
         "part2_component_quantization", r"\1", None, r"self\s*,\s*component",
     ),
-    ("src/codestream.rs", "RoiShifts::shift"): (
+    ("src/codestream/quantization.rs", "RoiShifts::shift"): (
         "part2_roi_shift", r"\1", None,
         _coverage_call("roi_shifts_view", "self") + r"\s*,\s*component",
     ),
@@ -1644,12 +1671,12 @@ _COMPONENT_PLAN_METADATA_CONTRACTS = {
 }
 
 _PRECINCT_INITIALIZATION_CONTRACTS = {
-    ("src/packet.rs", "prepare_precinct_contexts"): (
+    ("src/packet/precinct.rs", "prepare_precinct_contexts"): (
         "part2_precinct_contexts", _coverage_call("precinct_contexts_outcome", r"\1"), None,
         _coverage_call("packet_states_view", r"before_states\s*@")
         + r"\s*,\s*before_contexts\s*@\s*,\s*count\s*,\s*across\s*,\s*maximum_zero\s*,\s*tier1_style",
     ),
-    ("src/packet.rs", "packet_precinct_from_subbands"): (
+    ("src/packet/precinct.rs", "packet_precinct_from_subbands"): (
         "part2_precinct_from_executions", _coverage_call("packet_precinct_outcome", r"\1"), None,
         r"component\s*,\s*resolution\s*,\s*precinct\s*,\s*tier1_style\s*,\s*"
         + _coverage_call("packet_executions_view", r"before\s*@") + r"\s*,\s*limits",
@@ -1660,7 +1687,7 @@ _CODEBLOCK_PLANNING_CONTRACTS = {
     ("src/decode/planning.rs", "derive_planned_codeblock_geometry"): (
         "part2_planned_codeblock_geometry", r"\1", None, r"grid\s*,\s*clip\s*,\s*block",
     ),
-    ("src/tier1.rs", "tier1_configured_decoder"): (
+    ("src/tier1/contributions.rs", "tier1_configured_decoder"): (
         "part2_tier1_configured_decoder", _coverage_call("tier1_initial_decoder_outcome", r"\1"), None,
         r"width\s*,\s*height\s*,\s*significant_bitplanes\s*,\s*orientation\s*,\s*style\s*,\s*"
         r"allow_multiple_ht_sets\s*,\s*ht_magnitude_bound",
@@ -1668,20 +1695,20 @@ _CODEBLOCK_PLANNING_CONTRACTS = {
 }
 
 _DECODER_INITIALIZATION_CONTRACTS = {
-    ("src/tier1.rs", "tier1_decoder_from_dimensions"): (
+    ("src/tier1/contributions.rs", "tier1_decoder_from_dimensions"): (
         "part2_tier1_initial_decoder", _coverage_call("tier1_initial_decoder_outcome", r"\1"), None,
         r"width\s*,\s*height\s*,\s*significant_bitplanes\s*,\s*orientation\s*,\s*style",
     ),
-    ("src/tier1.rs", "Tier1CodingStyle::set_force_high_throughput"): (
+    ("src/tier1/coding.rs", "Tier1CodingStyle::set_force_high_throughput"): (
         "part2_tier1_force_style", r"\(\s*\)", r"\*\s*" + _coverage_call("final", "self"),
         r"\*\s*" + _coverage_call("old", "self") + r"\s*,\s*required",
     ),
-    ("src/tier1.rs", "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"): (
+    ("src/tier1/contributions.rs", "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"): (
         "part2_tier1_allow_sets", r"\(\s*\)",
         _coverage_call("tier1_decoder_state", _coverage_call("final", "self")),
         _coverage_call("tier1_decoder_state", _coverage_call("old", "self")) + r"\s*,\s*allowed",
     ),
-    ("src/tier1.rs", "Tier1CodeBlockDecoder::set_ht_magnitude_bound"): (
+    ("src/tier1/contributions.rs", "Tier1CodeBlockDecoder::set_ht_magnitude_bound"): (
         "part2_tier1_magnitude_bound", r"\1",
         _coverage_call("tier1_decoder_state", _coverage_call("final", "self")),
         _coverage_call("tier1_decoder_state", _coverage_call("old", "self")) + r"\s*,\s*bound",
@@ -1689,7 +1716,7 @@ _DECODER_INITIALIZATION_CONTRACTS = {
 }
 
 _SUBBAND_VECTOR_CONTRACTS = {
-    ("src/codestream.rs", "CodingStyle::subband_count"): (
+    ("src/codestream/coding_style.rs", "CodingStyle::subband_count"): (
         "part2_subband_count", r"\1", None,
         _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1",
@@ -1714,7 +1741,7 @@ _SUBBAND_VECTOR_PROVED_BOUNDARY_APIS = frozenset({
 })
 
 _SUBBAND_ADMISSION_CONTRACTS = {
-    ("src/codestream.rs", "Quantization::step"): (
+    ("src/codestream/quantization.rs", "Quantization::step"): (
         "part2_quantization_lookup", r"\1", None,
         _coverage_call("quantization_view", "self") + r"\s*,\s*index",
     ),
@@ -1783,17 +1810,17 @@ _RESOLUTION_GEOMETRY_PROVED_BOUNDARY_APIS = frozenset({
 })
 
 _RESOLUTION_STYLE_CONTRACTS = {
-    ("src/codestream.rs", "CodingStyle::resolution_downsampling"): (
+    ("src/codestream/coding_style.rs", "CodingStyle::resolution_downsampling"): (
         "part2_resolution_downsampling", r"\1", None,
         _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1\s*,\s*resolution",
     ),
-    ("src/codestream.rs", "CodingStyle::resolution_downsampling_step"): (
+    ("src/codestream/coding_style.rs", "CodingStyle::resolution_downsampling_step"): (
         "part2_resolution_scale_step", r"\1", None,
         _coverage_call("decomposition_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("decomposition_selector_view", "self") + r"\s*\.1\s*,\s*stage\s*,\s*scales",
     ),
-    ("src/codestream.rs", "CodingStyle::precinct_exponents"): (
+    ("src/codestream/coding_style.rs", "CodingStyle::precinct_exponents"): (
         "part2_precinct_exponents", r"\1", None,
         _coverage_call("precinct_selector_view", "self") + r"\s*\.0\s*,\s*"
         + _coverage_call("precinct_selector_view", "self") + r"\s*\.1\s*,\s*resolution",
@@ -1801,7 +1828,7 @@ _RESOLUTION_STYLE_CONTRACTS = {
 }
 
 _TILE_COMPONENT_GEOMETRY_CONTRACTS = {
-    ("src/codestream.rs", "registered_ceil_div"): (
+    ("src/codestream/geometry.rs", "registered_ceil_div"): (
         "part2_registered_component_ceil", r"\1", None,
         r"value\s*,\s*divisor\s*,\s*registration",
     ),
@@ -1809,7 +1836,7 @@ _TILE_COMPONENT_GEOMETRY_CONTRACTS = {
         "part2_registered_decode_ceil", r"\1", None,
         r"value\s*,\s*divisor\s*,\s*registration",
     ),
-    ("src/codestream.rs", "ImageSize::tile_component_bounds"): (
+    ("src/codestream/geometry.rs", "ImageSize::tile_component_bounds"): (
         "part2_tile_component_bounds", r"\1", None,
         r"\s*,\s*".join((
             _coverage_call("selection_geometry_view", "self"),
@@ -1821,11 +1848,11 @@ _TILE_COMPONENT_GEOMETRY_CONTRACTS = {
 }
 
 _LAYER_REGISTRATION_CONTRACTS = {
-    ("src/jpx.rs", "registered_extent"): (
+    ("src/jpx/resources.rs", "registered_extent"): (
         "part2_native_registered_extent", r"\1", None,
         r"samples\s*,\s*subsampling\s*,\s*grid_size\s*,\s*offset",
     ),
-    ("src/jpx.rs", "registered_layer_geometry"): (
+    ("src/jpx/registration.rs", "registered_layer_geometry"): (
         "part2_registered_layer_geometry", r"\1", None,
         r"source_width\s*,\s*source_height\s*,\s*"
         + _coverage_call("layer_registration_view", "registration")
@@ -1834,7 +1861,7 @@ _LAYER_REGISTRATION_CONTRACTS = {
 }
 
 _LAYER_SAMPLING_CONTRACTS = {
-    ("src/jpx.rs", "copy_registered_color"): (
+    ("src/jpx/registration.rs", "copy_registered_color"): (
         "part2_registered_color_store", r"\1",
         _coverage_call("crate::specs::part2_composition_planes", _coverage_call("final", "colors") + r"\s*@"),
         r"\s*,\s*".join((
@@ -1843,7 +1870,7 @@ _LAYER_SAMPLING_CONTRACTS = {
             r"color\s+as\s+nat", "source_index", "destination",
         )),
     ),
-    ("src/jpx.rs", "copy_registered_pixel"): (
+    ("src/jpx/registration.rs", "copy_registered_pixel"): (
         "part2_registered_pixel", r"\1",
         _coverage_call("crate::specs::part2_composition_planes", _coverage_call("final", "colors") + r"\s*@")
         + r"\s*,\s*" + _coverage_call("final", "alpha") + r"\s*@",
@@ -1858,7 +1885,7 @@ _LAYER_SAMPLING_CONTRACTS = {
 }
 
 _LAYER_TRAVERSAL_CONTRACTS = {
-    ("src/jpx.rs", "register_layer"): (
+    ("src/jpx/registration.rs", "register_layer"): (
         "part2_register_layer", _coverage_call("owned_layer_outcome", r"\1"), None,
         r"\s*,\s*".join((
             _coverage_call("owned_layer_view", "source"),
@@ -1866,7 +1893,7 @@ _LAYER_TRAVERSAL_CONTRACTS = {
             "horizontal_grid_size", "vertical_grid_size",
         )),
     ),
-    ("src/jpx.rs", "copy_registered_row"): (
+    ("src/jpx/registration.rs", "copy_registered_row"): (
         "part2_registered_row", r"\1",
         _coverage_call("crate::specs::part2_composition_planes", _coverage_call("final", "colors") + r"\s*@")
         + r"\s*,\s*" + _coverage_call("final", "alpha") + r"\s*@",
@@ -1881,18 +1908,18 @@ _LAYER_TRAVERSAL_CONTRACTS = {
 }
 
 _LAYER_KEY_CONTRACTS = {
-    ("src/jpx.rs", "normalized_chroma_keys"): (
+    ("src/jpx/chroma.rs", "normalized_chroma_keys"): (
         "part2_normalized_chroma_keys", _coverage_call("crate::color::normalized_plane_result", r"\1"), None,
         r"values\s*@\s*,\s*channels\s*,\s*bit_depth",
     ),
 }
 
 _LAYER_COMPONENT_KEY_CONTRACTS = {
-    ("src/jpx.rs", "normalized_chroma_keys_for_components"): (
+    ("src/jpx/chroma.rs", "normalized_chroma_keys_for_components"): (
         "part2_normalized_component_chroma_keys", _coverage_call("crate::color::normalized_plane_result", r"\1"), None,
         r"values\s*@\s*,\s*descriptors\s*@",
     ),
-    ("src/jpx.rs", "append_component_chroma_key"): (
+    ("src/jpx/chroma.rs", "append_component_chroma_key"): (
         "part2_append_component_key", r"\1",
         _coverage_call("final", "keys") + r"\s*@\s*,\s*\*\s*" + _coverage_call("final", "offset"),
         r"values\s*@\s*,\s*descriptor\s*,\s*"
@@ -1901,12 +1928,12 @@ _LAYER_COMPONENT_KEY_CONTRACTS = {
 }
 
 _LAYER_OPACITY_CONTRACTS = {
-    ("src/jpx.rs", "apply_chroma_key_with_policy"): (
+    ("src/jpx/chroma.rs", "apply_chroma_key_with_policy"): (
         "part2_apply_chroma_key_policy", r"\1",
         _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
         _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*keys\s*@\s*,\s*reject_missing",
     ),
-    ("src/jpx.rs", "set_layer_alpha_mode"): (
+    ("src/jpx/opacity.rs", "set_layer_alpha_mode"): (
         "part2_set_layer_alpha_mode", r"\1",
         _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
         _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*premultiplied\s*,\s*offset",
@@ -1914,18 +1941,18 @@ _LAYER_OPACITY_CONTRACTS = {
 }
 
 _LAYER_EXTERNAL_ALPHA_CONTRACTS = {
-    ("src/jpx.rs", "copy_registered_layer_opacity"): (
+    ("src/jpx/opacity.rs", "copy_registered_layer_opacity"): (
         "part2_copy_registered_opacity", r"\1",
         _coverage_call("owned_layer_view", _coverage_call("final", "owned")),
         _coverage_call("owned_layer_view", _coverage_call("old", "owned")) + r"\s*,\s*"
         + _coverage_call("owned_layer_view", "source") + r"\s*,\s*premultiplied",
     ),
-    ("src/jpx.rs", "copy_opacity_pixel"): (
+    ("src/jpx/opacity.rs", "copy_opacity_pixel"): (
         "part2_opacity_pixel", r"\1", _coverage_call("final", "alpha") + r"\s*@",
         r"\(\s*samples\s*@\s*,\s*geometry\.0\s*,\s*geometry\.1\s*\)\s*,\s*"
         r"geometry\.2\s*,\s*geometry\.3\s*,\s*" + _coverage_call("old", "alpha") + r"\s*@",
     ),
-    ("src/jpx.rs", "copy_opacity_row"): (
+    ("src/jpx/opacity.rs", "copy_opacity_row"): (
         "part2_opacity_columns_prefix", r"\1", _coverage_call("final", "alpha") + r"\s*@",
         r"\(\s*samples\s*@\s*,\s*source_width\s*,\s*destination\.0\s*\)\s*,\s*"
         r"destination\.1\s*,\s*" + _coverage_call("old", "alpha") + r"\s*@\s*,\s*destination\.2\s+as\s+nat",
@@ -1939,7 +1966,7 @@ _DECODER_ADMISSION_CONTRACTS = {
         r"style\s*,\s*" + _coverage_call("codestream::part2_execution_registry", "extensions")
         + r"\s*,\s*" + _coverage_call("codestream::part2_kernel_registry", "extensions"),
     ),
-    ("src/codestream.rs", "Part2Extensions::component_bit_depths_equal"): (
+    ("src/codestream/extensions.rs", "Part2Extensions::component_bit_depths_equal"): (
         "part2_component_depths_equal", r"\1", None,
         _coverage_call("part2_component_depths", "self") + r"\s*,\s*" + _coverage_call("part2_component_depths", "other"),
     ),
@@ -1999,7 +2026,7 @@ def validate_normative_coverage(
         path: Path, caller: str, callee: str, *, require_caller_body: bool,
     ) -> bool:
         if require_caller_body:
-            return same_file_call(path, caller, callee)
+            return same_file_call(path, caller, callee, distinct_file=True)
         text = source_text(path)
         if re.fullmatch(r"\w+", callee) is None:
             return re.search(rf"\b{re.escape(callee)}\s*\(", text) is not None
@@ -2007,14 +2034,18 @@ def validate_normative_coverage(
             file_calls[path] = set(re.findall(r"\b(\w+)\s*\(", text))
         return callee in file_calls[path]
 
-    def same_file_call(path: Path, caller: str, callee: str) -> bool:
-        if caller.rsplit("::", 1)[-1] == callee:
+    def same_file_call(
+        path: Path, caller: str, callee: str, *, distinct_file: bool = False,
+    ) -> bool:
+        same_name = caller.rsplit("::", 1)[-1] == callee
+        if same_name and not distinct_file:
             return False
         key = (path, caller)
         if key not in bodies:
             bodies[key] = _coverage_function_body(source_text(path), function_header(path, caller))
         body = bodies[key]
-        return body is not None and re.search(rf"\b{re.escape(callee)}\s*\(", body) is not None
+        prefix = r"(?<![\w.])" if same_name else r"\b"
+        return body is not None and re.search(rf"{prefix}{re.escape(callee)}\s*\(", body) is not None
 
     ids: set[str] = set()
     contract_functions: set[tuple[str, str]] = set()
@@ -2074,9 +2105,10 @@ def validate_normative_coverage(
             ))
             if re.search(r"&\s*(?:'\w+\s+)?mut\s+self\b", text[signature:body_start]):
                 mutable_parameters.add("self")
-            bundle = (reference["path"], reference["symbol"]) == ("src/packet.rs", "decode_multi_code_block_packet")
+            bundle = (reference["path"], reference["symbol"]) == ("src/packet/multi_packet.rs", "decode_multi_code_block_packet")
             if bundle:
-                bundle_definition = re.search(r"\bstruct\s+PacketCodeBlockExecution\b[^{]*\{([^}]*)\}", text)
+                bundle_source = source_text((ROOT / "src/packet.rs").resolve())
+                bundle_definition = re.search(r"\bstruct\s+PacketCodeBlockExecution\b[^{]*\{([^}]*)\}", bundle_source)
                 bundle_fields = set(re.findall(
                     r"\b(\w+)\s*:\s*&\s*(?:'\w+\s+)?mut\b", bundle_definition[1],
                 )) if bundle_definition else set()
@@ -2090,61 +2122,61 @@ def validate_normative_coverage(
             model_suffix = r"\s*==\s*crate::specs::(?P<model>\w+)\s*\("
             scalar_result = re.search(named_prefix + r"\1(?:\s+as\s+nat)?" + model_suffix, contract)
             result_projection = {
-                ("src/jpx.rs", "layer_channels"): "layer_channels_outcome",
-                ("src/jpx.rs", "owned_layer_from_image"): "owned_layer_outcome",
-                ("src/jpx.rs", "render_decoded_layers"): "crate::color::converted_image_result",
-                ("src/jpx.rs", "select_frame_instructions"): "frame_selection_result",
-                ("src/jpx.rs", "build_timeline"): "timeline_frames_result",
-                ("src/jpx.rs", "render_normalized_frame"): "crate::color::converted_image_result",
-                ("src/color.rs", "from_layer"): "converted_image_result",
-                ("src/color.rs", "from_composited"): "converted_image_result",
-                ("src/color.rs", "normalize_component"): "normalized_plane_result",
-                ("src/color.rs", "channel_layout"): "channel_layout_result",
-                ("src/tier1.rs", "raw_reader_from_input"): "raw_reader_outcome",
-                ("src/transform.rs", "inverse_quantize_values"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_quantize"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_quantize_magnitudes"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_quantize_plane"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_5_3"): "sequence_outcome",
-                ("src/transform.rs", "inverse_9_7"): "sequence_outcome",
-                ("src/transform.rs", "inverse_horizontal_5_3"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_horizontal_9_7"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_vertical_5_3"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_vertical_9_7"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_level_5_3"): "reconstruction_outcome",
-                ("src/transform.rs", "inverse_level_9_7"): "reconstruction_outcome",
-                ("src/transform.rs", "convert_samples"): "sequence_outcome",
-                ("src/transform.rs", "interleave"): "sequence_outcome",
-                ("src/tier1.rs", "ht_mel_from_input"): "ht_mel_outcome",
-                ("src/tier1.rs", "ht_reverse_vlc_from_input"): "ht_reverse_vlc_outcome",
-                ("src/tier1.rs", "ht_cleanup_readers_from_inputs"): "ht_cleanup_readers_outcome",
-                ("src/tier1.rs", "ht_magsgn_from_input"): "ht_magsgn_outcome",
-                ("src/tier1.rs", "ht_forward_refinement_from_input"): "ht_forward_refinement_outcome",
-                ("src/tier1.rs", "ht_reverse_refinement_from_input"): "ht_reverse_refinement_outcome",
-                ("src/tier1.rs", "ht_refinement_readers_from_inputs"): "ht_refinement_readers_outcome",
-                ("src/tier1.rs", "parse_ht_block_segments"): "ht_block_segments_outcome",
-                ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_metadata_outcome",
-                ("src/tier1.rs", "reconstruct_ht_cleanup_plane"): "ht_plane_outcome",
-                ("src/tier1.rs", "prepare_ht_cleanup_symbols"): "ht_cleanup_prepare_outcome",
-                ("src/tier1.rs", "duplicate"): "code_block_plane_outcome",
-                ("src/tier1.rs", "decode_ht_refinement_plane"): "ht_plane_outcome",
-                ("src/tier1.rs", "run_ht_significance_stripe"): "ht_sigprop_plane_outcome",
-                ("src/tier1.rs", "run_ht_significance_pass"): "ht_sigprop_plane_outcome",
-                ("src/tier1.rs", "ht_significance_magnitude"): "ht_refinement_magnitude_outcome",
-                ("src/tier1.rs", "ht_refinement_delta"): "ht_refinement_magnitude_outcome",
-                ("src/tier1.rs", "ht_collect_cleanup_significance"): "ht_boolean_vector_view",
-                ("src/tier1.rs", "copy_ht_refinement_bytes"): "ht_byte_vector_outcome",
-                ("src/tier1.rs", "code_block_plane_from_dimensions"): "code_block_plane_outcome",
-                ("src/tier1.rs", "coefficient_from_magnitude"): "coefficient_raw_outcome",
-                ("src/tier1.rs", "coefficient"): "coefficient_raw_outcome",
-                ("src/tier1.rs", "signed_magnitude"): "coefficient_signed_outcome",
-                ("src/tier1.rs", "coefficients"): "coefficient_slice_view",
-                ("src/tier1.rs", "wide_magnitude"): "crate::magnitude::magnitude_limbs",
-                ("src/color.rs", "convert_jp2_color"): "converted_image_result",
-                ("src/color.rs", "convert_color_channel"): "converted_channel_result",
-                ("src/color.rs", "convert_alpha_channel"): "converted_channel_result",
-                ("src/color.rs", "crop"): "converted_image_result",
-                ("src/color.rs", "crop_plane"): "normalized_plane_result",
+                ("src/jpx/channels.rs", "layer_channels"): "layer_channels_outcome",
+                ("src/jpx/layer_decode.rs", "owned_layer_from_image"): "owned_layer_outcome",
+                ("src/jpx/render.rs", "render_decoded_layers"): "crate::color::converted_image_result",
+                ("src/jpx/timeline.rs", "select_frame_instructions"): "frame_selection_result",
+                ("src/jpx/timeline.rs", "build_timeline"): "timeline_frames_result",
+                ("src/jpx/render.rs", "render_normalized_frame"): "crate::color::converted_image_result",
+                ("src/color/output.rs", "from_layer"): "converted_image_result",
+                ("src/color/output.rs", "from_composited"): "converted_image_result",
+                ("src/color/normalization.rs", "normalize_component"): "normalized_plane_result",
+                ("src/color/admission.rs", "channel_layout"): "channel_layout_result",
+                ("src/tier1/raw.rs", "raw_reader_from_input"): "raw_reader_outcome",
+                ("src/transform/quantization.rs", "inverse_quantize_values"): "reconstruction_outcome",
+                ("src/transform/quantization.rs", "inverse_quantize"): "reconstruction_outcome",
+                ("src/transform/quantization.rs", "inverse_quantize_magnitudes"): "reconstruction_outcome",
+                ("src/transform/quantization.rs", "inverse_quantize_plane"): "reconstruction_outcome",
+                ("src/transform/wavelets.rs", "inverse_5_3"): "sequence_outcome",
+                ("src/transform/wavelets.rs", "inverse_9_7"): "sequence_outcome",
+                ("src/transform/levels.rs", "inverse_horizontal_5_3"): "reconstruction_outcome",
+                ("src/transform/levels.rs", "inverse_horizontal_9_7"): "reconstruction_outcome",
+                ("src/transform/levels.rs", "inverse_vertical_5_3"): "reconstruction_outcome",
+                ("src/transform/levels.rs", "inverse_vertical_9_7"): "reconstruction_outcome",
+                ("src/transform/levels.rs", "inverse_level_5_3"): "reconstruction_outcome",
+                ("src/transform/levels.rs", "inverse_level_9_7"): "reconstruction_outcome",
+                ("src/transform/output.rs", "convert_samples"): "sequence_outcome",
+                ("src/transform/wavelets.rs", "interleave"): "sequence_outcome",
+                ("src/tier1/ht_cleanup_readers.rs", "ht_mel_from_input"): "ht_mel_outcome",
+                ("src/tier1/ht_cleanup_readers.rs", "ht_reverse_vlc_from_input"): "ht_reverse_vlc_outcome",
+                ("src/tier1/ht_cleanup_readers.rs", "ht_cleanup_readers_from_inputs"): "ht_cleanup_readers_outcome",
+                ("src/tier1/ht_cleanup_readers.rs", "ht_magsgn_from_input"): "ht_magsgn_outcome",
+                ("src/tier1/ht_refinement_readers.rs", "ht_forward_refinement_from_input"): "ht_forward_refinement_outcome",
+                ("src/tier1/ht_refinement_readers.rs", "ht_reverse_refinement_from_input"): "ht_reverse_refinement_outcome",
+                ("src/tier1/ht_refinement_readers.rs", "ht_refinement_readers_from_inputs"): "ht_refinement_readers_outcome",
+                ("src/tier1/ht_segments.rs", "parse_ht_block_segments"): "ht_block_segments_outcome",
+                ("src/tier1/ht_metadata.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_metadata_outcome",
+                ("src/tier1/ht_cleanup.rs", "reconstruct_ht_cleanup_plane"): "ht_plane_outcome",
+                ("src/tier1/ht_cleanup.rs", "prepare_ht_cleanup_symbols"): "ht_cleanup_prepare_outcome",
+                ("src/tier1/state.rs", "duplicate"): "code_block_plane_outcome",
+                ("src/tier1/ht_refinement.rs", "decode_ht_refinement_plane"): "ht_plane_outcome",
+                ("src/tier1/ht_refinement.rs", "run_ht_significance_stripe"): "ht_sigprop_plane_outcome",
+                ("src/tier1/ht_refinement.rs", "run_ht_significance_pass"): "ht_sigprop_plane_outcome",
+                ("src/tier1/ht_refinement.rs", "ht_significance_magnitude"): "ht_refinement_magnitude_outcome",
+                ("src/tier1/ht_refinement.rs", "ht_refinement_delta"): "ht_refinement_magnitude_outcome",
+                ("src/tier1/ht_refinement.rs", "ht_collect_cleanup_significance"): "ht_boolean_vector_view",
+                ("src/tier1/ht_refinement.rs", "copy_ht_refinement_bytes"): "ht_byte_vector_outcome",
+                ("src/tier1/state.rs", "code_block_plane_from_dimensions"): "code_block_plane_outcome",
+                ("src/tier1/state.rs", "coefficient_from_magnitude"): "coefficient_raw_outcome",
+                ("src/tier1/state.rs", "coefficient"): "coefficient_raw_outcome",
+                ("src/tier1/state.rs", "signed_magnitude"): "coefficient_signed_outcome",
+                ("src/tier1/state.rs", "coefficients"): "coefficient_slice_view",
+                ("src/tier1/state.rs", "wide_magnitude"): "crate::magnitude::magnitude_limbs",
+                ("src/color/conversion.rs", "convert_jp2_color"): "converted_image_result",
+                ("src/color/conversion.rs", "convert_color_channel"): "converted_channel_result",
+                ("src/color/conversion.rs", "convert_alpha_channel"): "converted_channel_result",
+                ("src/color/crop.rs", "crop"): "converted_image_result",
+                ("src/color/crop.rs", "crop_plane"): "normalized_plane_result",
                 ("src/decode/output.rs", "convert_selected_color"): "crate::color::converted_image_result",
                 ("src/decode/reconstruction.rs", "prepare_tile_component"): "prepared_component_outcome",
                 ("src/decode/reconstruction.rs", "initialize_prepare_working"): "prepare_working_outcome",
@@ -2156,72 +2188,72 @@ def validate_normative_coverage(
                 ("src/decode/output.rs", "copy_typed_component"): "crate::image::typed_component_output",
                 ("src/decode/output.rs", "map_palette_component"): "crate::image::typed_component_output",
                 ("src/decode/output.rs", "apply_jp2_output"): "crate::image::decoded_typed_image_outcome",
-                ("src/image.rs", "typed_component_from_parts"): "typed_component_value_view",
-                ("src/image.rs", "typed_image_from_components_with_origin"): "decoded_typed_image_outcome",
-                ("src/image.rs", "assemble_image"): "decoded_image_outcome",
-                ("src/image.rs", "assemble_selected_image"): "decoded_image_outcome",
-                ("src/image.rs", "typed_samples"): "decoded_typed_samples_outcome",
-                ("src/image.rs", "typed"): "decoded_typed_image_outcome",
-                ("src/packet.rs", "decoder"): "packet_decoder_outcome",
+                ("src/image/layout.rs", "typed_component_from_parts"): "typed_component_value_view",
+                ("src/image/layout.rs", "typed_image_from_components_with_origin"): "decoded_typed_image_outcome",
+                ("src/image/assembly.rs", "assemble_image"): "decoded_image_outcome",
+                ("src/image/assembly.rs", "assemble_selected_image"): "decoded_image_outcome",
+                ("src/image/samples.rs", "typed_samples"): "decoded_typed_samples_outcome",
+                ("src/image/samples.rs", "typed"): "decoded_typed_image_outcome",
+                ("src/packet/precinct.rs", "decoder"): "packet_decoder_outcome",
             }.get((reference["path"], short))
-            if (reference["path"], reference["symbol"]) == ("src/image.rs", "TypedImage::component"):
+            if (reference["path"], reference["symbol"]) == ("src/image/layout.rs", "TypedImage::component"):
                 result_projection = "typed_component_reference_output"
             expected_result_model = {
-                ("src/jp2.rs", "value"): "part2_palette_value",
-                ("src/jp2.rs", "palette_value_error"): "part2_composition_error",
-                ("src/image.rs", "typed_samples"): "part1_decoded_component_typed_samples",
-                ("src/image.rs", "typed"): "part1_decoded_image_typed",
-                ("src/packet.rs", "decoder"): "part1_packet_precinct_decoder",
-                ("src/image.rs", "assemble_image"): "part1_assemble_image",
-                ("src/image.rs", "assemble_selected_image"): "part1_assemble_selected_image",
-                ("src/tier1.rs", "parse_ht_block_segments"): "ht_parse_block_segments",
-                ("src/tier1.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_segment_metadata",
-                ("src/tier1.rs", "reconstruct_ht_magnitude"): "ht_reconstruct_numeric_magnitude",
-                ("src/tier1.rs", "reconstruct_ht_cleanup_plane"): "ht_cleanup_plane",
-                ("src/tier1.rs", "prepare_ht_cleanup_symbols"): "ht_cleanup_prepare",
-                ("src/tier1.rs", "store_ht_coefficient_symbols"): "ht_store_coefficient_symbols",
-                ("src/tier1.rs", "duplicate"): "tier1_duplicate_plane",
-                ("src/tier1.rs", "decode_ht_refinement_plane"): "ht_refinement_plane",
-                ("src/tier1.rs", "magnitude_sample"): "ht_magref_sample",
-                ("src/tier1.rs", "magnitude_column"): "ht_magref_rows",
-                ("src/tier1.rs", "magnitude_stripe"): "ht_magref_columns",
-                ("src/tier1.rs", "magnitude_pass"): "ht_magref_stripes",
-                ("src/tier1.rs", "discover_sample"): "ht_discover_sample",
-                ("src/tier1.rs", "discover_column"): "ht_discovery_rows",
-                ("src/tier1.rs", "discover_patch"): "ht_discovery_columns",
-                ("src/tier1.rs", "sign_sample"): "ht_patch_sign_sample",
-                ("src/tier1.rs", "signs"): "ht_pending_signs",
-                ("src/tier1.rs", "run_ht_significance_stripe"): "ht_sigprop_patches",
-                ("src/tier1.rs", "run_ht_significance_pass"): "ht_sigprop_stripes",
-                ("src/tier1.rs", "ht_significance_magnitude"): "ht_significance_magnitude",
-                ("src/tier1.rs", "ht_refinement_delta"): "ht_refinement_delta",
-                ("src/tier1.rs", "ht_collect_cleanup_significance"): "ht_cleanup_significance",
-                ("src/tier1.rs", "apply_ht_refinement_decision"): "ht_apply_refinement",
-                ("src/tier1.rs", "neighbor_summary_with_causality"): "ht_neighbors",
-                ("src/tier1.rs", "accumulate_neighbor"): "ht_accumulate_neighbor",
-                ("src/tier1.rs", "ht_neighbor_summary_zero"): "ht_neighbor_zero",
-                ("src/tier1.rs", "significant_neighbor_count"): "ht_significant_neighbor_count",
-                ("src/tier1.rs", "refined"): "tier1_statistics_increment",
-                ("src/tier1.rs", "decode_high_throughput_segments"): "ht_decode_segments",
-                ("src/tier1.rs", "decode_ht_coefficient_symbols"): "ht_coefficient_symbols",
-                ("src/tier1.rs", "ht_significant_bitplanes"): "ht_significant_bitplanes",
-                ("src/tier1.rs", "uses_high_throughput"): "ht_block_coding_enabled",
-                ("src/tier1.rs", "copy_ht_refinement_bytes"): "ht_copy_refinement_bytes",
-                ("src/tier1.rs", "merge"): "tier1_statistics_merge",
-                ("src/tier1.rs", "code_block_plane_from_dimensions"): "tier1_empty_plane",
-                ("src/tier1.rs", "coefficient_from_magnitude"): "tier1_coefficient_new_outcome",
-                ("src/tier1.rs", "complete_ht_kappa"): "ht_complete_kappa",
-                ("src/tier1.rs", "ht_statistics_zero"): "tier1_statistics_zero",
-                ("src/tier1.rs", "width"): "tier1_raw_plane_width",
-                ("src/tier1.rs", "height"): "tier1_raw_plane_height",
-                ("src/tier1.rs", "coefficients"): "tier1_raw_plane_coefficients",
-                ("src/tier1.rs", "coefficient"): "tier1_raw_plane_coefficient",
-                ("src/tier1.rs", "index"): "tier1_raw_plane_index",
-                ("src/tier1.rs", "wide_magnitude"): "tier1_coefficient_limbs",
-                ("src/tier1.rs", "signed_magnitude"): "tier1_raw_signed_coefficient",
-                ("src/tier1.rs", "scanned"): "tier1_statistics_increment",
-                ("src/tier1.rs", "decoded_symbols"): "tier1_statistics_increment",
-                ("src/tier1.rs", "became_significant"): "tier1_statistics_increment",
+                ("src/jp2/color.rs", "value"): "part2_palette_value",
+                ("src/jp2/color.rs", "palette_value_error"): "part2_composition_error",
+                ("src/image/samples.rs", "typed_samples"): "part1_decoded_component_typed_samples",
+                ("src/image/samples.rs", "typed"): "part1_decoded_image_typed",
+                ("src/packet/precinct.rs", "decoder"): "part1_packet_precinct_decoder",
+                ("src/image/assembly.rs", "assemble_image"): "part1_assemble_image",
+                ("src/image/assembly.rs", "assemble_selected_image"): "part1_assemble_selected_image",
+                ("src/tier1/ht_segments.rs", "parse_ht_block_segments"): "ht_parse_block_segments",
+                ("src/tier1/ht_metadata.rs", "decode_ht_cleanup_segment_metadata"): "ht_cleanup_segment_metadata",
+                ("src/tier1/ht_cleanup.rs", "reconstruct_ht_magnitude"): "ht_reconstruct_numeric_magnitude",
+                ("src/tier1/ht_cleanup.rs", "reconstruct_ht_cleanup_plane"): "ht_cleanup_plane",
+                ("src/tier1/ht_cleanup.rs", "prepare_ht_cleanup_symbols"): "ht_cleanup_prepare",
+                ("src/tier1/ht_contributions.rs", "store_ht_coefficient_symbols"): "ht_store_coefficient_symbols",
+                ("src/tier1/state.rs", "duplicate"): "tier1_duplicate_plane",
+                ("src/tier1/ht_refinement.rs", "decode_ht_refinement_plane"): "ht_refinement_plane",
+                ("src/tier1/ht_refinement.rs", "magnitude_sample"): "ht_magref_sample",
+                ("src/tier1/ht_refinement.rs", "magnitude_column"): "ht_magref_rows",
+                ("src/tier1/ht_refinement.rs", "magnitude_stripe"): "ht_magref_columns",
+                ("src/tier1/ht_refinement.rs", "magnitude_pass"): "ht_magref_stripes",
+                ("src/tier1/ht_refinement.rs", "discover_sample"): "ht_discover_sample",
+                ("src/tier1/ht_refinement.rs", "discover_column"): "ht_discovery_rows",
+                ("src/tier1/ht_refinement.rs", "discover_patch"): "ht_discovery_columns",
+                ("src/tier1/ht_refinement.rs", "sign_sample"): "ht_patch_sign_sample",
+                ("src/tier1/ht_refinement.rs", "signs"): "ht_pending_signs",
+                ("src/tier1/ht_refinement.rs", "run_ht_significance_stripe"): "ht_sigprop_patches",
+                ("src/tier1/ht_refinement.rs", "run_ht_significance_pass"): "ht_sigprop_stripes",
+                ("src/tier1/ht_refinement.rs", "ht_significance_magnitude"): "ht_significance_magnitude",
+                ("src/tier1/ht_refinement.rs", "ht_refinement_delta"): "ht_refinement_delta",
+                ("src/tier1/ht_refinement.rs", "ht_collect_cleanup_significance"): "ht_cleanup_significance",
+                ("src/tier1/state.rs", "apply_ht_refinement_decision"): "ht_apply_refinement",
+                ("src/tier1/state.rs", "neighbor_summary_with_causality"): "ht_neighbors",
+                ("src/tier1/state.rs", "accumulate_neighbor"): "ht_accumulate_neighbor",
+                ("src/tier1/state.rs", "ht_neighbor_summary_zero"): "ht_neighbor_zero",
+                ("src/tier1/state.rs", "significant_neighbor_count"): "ht_significant_neighbor_count",
+                ("src/tier1/legacy_passes.rs", "refined"): "tier1_statistics_increment",
+                ("src/tier1/ht_contributions.rs", "decode_high_throughput_segments"): "ht_decode_segments",
+                ("src/tier1/ht_contributions.rs", "decode_ht_coefficient_symbols"): "ht_coefficient_symbols",
+                ("src/tier1/ht_cleanup.rs", "ht_significant_bitplanes"): "ht_significant_bitplanes",
+                ("src/tier1/coding.rs", "uses_high_throughput"): "ht_block_coding_enabled",
+                ("src/tier1/ht_refinement.rs", "copy_ht_refinement_bytes"): "ht_copy_refinement_bytes",
+                ("src/tier1/legacy_passes.rs", "merge"): "tier1_statistics_merge",
+                ("src/tier1/state.rs", "code_block_plane_from_dimensions"): "tier1_empty_plane",
+                ("src/tier1/state.rs", "coefficient_from_magnitude"): "tier1_coefficient_new_outcome",
+                ("src/tier1/ht_cleanup.rs", "complete_ht_kappa"): "ht_complete_kappa",
+                ("src/tier1/state.rs", "ht_statistics_zero"): "tier1_statistics_zero",
+                ("src/tier1/state.rs", "width"): "tier1_raw_plane_width",
+                ("src/tier1/state.rs", "height"): "tier1_raw_plane_height",
+                ("src/tier1/state.rs", "coefficients"): "tier1_raw_plane_coefficients",
+                ("src/tier1/state.rs", "coefficient"): "tier1_raw_plane_coefficient",
+                ("src/tier1/state.rs", "index"): "tier1_raw_plane_index",
+                ("src/tier1/state.rs", "wide_magnitude"): "tier1_coefficient_limbs",
+                ("src/tier1/state.rs", "signed_magnitude"): "tier1_raw_signed_coefficient",
+                ("src/tier1/legacy_passes.rs", "scanned"): "tier1_statistics_increment",
+                ("src/tier1/legacy_passes.rs", "decoded_symbols"): "tier1_statistics_increment",
+                ("src/tier1/legacy_passes.rs", "became_significant"): "tier1_statistics_increment",
                 ("src/decode/output.rs", "convert_selected_color"): "color_convert_selected",
                 ("src/decode/reconstruction.rs", "prepare_tile_component"): "part1_prepare_standard_component",
                 ("src/decode/reconstruction.rs", "initialize_prepare_working"): "part1_prepare_init_prefix",
@@ -2235,21 +2267,21 @@ def validate_normative_coverage(
                 ("src/decode/output.rs", "apply_jp2_output"): "part2_apply_output_header",
                 ("src/decode/output.rs", "palette_modulus"): "part2_palette_modulus",
                 ("src/decode/output.rs", "invalid_jp2_output"): "part2_color_input_error",
-                ("src/image.rs", "typed_component_from_parts"): "part2_typed_component_from_parts",
-                ("src/image.rs", "typed_image_from_components_with_origin"): "part2_typed_image_from_parts",
-                ("src/color.rs", "crop"): "color_crop_image",
-                ("src/color.rs", "crop_plane"): "color_crop_plane",
-                ("src/color.rs", "crop_sample"): "color_crop_sample",
-                ("src/color.rs", "convert_jp2_color"): "color_convert_jp2",
-                ("src/color.rs", "convert_color_channel"): "color_convert_channel",
-                ("src/color.rs", "convert_alpha_channel"): "color_convert_alpha",
-                ("src/color.rs", "convert_sycc_pixel"): "color_sycc_pixel",
-                ("src/color.rs", "validate_components"): "color_validate_components",
-                ("src/color.rs", "validate_component_index"): "color_validate_component_index",
-                ("src/color.rs", "validate_component"): "color_validate_component",
-                ("src/color.rs", "validate_output_size"): "color_validate_output_size",
+                ("src/image/layout.rs", "typed_component_from_parts"): "part2_typed_component_from_parts",
+                ("src/image/layout.rs", "typed_image_from_components_with_origin"): "part2_typed_image_from_parts",
+                ("src/color/crop.rs", "crop"): "color_crop_image",
+                ("src/color/crop.rs", "crop_plane"): "color_crop_plane",
+                ("src/color/crop.rs", "crop_sample"): "color_crop_sample",
+                ("src/color/conversion.rs", "convert_jp2_color"): "color_convert_jp2",
+                ("src/color/conversion.rs", "convert_color_channel"): "color_convert_channel",
+                ("src/color/conversion.rs", "convert_alpha_channel"): "color_convert_alpha",
+                ("src/color/conversion.rs", "convert_sycc_pixel"): "color_sycc_pixel",
+                ("src/color/admission.rs", "validate_components"): "color_validate_components",
+                ("src/color/admission.rs", "validate_component_index"): "color_validate_component_index",
+                ("src/color/admission.rs", "validate_component"): "color_validate_component",
+                ("src/color/admission.rs", "validate_output_size"): "color_validate_output_size",
             }.get((reference["path"], short))
-            if (reference["path"], reference["symbol"]) == ("src/image.rs", "TypedImage::component"):
+            if (reference["path"], reference["symbol"]) == ("src/image/layout.rs", "TypedImage::component"):
                 expected_result_model = "part2_typed_image_component"
             kernel_view = r"crate::codestream::raw_kernel_view\s*\(\s*\*\s*kernel\s*\)"
             kernel_step_view = r"crate::codestream::raw_kernel_step_view\s*\(\s*\*\s*step\s*\)"
@@ -2257,69 +2289,69 @@ def validate_normative_coverage(
             kernel_option = r"crate::transform::arbitrary_kernel_option\s*\(\s*kernel\s*\)"
             decoded_cap = r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)"
             arbitrary_contract = {
-                ("src/transform.rs", "inverse_arbitrary"): (
+                ("src/transform/arbitrary.rs", "inverse_arbitrary"): (
                     "sequence_outcome", "part2_inverse_arbitrary",
                     r"low@\s*,\s*high@\s*,\s*low_pass_first\s*,\s*" + kernel_view,
                 ),
-                ("src/transform.rs", "inverse_horizontal_arbitrary"): (
+                ("src/transform/levels.rs", "inverse_horizontal_arbitrary"): (
                     "reconstruction_outcome", "part2_atk_inverse_horizontal",
                     r"wavelet_band_view\s*\(\s*low\s*\)\s*,\s*wavelet_band_view\s*\(\s*high\s*\)\s*,\s*"
                     r"output_width\s*,\s*low_pass_first\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
                 ),
-                ("src/transform.rs", "inverse_vertical_arbitrary"): (
+                ("src/transform/levels.rs", "inverse_vertical_arbitrary"): (
                     "reconstruction_outcome", "part2_atk_inverse_vertical",
                     r"wavelet_band_view\s*\(\s*low\s*\)\s*,\s*wavelet_band_view\s*\(\s*high\s*\)\s*,\s*"
                     r"output_height\s*,\s*low_pass_first\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
                 ),
-                ("src/transform.rs", "inverse_level_arbitrary"): (
+                ("src/transform/levels.rs", "inverse_level_arbitrary"): (
                     "reconstruction_outcome", "part2_atk_inverse_level",
                     r"wavelet_level_view\s*\(\s*level\s*\)\s*,\s*!\s*" + kernel_view + r"\.0\s*,\s*" + kernel_view + r"\s*,\s*" + decoded_cap,
                 ),
-                ("src/transform.rs", "apply_arbitrary_steps"): (
+                ("src/transform/arbitrary.rs", "apply_arbitrary_steps"): (
                     None, "part2_atk_steps",
                     r"old\s*\(\s*output\s*\)@\s*,\s*" + kernel_view + r"\s*,\s*low_pass_first\s*,\s*" + kernel_view + r"\.6\.len\s*\(\s*\)",
                 ),
-                ("src/transform.rs", "apply_arbitrary_step"): (
+                ("src/transform/arbitrary.rs", "apply_arbitrary_step"): (
                     None, "part2_atk_step",
                     r"old\s*\(\s*output\s*\)@\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view + r"\s*,\s*low_pass_first\s*,\s*update_odd",
                 ),
-                ("src/transform.rs", "arbitrary_reversible_target"): (
+                ("src/transform/arbitrary.rs", "arbitrary_reversible_target"): (
                     None, "part2_atk_reversible_target",
                     r"output@\s*,\s*target\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view,
                 ),
-                ("src/transform.rs", "arbitrary_irreversible_target"): (
+                ("src/transform/arbitrary.rs", "arbitrary_irreversible_target"): (
                     None, "part2_atk_irreversible_target",
                     r"output@\s*,\s*target\s*,\s*" + kernel_step_view + r"\s*,\s*" + kernel_view,
                 ),
-                ("src/transform.rs", "lifting_source_sum"): (
+                ("src/transform/arbitrary.rs", "lifting_source_sum"): (
                     None, "part2_atk_source_sum",
                     r"samples@\s*,\s*target\s*,\s*coefficient\s*,\s*offset\s*,\s*whole_sample_filter\s*,\s*whole_sample_extension",
                 ),
-                ("src/transform.rs", "extended_sample"): (
+                ("src/transform/arbitrary.rs", "extended_sample"): (
                     None, "part2_atk_extended", r"samples@\s*,\s*original_index\s*,\s*whole_sample_extension",
                 ),
-                ("src/transform.rs", "coefficient_integer"): (
+                ("src/transform/coefficients.rs", "coefficient_integer"): (
                     None, "part2_atk_integer", kernel_coefficient_view + r"\s*,\s*coefficient_type",
                 ),
-                ("src/transform.rs", "coefficient_fixed"): (
+                ("src/transform/coefficients.rs", "coefficient_fixed"): (
                     None, "part2_atk_fixed_coefficient", kernel_coefficient_view + r"\s*,\s*coefficient_type",
                 ),
-                ("src/transform.rs", "bytes_to_u128"): (
+                ("src/transform/coefficients.rs", "bytes_to_u128"): (
                     None, "part2_atk_bytes_prefix", r"bytes@\s*,\s*16",
                 ),
-                ("src/transform.rs", "binary_to_fixed"): (
+                ("src/transform/coefficients.rs", "binary_to_fixed"): (
                     None, "part2_atk_binary_format", r"bits\s*,\s*total_bits\s*,\s*exponent_bits\s*,\s*fraction_bits\s*,\s*bias",
                 ),
-                ("src/transform.rs", "fixed_from_binary_q32"): (
+                ("src/transform/coefficients.rs", "fixed_from_binary_q32"): (
                     None, "part2_atk_binary_q32", r"negative\s*,\s*significand\s*,\s*binary_exponent",
                 ),
-                ("src/transform.rs", "fixed_mul_q32"): (
+                ("src/transform/coefficients.rs", "fixed_mul_q32"): (
                     None, "part2_atk_fixed_mul", r"value\s*,\s*factor",
                 ),
-                ("src/transform.rs", "fixed_div_q32"): (
+                ("src/transform/coefficients.rs", "fixed_div_q32"): (
                     None, "part2_atk_fixed_div", r"value\s*,\s*divisor",
                 ),
-                ("src/transform.rs", "round_shift_i128"): (
+                ("src/transform/coefficients.rs", "round_shift_i128"): (
                     None, "part2_atk_round_shift", r"value\s*,\s*shift",
                 ),
                 ("src/decode/reconstruction.rs", "prepare_tile_component_with_kernel"): (
@@ -2393,7 +2425,9 @@ def validate_normative_coverage(
                 "decode_code_block_contribution_body": (
                     "part1_code_block_body_transaction", packet_decoder_final, packet_body_arguments + packet_all_caps,
                 ),
-            }.get(reference["symbol"]) if reference["path"] == "src/packet.rs" else None
+            }.get(reference["symbol"]) if (
+                reference["path"] == "src/packet.rs" or reference["path"].startswith("src/packet/")
+            ) else None
             if packet_contract:
                 expected_result_model = packet_contract[0]
             selection_geometry = r"crate::codestream::selection_geometry_view\s*\(\s*size\s*\)"
@@ -2408,10 +2442,10 @@ def validate_normative_coverage(
                 r"codestream\.image_size\.uniform_signed\s*,\s*offset"
             )
             selection_contract = {
-                ("src/codestream.rs", "ImageSize::tile_count"): (
+                ("src/codestream/geometry.rs", "ImageSize::tile_count"): (
                     None, "part2_selection_tile_count", r"selection_geometry_view\s*\(\s*&\s*self\s*\)",
                 ),
-                ("src/codestream.rs", "ImageSize::tile_bounds"): (
+                ("src/codestream/geometry.rs", "ImageSize::tile_bounds"): (
                     None, "part2_selection_tile_bounds", r"selection_geometry_view\s*\(\s*self\s*\)\s*,\s*tile_index",
                 ),
                 ("src/options.rs", "selection_from_parts"): (
@@ -2476,12 +2510,12 @@ def validate_normative_coverage(
                     r"crate::image::typed_image_value_view\s*\(\s*decoded\s*\)\s*,\s*" + selection_header + r"\s*,\s*target\s*,\s*"
                     r"crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*" + selection_decoded_cap + r"\s*,\s*" + selection_work_cap,
                 ),
-                ("src/jp2.rs", "associated_header_for_codestream"): (
+                ("src/jp2/container.rs", "associated_header_for_codestream"): (
                     "associated_header_outcome", "part2_associated_codestream_header",
                     r"codestream_header_association_view\s*\(\s*selected\s*\)\s*,\s*associated_header_view\s*\(\s*fallback\s*\)",
                 ),
-                ("src/jp2.rs", "validate_container_codestream"): (None, "part2_validate_selected_header", selected_header_arguments),
-                ("src/jp2.rs", "validate_selected_header"): (None, "part2_validate_selected_header", selected_header_arguments),
+                ("src/jp2/container.rs", "validate_container_codestream"): (None, "part2_validate_selected_header", selected_header_arguments),
+                ("src/jp2/container.rs", "validate_selected_header"): (None, "part2_validate_selected_header", selected_header_arguments),
             }.get((reference["path"], reference["symbol"]))
             if selection_contract:
                 result_projection, expected_result_model = selection_contract[:2]
@@ -2557,10 +2591,10 @@ def validate_normative_coverage(
             if header_contract:
                 expected_result_model = header_contract[0]
             if (reference["path"], reference["symbol"]) in (
-                ("src/tier1.rs", "Tier1CodingStyle::set_force_high_throughput"),
-                ("src/tier1.rs", "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"),
-                ("src/codestream.rs", "replace_mct_array"),
-                ("src/codestream.rs", "replace_mct_record"),
+                ("src/tier1/coding.rs", "Tier1CodingStyle::set_force_high_throughput"),
+                ("src/tier1/contributions.rs", "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"),
+                ("src/codestream/mct_resolution.rs", "replace_mct_array"),
+                ("src/codestream/mct_resolution.rs", "replace_mct_record"),
             ) and re.search(r"\)\s*->", text[signature:body_start]):
                 raise ValueError(f"linked unit-state contract requires the actual implicit unit return: {short}")
             projected_result = re.search(
@@ -2630,7 +2664,9 @@ def validate_normative_coverage(
                 "HtCleanupReaders::decode_non_initial_u": ("ht_cleanup_readers_view", "ht_uvlc_non_initial"),
                 "HtCleanupReaders::decode_quad_word": ("ht_cleanup_readers_view", "ht_cleanup_quad_word"),
             }
-            reader_contract = reader_contracts.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
+            reader_contract = reader_contracts.get(reference["symbol"]) if (
+                reference["path"] == "src/tier1.rs" or reference["path"].startswith("src/tier1/")
+            ) else None
             if reader_contract:
                 state_term = (
                     r"(?:" + state_term
@@ -2645,7 +2681,7 @@ def validate_normative_coverage(
                     named_prefix + r"\1\.is_ok\(\)\s*==>\s*"
                     + r"(?P<state>\(\s*\1\.is_ok\(\)" + state_tail + model_suffix, contract,
                 )
-            if (reference["path"], short) == ("src/tier1.rs", "reconstruct_ht_magnitude"):
+            if (reference["path"], short) == ("src/tier1/ht_cleanup.rs", "reconstruct_ht_magnitude"):
                 state_result = re.search(
                     named_prefix
                     + r"(?P<state>\(\s*ht_numeric_magnitude_outcome\(\s*\1\s*\)\s*,\s*"
@@ -2679,10 +2715,12 @@ def validate_normative_coverage(
                 "ht_forward_refinement_from_input": "ht_forward_refinement_initial",
                 "ht_reverse_refinement_from_input": "ht_reverse_refinement_initial",
                 "ht_refinement_readers_from_inputs": "ht_refinement_readers_initial",
-            }.get(short) if reference["path"] == "src/tier1.rs" else None
+            }.get(short) if (
+                reference["path"] == "src/tier1.rs" or reference["path"].startswith("src/tier1/")
+            ) else None
             if expected_constructor and (named_result is None or named_result["model"] != expected_constructor):
                 raise ValueError(f"linked function lacks executable Verus contract: {short}; wrong constructor model")
-            if (reference["path"], reference["symbol"]) == ("src/tier1.rs", "HtCleanupReaders::can_claim_byte"):
+            if (reference["path"], reference["symbol"]) == ("src/tier1/ht_cleanup_readers.rs", "HtCleanupReaders::can_claim_byte"):
                 if named_result is None or named_result["model"] != "ht_cleanup_reader_can_claim":
                     raise ValueError(f"linked function lacks executable Verus contract: {short}; wrong claim model")
             if reader_contract:
@@ -2707,7 +2745,7 @@ def validate_normative_coverage(
                         "incomplete exact reader state relation"
                     )
             metadata_arguments_bound = (
-                (reference["path"], short) != ("src/tier1.rs", "decode_ht_cleanup_segment_metadata")
+                (reference["path"], short) != ("src/tier1/ht_metadata.rs", "decode_ht_cleanup_segment_metadata")
                 or _coverage_result_arguments(
                     contract, named_result, "ht_cleanup_segment_metadata",
                     r"ht_cleanup_segment_view\s*\(\s*&\s*cleanup\s*\)\s*,\s*"
@@ -2716,7 +2754,7 @@ def validate_normative_coverage(
                 )
             )
             palette_arguments_bound = (
-                (reference["path"], reference["symbol"]) != ("src/jp2.rs", "Palette::value")
+                (reference["path"], reference["symbol"]) != ("src/jp2/color.rs", "Palette::value")
                 or _coverage_result_arguments(
                     contract, named_result, "part2_palette_value",
                     r"palette_view\s*\(\s*self\s*\)\s*,\s*entry\s*,\s*column",
@@ -2740,7 +2778,9 @@ def validate_normative_coverage(
                 "CodeBlockPlane::duplicate": (
                     "tier1_duplicate_plane", r"code_block_plane_view\s*\(\s*self\s*\)",
                 ),
-            }.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
+            }.get(reference["symbol"]) if (
+                reference["path"] == "src/tier1.rs" or reference["path"].startswith("src/tier1/")
+            ) else None
             cleanup_arguments_bound = (
                 cleanup_contract_arguments is None
                 or _coverage_result_arguments(
@@ -2883,7 +2923,9 @@ def validate_normative_coverage(
                 "Tier1PassStatistics::merge": (
                     "tier1_statistics_merge", r"\*\s*old\s*\(\s*self\s*\)\s*,\s*other",
                 ),
-            }.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
+            }.get(reference["symbol"]) if (
+                reference["path"] == "src/tier1.rs" or reference["path"].startswith("src/tier1/")
+            ) else None
             refinement_arguments_bound = (
                 refinement_contract_arguments is None
                 or _coverage_result_arguments(
@@ -2942,7 +2984,7 @@ def validate_normative_coverage(
                 ),
                 ("src/decode/output.rs", "palette_modulus"): ("part2_palette_modulus", r"precision"),
                 ("src/decode/output.rs", "invalid_jp2_output"): ("part2_color_input_error", r""),
-                ("src/image.rs", "typed_component_from_parts"): (
+                ("src/image/layout.rs", "typed_component_from_parts"): (
                     "part2_typed_component_from_parts",
                     r"width\s*,\s*height\s*,\s*info\s*,\s*typed_samples_view\s*\(\s*&\s*samples\s*\)",
                 ),
@@ -2953,14 +2995,14 @@ def validate_normative_coverage(
                     r"crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*"
                     r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)",
                 ),
-                ("src/image.rs", "typed_image_from_components_with_origin"): (
+                ("src/image/layout.rs", "typed_image_from_components_with_origin"): (
                     "part2_typed_image_from_parts",
                     r"width\s*,\s*height\s*,\s*x_origin\s*,\s*y_origin\s*,\s*"
                     r"typed_components_output_view\s*\(\s*components\s*@\s*\)\s*,\s*"
                     r"crate::limits::resource_component_limit\s*\(\s*limits\s*\)\s*,\s*"
                     r"crate::limits::resource_decoded_bytes_limit\s*\(\s*limits\s*\)",
                 ),
-                ("src/image.rs", "TypedImage::component"): (
+                ("src/image/layout.rs", "TypedImage::component"): (
                     "part2_typed_image_component",
                     r"typed_components_output_view\s*\(\s*typed_image_components\s*\(\s*self\s*\)\s*\)\s*,\s*index",
                 ),
@@ -2993,7 +3035,9 @@ def validate_normative_coverage(
                 "Tier1PassStatistics::decoded_symbols": (1, "count"),
                 "Tier1PassStatistics::became_significant": (2, "1"),
                 "Tier1PassStatistics::refined": (3, "1"),
-            }.get(reference["symbol"]) if reference["path"] == "src/tier1.rs" else None
+            }.get(reference["symbol"]) if (
+                reference["path"] == "src/tier1.rs" or reference["path"].startswith("src/tier1/")
+            ) else None
             statistic_arguments_bound = (
                 statistic_arguments is None
                 or _coverage_result_arguments(
@@ -3027,7 +3071,7 @@ def validate_normative_coverage(
                 ref != reference
                 and (cross_file_call(
                     (ROOT / ref["path"]).resolve(), ref["symbol"], short,
-                    require_caller_body=reference["path"].startswith("src/decode/"),
+                    require_caller_body=_coverage_named_caller_required(reference["path"]),
                 )
                  if ref["path"] != reference["path"] else
                  same_file_call(path, ref["symbol"], short))

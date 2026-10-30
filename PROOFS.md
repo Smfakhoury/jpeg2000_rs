@@ -47,12 +47,13 @@ Private parser, Tier-1 and decoder tests live in
 [decode/tests.rs](src/decode/tests.rs). They remain `cfg(test)` child modules with
 the same private access and test identities.
 
-The [decoder facade](src/decode.rs) keeps shared types and public re-exports.
+The [decoder facade](src/decode.rs) and other component facades keep shared types
+and public re-exports.
 Real Rust child modules separate geometry, planning, reconstruction, execution,
 selection, output mapping and public entry points; see the
 [responsibility map](README.md#repository-layout). Existing public paths remain
 available. Function bodies, attached contracts and loop invariants move together.
-Only private helper visibility expands to the enclosing decoder module where
+Only private helper visibility expands to the enclosing component module where
 required; no private fields become public.
 
 The shared decoder proof/view support in
@@ -61,12 +62,19 @@ existing `decode` module only under `verus_keep_ghost`. It contains no executabl
 decoder alternative. Its declarations retain their root logical namespace,
 visibility and open/closed semantics. Executable definitions now have real child
 module namespaces: fresh verifier evidence must bind those actual names, not
-silently rewrite old reports. Old source-bound records remain historical.
+silently rewrite old reports. The other component modules follow the same
+rule: physical method locations can move while their root type's canonical
+verifier identity remains unchanged. The source-derived reference inventory
+must resolve each actual definition and named caller, not accept an unrelated
+call elsewhere in a former monolith. Old source-bound records remain historical.
+Private symbol-trait adapters stay beside their shared trait in the Tier-1
+parent module, preserving their original implicit ghost visibility rather than
+opening previously opaque declarations to accommodate a child-module move.
 
 Verus-only attributes and modules are enabled with `verus_keep_ghost`:
 
-- [src/refinement.rs](src/refinement.rs) contains executable helpers with
-  functional contracts.
+- [src/refinement.rs](src/refinement.rs) re-exports
+  [executable helpers](src/refinement/) with functional contracts.
 - [specs/](specs/) contains mathematical models.
 - [proofs/shared/](proofs/shared/) contains representation views.
 - [proofs/spec_properties/](proofs/spec_properties/) contains model lemmas.

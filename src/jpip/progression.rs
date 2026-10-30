@@ -1,0 +1,908 @@
+//! Caller-planned and automatic progressive decoding and cache snapshots.
+
+use super::{
+    AutomaticHeaders, AutomaticPacket, AutomaticSnapshot, AutomaticSnapshotResult, AutomaticTile,
+    DatabinCache, DatabinId, DecodeError, EOC, JpipAutomaticProgressiveDecoder, JpipByteView,
+    JpipMissingRange, JpipPacketSelection, JpipPrecinctCodestreamPlan, JpipProgressiveDecoder,
+    JpipProgressiveStatus, JpipProgressiveUpdate, MalformedKind, Resource, ResourceLimits,
+    append_empty_packet, automatic_precinct_in_class, build_automatic_transition_template,
+    copy_bytes, jpip_resolution_selected, jpip_tile_selected, normalize_automatic_tile_headers,
+    normalize_main_header, parse_tile_part_transitions, partition_automatic_tile_parts,
+    siz_cardinality, validate_packet_component_selection, write_u32_be,
+};
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::*;
+
+impl JpipProgressiveUpdate {
+    pub const fn status(&self) -> JpipProgressiveStatus {
+        self.status
+    }
+
+    pub const fn previous_layers(&self) -> u16 {
+        self.previous_layers
+    }
+
+    pub const fn available_layers(&self) -> u16 {
+        self.available_layers
+    }
+
+    pub fn missing_ranges(&self) -> &[JpipMissingRange] {
+        &self.missing
+    }
+
+    pub const fn image(&self) -> Option<&crate::image::TypedImage> {
+        self.image.as_ref()
+    }
+
+    pub fn into_image(self) -> Option<crate::image::TypedImage> {
+        self.image
+    }
+}
+
+impl JpipProgressiveDecoder {
+    pub const fn new(plan: JpipPrecinctCodestreamPlan) -> Self {
+        Self {
+            plan,
+            decoded_layers: 0,
+        }
+    }
+
+    pub const fn plan(&self) -> &JpipPrecinctCodestreamPlan {
+        &self.plan
+    }
+
+    pub const fn decoded_layers(&self) -> u16 {
+        self.decoded_layers
+    }
+
+    pub fn update(
+        &mut self,
+        cache: &DatabinCache,
+        options: &crate::DecodeOptions,
+    ) -> Result<JpipProgressiveUpdate, DecodeError> {
+        self.update_inner(cache, options, None)
+    }
+
+    pub fn update_selected(
+        &mut self,
+        cache: &DatabinCache,
+        options: &crate::DecodeOptions,
+        selection: &crate::DecodeSelection,
+    ) -> Result<JpipProgressiveUpdate, DecodeError> {
+        self.update_inner(cache, options, Some(selection))
+    }
+
+    fn update_inner(
+        &mut self,
+        cache: &DatabinCache,
+        options: &crate::DecodeOptions,
+        selection: Option<&crate::DecodeSelection>,
+    ) -> Result<JpipProgressiveUpdate, DecodeError> {
+        let previous_layers = self.decoded_layers;
+        let (available_layers, missing) = cache.progressive_availability(&self.plan)?;
+        if !crate::refinement::jpip_progressive_update_valid(
+            previous_layers,
+            available_layers,
+            self.plan.layers(),
+        ) {
+            return Err(DecodeError::malformed(0, MalformedKind::InvalidJpipLayout));
+        }
+        if !crate::refinement::jpip_quality_prefix_available(available_layers, previous_layers)
+            || available_layers <= previous_layers
+        {
+            return Ok(JpipProgressiveUpdate {
+                status: if available_layers == self.plan.layers() {
+                    JpipProgressiveStatus::Complete
+                } else {
+                    JpipProgressiveStatus::WaitingForData
+                },
+                previous_layers,
+                available_layers,
+                missing,
+                image: None,
+            });
+        }
+        let transcoded = cache.transcode_precinct_codestream(&self.plan, available_layers)?;
+        let view = transcoded
+            .codestream
+            .ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
+        let image = match selection {
+            Some(selection) => {
+                crate::decode_codestream_selected(view.as_ref(), options, selection)?
+            }
+            None => crate::decode_codestream(view.as_ref(), options)?,
+        };
+        self.decoded_layers = available_layers;
+        Ok(JpipProgressiveUpdate {
+            status: if available_layers == self.plan.layers() {
+                JpipProgressiveStatus::Complete
+            } else {
+                JpipProgressiveStatus::QualityAdvanced
+            },
+            previous_layers,
+            available_layers,
+            missing,
+            image: Some(image),
+        })
+    }
+}
+
+impl JpipAutomaticProgressiveDecoder {
+    pub const fn new(codestream: u64) -> Self {
+        Self {
+            codestream,
+            decoded_layers: 0,
+        }
+    }
+
+    pub const fn codestream(&self) -> u64 {
+        self.codestream
+    }
+
+    pub const fn decoded_layers(&self) -> u16 {
+        self.decoded_layers
+    }
+
+    pub fn update(
+        &mut self,
+        cache: &DatabinCache,
+        options: &crate::DecodeOptions,
+    ) -> Result<JpipProgressiveUpdate, DecodeError> {
+        self.update_inner(cache, options, None, &JpipPacketSelection::all_components())
+    }
+
+    pub fn update_selected(
+        &mut self,
+        cache: &DatabinCache,
+        options: &crate::DecodeOptions,
+        selection: &crate::DecodeSelection,
+        packets: &JpipPacketSelection,
+    ) -> Result<JpipProgressiveUpdate, DecodeError> {
+        self.update_inner(cache, options, Some(selection), packets)
+    }
+
+    fn update_inner(
+        &mut self,
+        cache: &DatabinCache,
+        options: &crate::DecodeOptions,
+        selection: Option<&crate::DecodeSelection>,
+        packets: &JpipPacketSelection,
+    ) -> Result<JpipProgressiveUpdate, DecodeError> {
+        let previous_layers = self.decoded_layers;
+        let result = cache.build_automatic_snapshot(
+            self.codestream,
+            selection,
+            packets,
+            options.limits(),
+        )?;
+        let Some(snapshot) = result.ready else {
+            return Ok(JpipProgressiveUpdate {
+                status: JpipProgressiveStatus::WaitingForData,
+                previous_layers,
+                available_layers: 0,
+                missing: result.missing,
+                image: None,
+            });
+        };
+        if !crate::refinement::jpip_progressive_update_valid(
+            previous_layers,
+            snapshot.available_layers,
+            snapshot.layers,
+        ) {
+            return Err(DecodeError::malformed(0, MalformedKind::InvalidJpipLayout));
+        }
+        if !crate::refinement::jpip_quality_prefix_available(
+            snapshot.available_layers,
+            previous_layers,
+        ) || snapshot.available_layers <= previous_layers
+        {
+            return Ok(JpipProgressiveUpdate {
+                status: if snapshot.available_layers == snapshot.layers {
+                    JpipProgressiveStatus::Complete
+                } else {
+                    JpipProgressiveStatus::WaitingForData
+                },
+                previous_layers,
+                available_layers: snapshot.available_layers,
+                missing: snapshot.missing,
+                image: None,
+            });
+        }
+        let image = match selection {
+            Some(selection) => {
+                crate::decode_codestream_selected(snapshot.codestream.as_ref(), options, selection)?
+            }
+            None => crate::decode_codestream(snapshot.codestream.as_ref(), options)?,
+        };
+        self.decoded_layers = snapshot.available_layers;
+        Ok(JpipProgressiveUpdate {
+            status: if snapshot.available_layers == snapshot.layers {
+                JpipProgressiveStatus::Complete
+            } else {
+                JpipProgressiveStatus::QualityAdvanced
+            },
+            previous_layers,
+            available_layers: snapshot.available_layers,
+            missing: snapshot.missing,
+            image: Some(image),
+        })
+    }
+}
+
+impl DatabinCache {
+    #[allow(clippy::manual_map)]
+    pub(super) fn build_automatic_snapshot(
+        &self,
+        codestream: u64,
+        selection: Option<&crate::DecodeSelection>,
+        packet_selection: &JpipPacketSelection,
+        limits: &ResourceLimits,
+    ) -> Result<AutomaticSnapshotResult, DecodeError> {
+        let main_id = DatabinId::new(6, codestream, 0)?;
+        if !self.is_complete(main_id) {
+            return Ok(AutomaticSnapshotResult {
+                ready: None,
+                missing: self.complete_databin_missing(main_id),
+            });
+        }
+        let main = self.databin_view(main_id)?.into_bytes();
+        let (tile_count, components) = siz_cardinality(&main, limits)?;
+        validate_packet_component_selection(packet_selection, components)?;
+        let mut tile_headers = Vec::with_capacity(
+            usize::try_from(tile_count)
+                .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
+        );
+        let mut header_missing = Vec::new();
+        let mut tile = 0_u64;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant tile <= tile_count,
+                decreases tile_count - tile,
+            )
+        )]
+        while tile < tile_count {
+            let tile_id = DatabinId::new(2, codestream, tile)?;
+            if self.is_complete(tile_id) {
+                tile_headers.push(self.databin_view(tile_id)?.into_bytes());
+            } else {
+                let additional = self.complete_databin_missing(tile_id);
+                let mut missing_index = 0_usize;
+                #[cfg_attr(
+                    verus_keep_ghost,
+                    verus_spec(
+                        invariant missing_index <= additional.len(),
+                        decreases additional.len() - missing_index,
+                    )
+                )]
+                while missing_index < additional.len() {
+                    header_missing.push(additional[missing_index]);
+                    missing_index += 1;
+                }
+            }
+            tile = tile
+                .checked_add(1)
+                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+        }
+        if !header_missing.is_empty() {
+            return Ok(AutomaticSnapshotResult {
+                ready: None,
+                missing: header_missing,
+            });
+        }
+
+        let normalized_main = normalize_main_header(&main)?;
+        let mut normalized_tiles = Vec::with_capacity(tile_headers.len());
+        let mut tile_index = 0_usize;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant tile_index <= tile_headers.len(),
+                decreases tile_headers.len() - tile_index,
+            )
+        )]
+        while tile_index < tile_headers.len() {
+            normalized_tiles.push(normalize_automatic_tile_headers(
+                tile_headers
+                    .get(tile_index)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
+                u16::try_from(tile_index)
+                    .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
+            )?);
+            tile_index += 1;
+        }
+        let template =
+            build_automatic_transition_template(&normalized_main, &normalized_tiles, limits)?;
+        let layout = crate::codestream::parse_layout(&template, limits)?;
+        let mut automatic_tiles = Vec::with_capacity(normalized_tiles.len());
+        let mut maximum_layers = 0_u16;
+        tile_index = 0;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant tile_index <= normalized_tiles.len(),
+                decreases normalized_tiles.len() - tile_index,
+            )
+        )]
+        while tile_index < normalized_tiles.len() {
+            let tile_number = u16::try_from(tile_index)
+                .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            let tile_parts: Vec<_> = layout
+                .tile_parts
+                .iter()
+                .filter(|part| part.tile_index == tile_number)
+                .collect();
+            let tile_part = *tile_parts
+                .first()
+                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?;
+            let mut plan = crate::decode::plan_progression_tile_at_with_component_overrides(
+                &layout.info.image_size,
+                tile_number,
+                tile_part.coding_style,
+                &tile_part.component_coding_styles,
+                &tile_part.component_quantizations,
+                &tile_part.roi_shifts,
+                limits,
+            )?;
+            maximum_layers = maximum_layers.max(tile_part.coding_style.layers);
+            let precinct_count = plan.precincts().len();
+            let layer_count = usize::from(tile_part.coding_style.layers);
+            let mut ordinals = vec![vec![None; layer_count]; precinct_count];
+            let mut order = Vec::new();
+            let mut iterator = crate::packet::ProgressionPacketIterator::new(
+                plan.grid(),
+                tile_part.coding_style.progression_order,
+                &tile_part.progression_changes,
+                limits,
+            )?;
+            let progression_code = match tile_part.coding_style.progression_order {
+                crate::codestream::ProgressionOrder::Lrcp => 0,
+                crate::codestream::ProgressionOrder::Rlcp => 1,
+                crate::codestream::ProgressionOrder::Rpcl => 2,
+                crate::codestream::ProgressionOrder::Pcrl => 3,
+                crate::codestream::ProgressionOrder::Cprl => 4,
+            };
+            if !crate::refinement::jpip_progression_supported(progression_code) {
+                return Err(DecodeError::malformed(
+                    0,
+                    MalformedKind::InvalidProgressionOrderChange,
+                ));
+            }
+            let mut ordinal = 0_u64;
+            let mut remaining_packets = limits.maximum_work_units();
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(decreases remaining_packets,)
+            )]
+            while let Some(coordinate) = iterator.next_packet()? {
+                if remaining_packets == 0 {
+                    return Err(DecodeError::malformed(
+                        0,
+                        MalformedKind::InvalidProgressionOrderChange,
+                    ));
+                }
+                remaining_packets -= 1;
+                let execution = plan.grid().precinct_index(
+                    coordinate.component,
+                    coordinate.resolution,
+                    coordinate.precinct,
+                )?;
+                let sequence = u16::try_from(ordinal & u64::from(u16::MAX))
+                    .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                let layer_slot = ordinals
+                    .get_mut(execution)
+                    .and_then(|layers| layers.get_mut(usize::from(coordinate.layer)))
+                    .ok_or_else(|| {
+                        DecodeError::malformed(0, MalformedKind::InvalidProgressionOrderChange)
+                    })?;
+                if layer_slot.is_some() {
+                    return Err(DecodeError::malformed(
+                        0,
+                        MalformedKind::InvalidProgressionOrderChange,
+                    ));
+                }
+                *layer_slot = Some(sequence);
+                order.push((coordinate, execution));
+                ordinal = ordinal
+                    .checked_add(1)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            }
+
+            let mut parsed = vec![vec![None; layer_count]; precinct_count];
+            let mut offsets = vec![0_u64; precinct_count];
+            let mut databins = Vec::with_capacity(precinct_count);
+            let grid = plan.grid();
+            let mut mapping_index = 0_usize;
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant mapping_index <= precinct_count,
+                    decreases precinct_count - mapping_index,
+                )
+            )]
+            while mapping_index < precinct_count {
+                let (component, resolution, precinct) = plan
+                    .precincts()
+                    .get(mapping_index)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?
+                    .coordinate();
+                let in_class = automatic_precinct_in_class(
+                    tile_count,
+                    u64::from(components),
+                    tile_index as u64,
+                    component,
+                    resolution,
+                    precinct,
+                    grid,
+                )?;
+                databins.push(DatabinId::new(0, codestream, in_class)?);
+                mapping_index += 1;
+            }
+            let source_tile_header = tile_headers
+                .get(tile_index)
+                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            let transitions = parse_tile_part_transitions(source_tile_header, tile_number)?;
+            let mut transition_index = 0_usize;
+            let mut transition_packets = 0_u64;
+            let mut transition_bytes = 0_u64;
+            let mut blocked = vec![false; precinct_count];
+            let mut order_index = 0_usize;
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant order_index <= order.len(),
+                    decreases order.len() - order_index,
+                )
+            )]
+            while order_index < order.len() {
+                let (coordinate, execution) = order[order_index];
+                if *blocked
+                    .get(execution)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?
+                {
+                    order_index += 1;
+                    continue;
+                }
+                let state = *tile_parts
+                    .get(transition_index)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::InvalidTilePart))?;
+                let databin = *databins
+                    .get(execution)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                let prefix = self.databin_prefix(databin);
+                let offset = *offsets
+                    .get(execution)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                let start = usize::try_from(offset)
+                    .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                if start >= prefix.len() {
+                    *blocked.get_mut(execution).ok_or_else(|| {
+                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                    })? = true;
+                    order_index += 1;
+                    continue;
+                }
+                let sequence = u16::try_from(order_index & usize::from(u16::MAX))
+                    .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                let precinct_decoder = plan
+                    .precincts_mut()
+                    .get_mut(execution)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                match crate::packet::decode_jpip_precinct_packet(
+                    state,
+                    &prefix[start..],
+                    sequence,
+                    coordinate.layer,
+                    precinct_decoder,
+                    limits,
+                ) {
+                    Ok(consumed) => {
+                        if consumed == 0 {
+                            return Err(DecodeError::malformed(
+                                offset,
+                                MalformedKind::InvalidPacketLength,
+                            ));
+                        }
+                        let end = start.checked_add(consumed).ok_or_else(|| {
+                            DecodeError::malformed(offset, MalformedKind::ArithmeticOverflow)
+                        })?;
+                        let packet_slice = prefix.get(start..end).ok_or_else(|| {
+                            DecodeError::malformed(offset, MalformedKind::Truncated)
+                        })?;
+                        *parsed
+                            .get_mut(execution)
+                            .and_then(|layers| layers.get_mut(usize::from(coordinate.layer)))
+                            .ok_or_else(|| {
+                                DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                            })? = Some(copy_bytes(packet_slice));
+                        *offsets.get_mut(execution).ok_or_else(|| {
+                            DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                        })? = end as u64;
+                        transition_packets =
+                            transition_packets.checked_add(1).ok_or_else(|| {
+                                DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                            })?;
+                        transition_bytes = transition_bytes
+                            .checked_add(consumed as u64)
+                            .ok_or_else(|| {
+                                DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                            })?;
+                        let transition = transitions.get(transition_index).ok_or_else(|| {
+                            DecodeError::malformed(0, MalformedKind::InvalidTilePart)
+                        })?;
+                        let boundary = match transition.packet_count() {
+                            Some(count) => transition_packets == count,
+                            None => match transition.data_length() {
+                                Some(length) => transition_bytes == length,
+                                None => false,
+                            },
+                        };
+                        let next_transition = transition_index.checked_add(1).ok_or_else(|| {
+                            DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                        })?;
+                        if boundary && next_transition < transitions.len() {
+                            transition_index = next_transition;
+                            transition_packets = 0;
+                            transition_bytes = 0;
+                        }
+                    }
+                    Err(DecodeError::MalformedInput {
+                        kind: MalformedKind::Truncated,
+                        ..
+                    }) if !self.is_complete(databin) => {
+                        *blocked.get_mut(execution).ok_or_else(|| {
+                            DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                        })? = true;
+                    }
+                    Err(error) => return Err(error),
+                }
+                order_index += 1;
+            }
+
+            let tile_is_selected = jpip_tile_selected(selection, tile_number);
+            let mut packets = Vec::with_capacity(order.len());
+            let mut order_index = 0_usize;
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant order_index <= order.len(),
+                    decreases order.len() - order_index,
+                )
+            )]
+            while order_index < order.len() {
+                let (coordinate, execution) = order[order_index];
+                let required = tile_is_selected
+                    && packet_selection.includes_component(coordinate.component)
+                    && jpip_resolution_selected(
+                        selection,
+                        coordinate.component,
+                        coordinate.resolution,
+                        &tile_part.component_coding_styles,
+                    )?;
+                let parsed_layers = parsed
+                    .get(execution)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                let packet_bytes = match parsed_layers
+                    .get(usize::from(coordinate.layer))
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?
+                {
+                    Some(bytes) => Some(bytes.clone()),
+                    None => None,
+                };
+                packets.push(AutomaticPacket {
+                    databin: *databins.get(execution).ok_or_else(|| {
+                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                    })?,
+                    bytes: packet_bytes,
+                    next_offset: *offsets.get(execution).ok_or_else(|| {
+                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                    })?,
+                    required,
+                    ordinal: u16::try_from(order_index & usize::from(u16::MAX)).map_err(|_| {
+                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                    })?,
+                    layer: coordinate.layer,
+                });
+                order_index += 1;
+            }
+            let Some(parts) = partition_automatic_tile_parts(
+                normalized_tiles
+                    .get(tile_index)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
+                &tile_parts,
+                &transitions,
+                &packets,
+            )?
+            else {
+                let mut missing = Vec::new();
+                let mut packet_index = 0_usize;
+                #[cfg_attr(
+                    verus_keep_ghost,
+                    verus_spec(
+                        invariant packet_index <= packets.len(),
+                        decreases packets.len() - packet_index,
+                    )
+                )]
+                while packet_index < packets.len() {
+                    let packet = packets.get(packet_index).ok_or_else(|| {
+                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
+                    })?;
+                    if packet.bytes.is_none()
+                        && !missing
+                            .iter()
+                            .any(|entry: &JpipMissingRange| entry.databin().same_as(packet.databin))
+                    {
+                        missing.push(JpipMissingRange {
+                            databin: packet.databin,
+                            offset: packet.next_offset,
+                            length: self
+                                .status(packet.databin)
+                                .and_then(|status| status.final_length())
+                                .map(|length| length.saturating_sub(packet.next_offset)),
+                        });
+                    }
+                    packet_index += 1;
+                }
+                return Ok(AutomaticSnapshotResult {
+                    ready: None,
+                    missing,
+                });
+            };
+            automatic_tiles.push(AutomaticTile { parts });
+            tile_index += 1;
+        }
+
+        let mut available_layers = maximum_layers;
+        let mut tile_packet_index = 0_usize;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant tile_packet_index <= automatic_tiles.len(),
+                decreases automatic_tiles.len() - tile_packet_index,
+            )
+        )]
+        while tile_packet_index < automatic_tiles.len() {
+            let tile = &automatic_tiles[tile_packet_index];
+            let mut part_index = 0_usize;
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant part_index <= tile.parts.len(),
+                    decreases tile.parts.len() - part_index,
+                )
+            )]
+            while part_index < tile.parts.len() {
+                let part = &tile.parts[part_index];
+                let mut packet_index = 0_usize;
+                #[cfg_attr(
+                    verus_keep_ghost,
+                    verus_spec(
+                        invariant packet_index <= part.packets.len(),
+                        decreases part.packets.len() - packet_index,
+                    )
+                )]
+                while packet_index < part.packets.len() {
+                    let packet = &part.packets[packet_index];
+                    let layer = packet.layer;
+                    if packet.required && packet.bytes.is_none() {
+                        available_layers = available_layers.min(layer);
+                    }
+                    packet_index += 1;
+                }
+                part_index += 1;
+            }
+            tile_packet_index += 1;
+        }
+        let mut missing = Vec::new();
+        tile_packet_index = 0;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant tile_packet_index <= automatic_tiles.len(),
+                decreases automatic_tiles.len() - tile_packet_index,
+            )
+        )]
+        while tile_packet_index < automatic_tiles.len() {
+            let tile = &automatic_tiles[tile_packet_index];
+            let mut part_index = 0_usize;
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant part_index <= tile.parts.len(),
+                    decreases tile.parts.len() - part_index,
+                )
+            )]
+            while part_index < tile.parts.len() {
+                let part = &tile.parts[part_index];
+                let mut packet_index = 0_usize;
+                #[cfg_attr(
+                    verus_keep_ghost,
+                    verus_spec(
+                        invariant packet_index <= part.packets.len(),
+                        decreases part.packets.len() - packet_index,
+                    )
+                )]
+                while packet_index < part.packets.len() {
+                    let packet = &part.packets[packet_index];
+                    let layer = packet.layer;
+                    if packet.required
+                        && layer == available_layers
+                        && packet.bytes.is_none()
+                        && !missing
+                            .iter()
+                            .any(|entry: &JpipMissingRange| entry.databin().same_as(packet.databin))
+                    {
+                        let status = self.status(packet.databin);
+                        let length = match status.and_then(|value| value.final_length()) {
+                            Some(final_length) if final_length > packet.next_offset => {
+                                Some(final_length - packet.next_offset)
+                            }
+                            Some(_) => Some(1),
+                            None => None,
+                        };
+                        missing.push(JpipMissingRange {
+                            databin: packet.databin,
+                            offset: packet.next_offset,
+                            length,
+                        });
+                    }
+                    packet_index += 1;
+                }
+                part_index += 1;
+            }
+            tile_packet_index += 1;
+        }
+        if available_layers == 0 {
+            return Ok(AutomaticSnapshotResult {
+                ready: Some(AutomaticSnapshot {
+                    codestream: JpipByteView { bytes: Vec::new() },
+                    available_layers,
+                    layers: maximum_layers,
+                    missing,
+                }),
+                missing: Vec::new(),
+            });
+        }
+
+        let mut bytes = normalized_main;
+        tile_packet_index = 0;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant tile_packet_index <= automatic_tiles.len(),
+                decreases automatic_tiles.len() - tile_packet_index,
+            )
+        )]
+        while tile_packet_index < automatic_tiles.len() {
+            let tile = &automatic_tiles[tile_packet_index];
+            let mut part_index = 0_usize;
+            #[cfg_attr(
+                verus_keep_ghost,
+                verus_spec(
+                    invariant part_index <= tile.parts.len(),
+                    decreases tile.parts.len() - part_index,
+                )
+            )]
+            while part_index < tile.parts.len() {
+                let part = &tile.parts[part_index];
+                let tile_start = bytes.len();
+                bytes.extend_from_slice(&part.header);
+                let mut packet_index = 0_usize;
+                #[cfg_attr(
+                    verus_keep_ghost,
+                    verus_spec(
+                        invariant packet_index <= part.packets.len(),
+                        decreases part.packets.len() - packet_index,
+                    )
+                )]
+                while packet_index < part.packets.len() {
+                    let packet = &part.packets[packet_index];
+                    let layer = packet.layer;
+                    if packet.required && layer < available_layers {
+                        let packet_bytes = packet.bytes.as_ref().ok_or_else(|| {
+                            DecodeError::malformed(
+                                packet.next_offset,
+                                MalformedKind::MissingRequiredStructure,
+                            )
+                        })?;
+                        bytes.extend_from_slice(packet_bytes);
+                    } else {
+                        append_empty_packet(&mut bytes, part.sop, part.eph, packet.ordinal)?;
+                    }
+                    packet_index += 1;
+                }
+                let tile_length = bytes
+                    .len()
+                    .checked_sub(tile_start)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                let tile_length = u32::try_from(tile_length)
+                    .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                let length_position = tile_start
+                    .checked_add(6)
+                    .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+                write_u32_be(&mut bytes, length_position, tile_length)?;
+                part_index += 1;
+            }
+            tile_packet_index += 1;
+        }
+        bytes.extend_from_slice(&EOC);
+        if bytes.len() as u64 > limits.maximum_input_bytes() {
+            return Err(DecodeError::limit(
+                Resource::InputBytes,
+                limits.maximum_input_bytes(),
+                bytes.len() as u64,
+            ));
+        }
+        crate::codestream::parse_layout(&bytes, limits)?;
+        Ok(AutomaticSnapshotResult {
+            ready: Some(AutomaticSnapshot {
+                codestream: JpipByteView { bytes },
+                available_layers,
+                layers: maximum_layers,
+                missing,
+            }),
+            missing: Vec::new(),
+        })
+    }
+
+    pub(super) fn automatic_headers(
+        &self,
+        codestream: u64,
+    ) -> Result<AutomaticHeaders, DecodeError> {
+        let main = self
+            .databin_view(DatabinId::new(6, codestream, 0)?)?
+            .into_bytes();
+        let (tile_count, components) = siz_cardinality(&main, &self.limits)?;
+        let mut tiles = Vec::with_capacity(
+            usize::try_from(tile_count)
+                .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
+        );
+        let mut tile = 0_u64;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant tile <= tile_count,
+                decreases tile_count - tile,
+            )
+        )]
+        while tile < tile_count {
+            tiles.push(
+                self.databin_view(DatabinId::new(2, codestream, tile)?)?
+                    .into_bytes(),
+            );
+            tile += 1;
+        }
+        let main = normalize_main_header(&main)?;
+        let mut normalized = Vec::with_capacity(tiles.len());
+        let mut index = 0_usize;
+        #[cfg_attr(
+            verus_keep_ghost,
+            verus_spec(
+                invariant index <= tiles.len(),
+                decreases tiles.len() - index,
+            )
+        )]
+        while index < tiles.len() {
+            let headers = normalize_automatic_tile_headers(
+                &tiles[index],
+                u16::try_from(index)
+                    .map_err(|_| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?,
+            )?;
+            normalized.push(
+                headers
+                    .first()
+                    .ok_or_else(|| {
+                        DecodeError::malformed(0, MalformedKind::MissingRequiredStructure)
+                    })?
+                    .clone(),
+            );
+            index += 1;
+        }
+        Ok(AutomaticHeaders {
+            main,
+            tiles: normalized,
+            tile_count,
+            components,
+        })
+    }
+}
