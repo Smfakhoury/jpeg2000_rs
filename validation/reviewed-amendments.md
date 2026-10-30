@@ -20,6 +20,7 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-183-remaining-domains` | Proposed exact remaining responsibility modules; existing native contracts/bodies, shared types and original ghost semantics preserved | #183; original CI41024230240 / Verus41024233243; fresh source checks required after adoption |
 | `proposal-193-packet-metadata` | Proposed exact source-derived raw packet sum and metadata finalizers, result models and regressions; no source-integration or normative approval | #193; original CI41084399839 / Verus41084400145; fresh source checks required after adoption |
 | `proposal-195-component-style-cache` | Proposed exact three-path duplicate-cache correction and latest-owner proof; eligibility only, not source approval | #195; original CI41110257458 / Verus41110257409; fresh source checks and separate review required after adoption |
+| `proposal-197-tile-packet-admission` | Proposed exact seven-path actual PLT/PPT producer contracts, models and regressions; eligibility only | #197; original CI41135383976 / Verus41135383979; final refresh, full checks and separate source review required |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
@@ -29,6 +30,50 @@ No record permits unlisted model/proof Rust or controller changes, combined
 amendments, or changed verifier/dependency pins and resource caps. An explicitly
 adopted source-derived proof profile can admit only its exact listed additions;
 gate eligibility does not establish their correspondence with a standard.
+
+### Actual PLT/PPT tile-packet admission
+
+The proposed #197 record covers exactly the seven protected paths of the
+already accepted `tile-packet-admission` profile. The profile was deployed
+through #196, with fresh actual-main qualification, and remains unchanged by
+the later header-profile deployment. Fresh actual-main
+CI41135235716 and Verus41135235586 accepted current profile main
+`c9aba95c681f304eaf5dba2ef7568a5c96b47e18`: 335 Python tests without skips,
+3,519/0 per root/archive replay and all normal gates. The #196 and #199
+single-use forward permissions are spent.
+
+Exact source `dad4c56a09013e623fea1cbf95c4e6d0b675326e` passed original
+CI41135383976 and Verus41135383979: 336 Python tests without skips,
+670 library plus six example tests and three doctests on the MSRV,
+3,521/0 per root and byte-bound archive replay, 173 archive entries with
+157 byte-bound Rust files, and all numerical, HT, consumer and 65-record
+resource gates. All 4,560 prior observed items remain identical; the two
+actual producer methods and two nonrecursive models give 4,564 observed
+definitions. The models have no separate termination SMT jobs.
+Source-function coverage is not measured.
+
+The actual executed PLT/PPT branches become parser methods with complete
+source-derived results, reader frames and partial counter updates. Preserve
+main-header ownership conflict precedence, every raw next-index value,
+index advancement before packet-length validation, work charges, the successful
+`seen` update and sequential overflow commits. PPT conflict still precedes the
+actual packed-fragment reader. Real segment/PLM/PPT/finalizer joins remain
+executed producers, not prepared results or normalized input assumptions.
+
+The source includes the accepted cache correction and preserves its successful
+payload identity and native regressions. Packet helper/model/binding blobs
+remain identical to the earlier qualified packet experiment; only shared tile
+and test surfaces incorporate the separately integrated cache changes.
+The exact before/after identities below bind this current combined base, not
+the obsolete pre-cache tile/test blobs.
+
+This proposal adds only the exact packet record, preserving all ten previous
+record objects. It adds no controller, pin, cap, fixture, tolerance or other
+source permission. Normal adoption establishes eligibility only. Refresh #197
+from accepted record main, then require fresh full qualification, a fresh ready
+policy check, separate source review, normal guarded merge and actual-main
+acceptance. This is not completion of #133, outer parser/public composition,
+normative correspondence, official conformance or publication.
 
 ### Exact duplicate component-style cache correction
 
@@ -1264,6 +1309,45 @@ not independent human/normative approval; no publication is authorized.
         "src/codestream/tests.rs": {
           "before": "76292936a11333af0afdd8570dfd3aeffda3f16a",
           "after": "d8b26c92471551d87c57b555fca21644bd02b0cd"
+        }
+      }
+    },
+    {
+      "id": "proposal-197-tile-packet-admission",
+      "profile": "tile-packet-admission",
+      "source_pr": 197,
+      "source_head": "dad4c56a09013e623fea1cbf95c4e6d0b675326e",
+      "ci_run": 41135383976,
+      "verus_run": 41135383979,
+      "rationale": "Complete actual PLT/PPT admission results and reader/counter frames with unchanged error and partial-commit order, real producer joins and strict regressions on the accepted cache base. Eligibility only, not source integration, outer parser composition or normative certification.",
+      "paths": {
+        "src/codestream/tiles.rs": {
+          "before": "52cb94617dc7a25420ec332b6646b62a54f2f258",
+          "after": "8507fac5449134d6de3d312abf25a47cfcc08cc5"
+        },
+        "src/codestream/packet_headers.rs": {
+          "before": "e4e05266f7f0a9146c9df0e735ffb388560bfb4a",
+          "after": "0d1bcedbeb1e133e5e8d3e1db07846894f063204"
+        },
+        "src/codestream/tests.rs": {
+          "before": "d8b26c92471551d87c57b555fca21644bd02b0cd",
+          "after": "04674a4d307721f62f297c1cf50f3d8aae6c948d"
+        },
+        "specs/packet_input.rs": {
+          "before": "e2d981fc32cecdb456b9c9fe7f1dc6ff7f0e9947",
+          "after": "b6059efda674f7744b65fe8515ffe3e1a6c614a2"
+        },
+        "validation/framework.py": {
+          "before": "6f888c3afec04104ffea27d7c307a3a43afb497c",
+          "after": "130956f39e2bc0df1f697552e884964ffe3f4c5f"
+        },
+        "validation/normative-coverage.json": {
+          "before": "ea8103d583f0b2dba9a64ac62bdfdc347f234c87",
+          "after": "efe35f0c9fcd27bfef93f30ada3eed642eb29d44"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "e260337c210b0c1b7ab0d959b9fd6eebb630cea0",
+          "after": "b8bef762be5ce1630b79964d58986ce43833116a"
         }
       }
     }

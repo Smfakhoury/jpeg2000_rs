@@ -15601,6 +15601,131 @@ fn retains_tile_default_quantization_across_tile_parts() {
     );
 }
 
+fn index_cache_layout_fixture() -> (Vec<u8>, [Vec<u8>; 2]) {
+    let main = [
+        baseline_headers()[0].clone(),
+        segment(QCD, &[0x40, 0x40]),
+        segment(COC, &[2, 0, 0, 3, 1, 0, 1]),
+        segment(QCC, &[2, 0x40, 0x50]),
+        segment(DFS, &[0, 1, 1, 0x40]),
+        segment(NLT, &[0, 0, 7, 0]),
+    ];
+    let headers = [
+        [
+            vec![
+                segment(COC, &[1, 0, 0, 1, 2, 0, 1]),
+                segment(QCC, &[1, 0x40, 0x58]),
+                segment(DFS, &[0, 1, 1, 0xc0]),
+                segment(NLT, &[0, 0, 8, 0]),
+            ],
+            vec![
+                segment(COD, &[0, 0, 0, 1, 0, 0, 3, 2, 0, 1]),
+                segment(QCD, &[0x40, 0x48]),
+            ],
+            vec![],
+            vec![segment(COC, &[2, 0, 0, 0, 1, 0, 1])],
+        ],
+        [
+            vec![
+                segment(COD, &[0, 0, 0, 1, 0, 0, 1, 3, 0, 1]),
+                segment(QCD, &[0x40, 0x60]),
+                segment(COC, &[2, 0, 0, 2, 0, 0, 1]),
+            ],
+            vec![
+                segment(COC, &[1, 0, 0, 0, 2, 0, 1]),
+                segment(QCC, &[1, 0x40, 0x50]),
+                segment(NLT, &[0, 0, 9, 0]),
+            ],
+            vec![],
+            vec![],
+        ],
+    ];
+    let header_length = 2 + siz_with_components(3).len() + main.iter().map(Vec::len).sum::<usize>();
+    let seed = codestream_with_headers(3, &main, &[], &[]);
+    let mut interleaved = seed[..header_length].to_vec();
+    // Split the existing SIZ into two 32x32 tiles.
+    interleaved[24..28].copy_from_slice(&32_u32.to_be_bytes());
+    let mut separate = [
+        seed[..header_length].to_vec(),
+        seed[..header_length].to_vec(),
+    ];
+    for (part, (first, second)) in headers[0].iter().zip(&headers[1]).enumerate() {
+        for (tile, header) in [first, second].into_iter().enumerate() {
+            let single = codestream_with_headers(3, &main, header, &[0]);
+            let mut chunk = single[header_length..single.len() - 2].to_vec();
+            chunk[10] = u8::try_from(part).unwrap();
+            chunk[11] = 4;
+            separate[tile].extend_from_slice(&chunk);
+            chunk[4..6].copy_from_slice(&u16::try_from(tile).unwrap().to_be_bytes());
+            interleaved.extend_from_slice(&chunk);
+        }
+    }
+    interleaved.extend_from_slice(&EOC.to_be_bytes());
+    for bytes in &mut separate {
+        bytes.extend_from_slice(&EOC.to_be_bytes());
+    }
+    (interleaved, separate)
+}
+
+#[test]
+fn index_cache_preserves_interleaved_latest_part_headers_and_unused_fields() {
+    let (bytes, separate) = index_cache_layout_fixture();
+    let limits = ResourceLimits::default();
+    let layout = parse_layout(&bytes, &limits).unwrap();
+    let references: [Vec<ComponentCodingStyles>; 2] = core::array::from_fn(|tile| {
+        parse_layout(&separate[tile], &limits)
+            .unwrap()
+            .tile_parts
+            .iter()
+            .map(|part| part.component_coding_styles)
+            .collect()
+    });
+    assert_eq!(layout.tile_parts.len(), 8);
+    assert_eq!(layout.info.consumed_bytes, bytes.len() as u64);
+    for (index, actual) in layout.tile_parts.iter().enumerate() {
+        let tile = index % 2;
+        let part = index / 2;
+        assert_eq!(usize::from(actual.tile_index), tile);
+        assert_eq!(usize::from(actual.tile_part_index), part);
+        assert_eq!(actual.component_coding_styles, references[tile][part]);
+    }
+    for (tile, input) in separate.iter().enumerate() {
+        let reference = parse_layout(input, &limits).unwrap();
+        for (part, expected) in reference.tile_parts.iter().enumerate() {
+            let mut expected = expected.clone();
+            expected.tile_index = u16::try_from(tile).unwrap();
+            assert_eq!(layout.tile_parts[2 * part + tile], expected);
+        }
+    }
+    assert_ne!(references[0][0], references[0][1]);
+    assert_eq!(references[0][1], references[0][2]);
+    assert_eq!(references[1][1], references[1][3]);
+}
+
+#[test]
+fn index_cache_preserves_late_tile_error_and_tile_part_limit_priority() {
+    let (mut bytes, _) = index_cache_layout_fixture();
+    let last = bytes
+        .windows(2)
+        .rposition(|marker| marker == SOT.to_be_bytes())
+        .unwrap();
+    bytes[last + 4..last + 6].copy_from_slice(&2_u16.to_be_bytes());
+    assert_eq!(
+        parse_layout(&bytes, &ResourceLimits::default()).unwrap_err(),
+        DecodeError::MalformedInput {
+            offset: last as u64,
+            kind: MalformedKind::InvalidTilePart,
+        }
+    );
+    let limits = ResourceLimits::default()
+        .with_maximum_tile_parts(7)
+        .unwrap();
+    assert_eq!(
+        parse_layout(&bytes, &limits).unwrap_err(),
+        DecodeError::limit(Resource::TileParts, 7, 8)
+    );
+}
+
 #[test]
 fn validates_component_override_indexes_duplicates_and_lengths() {
     let cod = segment(COD, &[0, 0, 0, 1, 0, 0, 2, 2, 0, 1]);
