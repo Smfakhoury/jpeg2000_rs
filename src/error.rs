@@ -1,5 +1,7 @@
 #[cfg(not(verus_keep_ghost))]
 use core::fmt;
+#[cfg(verus_keep_ghost)]
+use vstd::prelude::verus_spec;
 
 #[derive(Clone, Copy)]
 #[cfg_attr(not(verus_keep_ghost), derive(Debug, Eq, PartialEq))]
@@ -172,6 +174,11 @@ pub enum DecodeError {
 }
 
 impl DecodeError {
+    // The pinned attribute macro needs impl context for this associated const fn.
+    #[cfg_attr(verus_keep_ghost, allow(unused, verus_impl_method_marker))]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures result == (Self::MalformedInput { offset, kind }),
+    ))]
     pub(crate) const fn malformed(offset: u64, kind: MalformedKind) -> Self {
         Self::MalformedInput { offset, kind }
     }

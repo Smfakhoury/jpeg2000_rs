@@ -387,6 +387,12 @@ verus! {
     pub closed spec fn packed_packet_headers_present(headers: &PackedPacketHeaders) -> bool {
         !matches!(headers.source, PackedPacketHeaderSource::None)
     }
+
+    closed spec fn packed_packet_headers_outcome(result: Result<PackedPacketHeaders, DecodeError>)
+        -> Result<crate::specs::Part1PackedHeaders, DecodeError>
+    {
+        match result { Ok(headers) => Ok(packed_packet_headers_view(&headers)), Err(error) => Err(error) }
+    }
 }
 
 #[cfg(verus_keep_ghost)]
@@ -407,6 +413,12 @@ verus! {
 
     closed spec fn packet_length_groups_view(groups: Seq<PacketLengths>) -> Seq<crate::specs::Part1PacketLengths> {
         groups.map(|_i: int, group: PacketLengths| packet_lengths_view(&group))
+    }
+
+    closed spec fn packet_lengths_outcome(result: Result<PacketLengths, DecodeError>)
+        -> Result<crate::specs::Part1PacketLengths, DecodeError>
+    {
+        match result { Ok(lengths) => Ok(packet_lengths_view(&lengths)), Err(error) => Err(error) }
     }
 
     pub closed spec fn packet_length_iter_view(iter: &PacketLengthIter) -> crate::specs::Part1PacketLengthIter {

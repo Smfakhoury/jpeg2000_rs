@@ -151,6 +151,41 @@ numerical, resource and evidence gates remain unchanged.
 Run the controller regressions with
 `python3 -m unittest validation.tests.test_model_review_hold -v`.
 
+## Actual packet metadata finalization
+
+The actual packet-length sum consumes raw source variants and the genuine
+variable-length decoder. Absent lengths sum to zero, raw PLT rejects at
+offset zero, PLM decode errors retain their original source positions, and
+checked total overflow uses offset zero. The loop connects each genuine
+decode and addition to the decreasing source-derived recursive sum.
+
+The actual packet-length finisher validates a selected PLT source range before
+constructing its borrowed source and raw count/encoded-byte fields. Otherwise
+it retains arbitrary main metadata. Absent selected lengths bypass logical-size
+checks; present lengths derive the declared sum before checked data-plus-packed
+addition and comparison, preserving all native error precedence and offsets.
+The packed-header finisher returns every arbitrary main field when PPT fragments
+are zero, without validating unused ranges. Nonzero fragments derive the exact
+borrowed input range, PPT marker, logical start, length and fragment count.
+
+These are complete local result contracts on the original raw inputs, not
+prepared results or normalized metadata. Their shared parser borrow leaves the
+input, limits, position and accounting frame unchanged. Native differential tests
+cover 589,824 sum contexts, 72,000 length-finisher contexts and 1,350 packed-header
+contexts, including malformed states, precedence and borrowed pointer identity.
+A real PLM/PPT producer-to-finisher regression requires no supplied result bank.
+The strict inventory mutation test binds all three actual contracts, including
+every original argument and complete result projection.
+
+The original executable declarations and bodies are unchanged. A ghost-only
+contract on the existing `DecodeError::malformed` constructor exposes its exact
+offset and kind instead of rewriting the native error paths.
+
+This source-derived development does not establish model-to-standard review,
+official conformance or document-use rights. Actual PLT production,
+`read_tile_part`, layout/public decoder and F2/F4/F8 composition remain separate;
+the executable caller reference is not a proof of those outer joins.
+
 ## Actual packet-length admission and PLM group production
 
 Actual packet-length admission binds its full parser state and result to the
@@ -176,7 +211,7 @@ wide-arithmetic references cover 786,432 short-varint contexts, 12,000
 charge/overflow/limit contexts, 156,672 PLM index/truncation/frame contexts,
 262,144 raw length words and 1,080 PLM partial-commit contexts. A real segment
 reader joins three borrowed groups, including an empty group. These tests
-are not official conformance evidence. PLT/final metadata and outer
+are not official conformance evidence. PLT production and outer
 parser/F2/F4/F8 joins remain separate.
 
 ## Actual packed-header fragment and PPM-frame byte production
