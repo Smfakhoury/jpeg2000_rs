@@ -13413,6 +13413,113 @@ pub struct Part1ParsedCodingStyle {
     pub precinct_exponents: Seq<(u8, u8)>,
 }
 
+#[verifier::opaque]
+pub open spec fn part1_dfs_lookup(rows: Seq<(u8, Seq<crate::codestream::DecompositionDirection>)>, index: u8, position: nat)
+    -> Option<(u8, Seq<crate::codestream::DecompositionDirection>)>
+    decreases rows.len() - position,
+{
+    if position >= rows.len() { None }
+    else if rows[position as int].0 == index { Some(rows[position as int]) }
+    else { part1_dfs_lookup(rows, index, position + 1) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_ads_lookup(
+    rows: Seq<(u8, Seq<u8>, Seq<crate::codestream::DecompositionDirection>)>, index: u8, position: nat,
+) -> Option<(u8, Seq<u8>, Seq<crate::codestream::DecompositionDirection>)>
+    decreases rows.len() - position,
+{
+    if position >= rows.len() { None }
+    else if rows[position as int].0 == index { Some(rows[position as int]) }
+    else { part1_ads_lookup(rows, index, position + 1) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_ads_depths_valid(depths: Seq<u8>, position: nat) -> bool
+    decreases depths.len() - position,
+{
+    position >= depths.len() || (1 <= depths[position as int] <= 3 && part1_ads_depths_valid(depths, position + 1))
+}
+
+#[verifier::opaque]
+pub open spec fn part1_decomposition_directions_from(
+    style: Part1ParsedCodingStyle, directions: Seq<crate::codestream::DecompositionDirection>, stage: nat,
+) -> Result<Part1ParsedCodingStyle, crate::DecodeError>
+    decreases style.decomposition_levels as nat - stage,
+{
+    if stage >= style.decomposition_levels { Ok(style) }
+    else if directions.len() == 0 || stage >= style.decomposition_directions.len() {
+        Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidCodingStyle))
+    } else {
+        let index = if stage < directions.len() { stage } else { (directions.len() - 1) as nat };
+        part1_decomposition_directions_from(Part1ParsedCodingStyle {
+            decomposition_directions: style.decomposition_directions.update(stage as int, directions[index as int]), ..style
+        }, directions, stage + 1)
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_resolve_decomposition_style(style: Part1ParsedCodingStyle, extensions: Part2OwnedExtensions)
+    -> Result<Part1ParsedCodingStyle, crate::DecodeError>
+{
+    match style.decomposition_structure {
+        None => Ok(style),
+        Some(index) => match part1_dfs_lookup(extensions.decompositions, index, 0) {
+            Some(structure) => {
+                if structure.1.len() == 0 {
+                    Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidCodingStyle))
+                } else { part1_decomposition_directions_from(style, structure.1, 0) }
+            },
+            None => match part1_ads_lookup(extensions.arbitrary, index, 0) {
+                None => Err(part1_codestream_malformed(0, crate::MalformedKind::MissingRequiredStructure)),
+                Some(decomposition) => {
+                    if part1_ads_depths_valid(decomposition.1, 0) { Ok(style) }
+                    else { Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidCodingStyle)) }
+                },
+            },
+        },
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_set_component_style(
+    owner: (u16, Seq<Part1ParsedCodingStyle>), component: u16, style: Part1ParsedCodingStyle,
+) -> (Result<(), crate::DecodeError>, (u16, Seq<Part1ParsedCodingStyle>)) {
+    if component >= owner.0 || component >= owner.1.len() {
+        (Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidCodingStyle)), owner)
+    } else { (Ok(()), (owner.0, owner.1.update(component as int, style))) }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_resolve_decompositions_from(
+    owner: (u16, Seq<Part1ParsedCodingStyle>), extensions: Part2OwnedExtensions, component: nat,
+) -> (Result<(), crate::DecodeError>, (u16, Seq<Part1ParsedCodingStyle>))
+    decreases owner.0 as nat - component,
+{
+    if component >= owner.0 { (Ok(()), owner) }
+    else if component >= owner.1.len() {
+        (Err(part1_codestream_malformed(0, crate::MalformedKind::InvalidCodingStyle)), owner)
+    } else {
+        let style = owner.1[component as int];
+        match part1_resolve_decomposition_style(style, extensions) {
+            Err(error) => (Err(error), owner),
+            Ok(resolved) => {
+                let updated = if style.decomposition_structure.is_some() {
+                    (owner.0, owner.1.update(component as int, resolved))
+                } else { owner };
+                part1_resolve_decompositions_from(updated, extensions, component + 1)
+            },
+        }
+    }
+}
+
+#[verifier::opaque]
+pub open spec fn part1_resolve_decompositions(owner: (u16, Seq<Part1ParsedCodingStyle>), extensions: Part2OwnedExtensions)
+    -> (Result<(), crate::DecodeError>, (u16, Seq<Part1ParsedCodingStyle>))
+{
+    part1_resolve_decompositions_from(owner, extensions, 0)
+}
+
 pub struct Part1CodHeader {
     pub flags: u8, pub progression_order: crate::codestream::ProgressionOrder,
     pub layers: u16, pub multiple_component_transform: bool, pub decomposition_levels: u8,

@@ -2,93 +2,156 @@
 
 use super::reader::read_u16;
 use super::{
-    ArbitraryDecomposition, ComponentCodingStyles, DecodeError, DecompositionDirection,
-    DecompositionStructure, MalformedKind, Parser, Part2Extensions, Segment,
+    ArbitraryDecomposition, CodingStyle, ComponentCodingStyles, DecodeError,
+    DecompositionDirection, DecompositionStructure, MalformedKind, Parser, Part2Extensions,
+    Segment,
 };
 #[cfg(verus_keep_ghost)]
 use super::{
-    ads_payload_outcome, dfs_payload_outcome, owned_arbitrary_decomposition_view,
-    owned_decomposition_view, owned_extensions_view, parser_view, segment_view,
+    ads_payload_outcome, component_style_owner_view, dfs_payload_outcome,
+    owned_arbitrary_decomposition_view, owned_decomposition_view, owned_extensions_view,
+    parsed_coding_style_outcome, parsed_coding_style_view, parser_view, segment_view,
     two_bit_values_outcome,
 };
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures parsed_coding_style_outcome(result) == crate::specs::part1_resolve_decomposition_style(
+        parsed_coding_style_view(style), owned_extensions_view(extensions)),
+))]
+pub(super) fn resolve_decomposition_style(
+    style: CodingStyle,
+    extensions: &Part2Extensions,
+) -> Result<CodingStyle, DecodeError> {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! {
+        let ghost initial = parsed_coding_style_view(style);
+        let ghost goal = crate::specs::part1_resolve_decomposition_style(initial, owned_extensions_view(extensions));
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_resolve_decomposition_style); }
+    let Some(index) = style.decomposition_structure else {
+        return Ok(style);
+    };
+    let Some(structure) = extensions.decomposition_structure(index) else {
+        let decomposition = match extensions.arbitrary_decomposition(index) {
+            Some(value) => value,
+            None => {
+                return Err(DecodeError::malformed(
+                    0,
+                    MalformedKind::MissingRequiredStructure,
+                ));
+            }
+        };
+        let mut position = 0_usize;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant position <= decomposition.sublevel_depths.len(),
+                initial == parsed_coding_style_view(style),
+                goal == crate::specs::part1_resolve_decomposition_style(initial, owned_extensions_view(extensions)),
+                goal == if crate::specs::part1_ads_depths_valid(decomposition.sublevel_depths@, position as nat) {
+                    Ok(initial)
+                } else { Err(crate::specs::part1_codestream_malformed(0, MalformedKind::InvalidCodingStyle)) },
+            decreases decomposition.sublevel_depths.len() - position,
+        ))]
+        while position < decomposition.sublevel_depths.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_ads_depths_valid, 1); }
+            let depth = decomposition.sublevel_depths[position];
+            if depth == 0 || depth > 3 {
+                return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+            }
+            position += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_ads_depths_valid, 1); }
+        return Ok(style);
+    };
+    if structure.directions.is_empty() {
+        return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+    }
+    let mut resolved = style;
+    let mut stage = 0_u8;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant stage <= style.decomposition_levels,
+            initial == parsed_coding_style_view(style),
+            structure.directions.len() > 0,
+            goal == crate::specs::part1_resolve_decomposition_style(initial, owned_extensions_view(extensions)),
+            goal == crate::specs::part1_decomposition_directions_from(
+                parsed_coding_style_view(resolved), structure.directions@, stage as nat),
+            resolved.decomposition_levels == style.decomposition_levels,
+        decreases style.decomposition_levels - stage,
+    ))]
+    while stage < style.decomposition_levels {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_decomposition_directions_from, 1); }
+        let requested = usize::from(stage);
+        let direction_index = requested.min(structure.directions.len() - 1);
+        let direction = structure.directions[direction_index];
+        if requested >= resolved.decomposition_directions.len() {
+            return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
+        }
+        resolved.decomposition_directions[requested] = direction;
+        stage += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_decomposition_directions_from, 1); }
+    Ok(resolved)
+}
+
 impl<'a> Parser<'a> {
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, component_style_owner_view(final(styles))) == crate::specs::part1_resolve_decompositions(
+            component_style_owner_view(old(styles)), owned_extensions_view(extensions)),
+    ))]
     pub(super) fn resolve_decomposition_structures(
         &self,
         styles: &mut ComponentCodingStyles,
         extensions: &Part2Extensions,
     ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost initial = component_style_owner_view(styles);
+            let ghost goal = crate::specs::part1_resolve_decompositions(initial, owned_extensions_view(extensions));
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_resolve_decompositions);
+            reveal(crate::specs::part1_resolve_decomposition_style);
+            reveal(crate::specs::part1_set_component_style);
+        }
         let mut component = 0_u16;
         let components = styles.components;
         #[cfg_attr(
             verus_keep_ghost,
             verus_spec(
                 invariant component <= components,
+                    components == initial.0, styles.components == components,
+                    initial == component_style_owner_view(old(styles)),
+                    goal == crate::specs::part1_resolve_decompositions(initial, owned_extensions_view(extensions)),
+                    goal == crate::specs::part1_resolve_decompositions_from(
+                        component_style_owner_view(styles), owned_extensions_view(extensions), component as nat),
                 decreases components - component,
             )
         )]
         while component < components {
-            let mut style = styles.style(component)?;
-            if let Some(index) = style.decomposition_structure {
-                let Some(structure) = extensions.decomposition_structure(index) else {
-                    let decomposition =
-                        extensions.arbitrary_decomposition(index).ok_or_else(|| {
-                            DecodeError::malformed(0, MalformedKind::MissingRequiredStructure)
-                        })?;
-                    if decomposition
-                        .sublevel_depths
-                        .iter()
-                        .any(|depth| *depth == 0 || *depth > 3)
-                    {
-                        return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-                    }
-                    styles.set(component, style)?;
-                    component = component
-                        .checked_add(1)
-                        .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-                    continue;
-                };
-                if structure.directions.is_empty() {
-                    return Err(DecodeError::malformed(0, MalformedKind::InvalidCodingStyle));
-                }
-                let mut stage = 0_u8;
-                let levels = style.decomposition_levels;
-                #[cfg_attr(
-                    verus_keep_ghost,
-                    verus_spec(
-                        invariant stage <= levels,
-                        decreases levels - stage,
-                    )
-                )]
-                while stage < levels {
-                    let available = structure.directions.len();
-                    let requested = usize::from(stage);
-                    let last = available.checked_sub(1).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)
-                    })?;
-                    let direction_index = requested.min(last);
-                    let direction =
-                        *structure.directions.get(direction_index).ok_or_else(|| {
-                            DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)
-                        })?;
-                    *style
-                        .decomposition_directions
-                        .get_mut(requested)
-                        .ok_or_else(|| {
-                            DecodeError::malformed(0, MalformedKind::InvalidCodingStyle)
-                        })? = direction;
-                    stage = stage.checked_add(1).ok_or_else(|| {
-                        DecodeError::malformed(0, MalformedKind::ArithmeticOverflow)
-                    })?;
-                }
-                styles.set(component, style)?;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                reveal_with_fuel(crate::specs::part1_resolve_decompositions_from, 1);
+                reveal(crate::specs::part1_resolve_decomposition_style);
+                reveal(crate::specs::part1_set_component_style);
             }
-            component = component
-                .checked_add(1)
-                .ok_or_else(|| DecodeError::malformed(0, MalformedKind::ArithmeticOverflow))?;
+            let style = styles.style(component)?;
+            if style.decomposition_structure.is_some() {
+                let resolved = resolve_decomposition_style(style, extensions)?;
+                styles.set(component, resolved)?;
+            }
+            component += 1;
         }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_resolve_decompositions_from, 1); }
         Ok(())
     }
 

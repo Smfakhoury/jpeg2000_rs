@@ -7,11 +7,11 @@ use super::{
 };
 #[cfg(verus_keep_ghost)]
 use super::{
-    component_depth_views, nonlinear_transform_option_view, owned_arbitrary_decomposition_view,
-    owned_decomposition_view, owned_extensions_view, owned_kernel_view, owned_nonlinear_view,
-    part2_component_depths, part2_execution_registry, part2_kernel_registry,
-    raw_kernel_coefficient_option, raw_kernel_coefficient_view, raw_kernel_coefficients_view,
-    raw_kernel_step_view, raw_kernel_steps_view, raw_kernel_view,
+    ads_option_view, component_depth_views, dfs_option_view, nonlinear_transform_option_view,
+    owned_arbitrary_decomposition_view, owned_decomposition_view, owned_extensions_view,
+    owned_kernel_view, owned_nonlinear_view, part2_component_depths, part2_execution_registry,
+    part2_kernel_registry, raw_kernel_coefficient_option, raw_kernel_coefficient_view,
+    raw_kernel_coefficients_view, raw_kernel_step_view, raw_kernel_steps_view, raw_kernel_view,
 };
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
@@ -360,16 +360,21 @@ impl Part2Extensions {
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-        ensures result.is_some() == part2_execution_registry(self).0.contains(index),
+        ensures dfs_option_view(result) == crate::specs::part1_dfs_lookup(owned_extensions_view(self).decompositions, index, 0),
+            result.is_some() == part2_execution_registry(self).0.contains(index),
     ))]
     pub(crate) fn decomposition_structure(&self, index: u8) -> Option<&DecompositionStructure> {
         let mut position = 0_usize;
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant position <= self.decomposition_structures.len(),
+                crate::specs::part1_dfs_lookup(owned_extensions_view(self).decompositions, index, 0)
+                    == crate::specs::part1_dfs_lookup(owned_extensions_view(self).decompositions, index, position as nat),
                 forall|prior: int| 0 <= prior < position ==> self.decomposition_structures@[prior].index != index,
             decreases self.decomposition_structures.len() - position,
         ))]
         while position < self.decomposition_structures.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_dfs_lookup, 1); }
             let structure = &self.decomposition_structures[position];
             if structure.index == index {
                 #[cfg(verus_keep_ghost)]
@@ -383,6 +388,7 @@ impl Part2Extensions {
         }
         #[cfg(verus_keep_ghost)]
         proof! {
+            reveal_with_fuel(crate::specs::part1_dfs_lookup, 1);
             if part2_execution_registry(self).0.contains(index) {
                 let prior = choose|prior: int| 0 <= prior < part2_execution_registry(self).0.len()
                     && part2_execution_registry(self).0[prior] == index;
@@ -422,16 +428,21 @@ impl Part2Extensions {
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
-        ensures result.is_some() == part2_execution_registry(self).1.contains(index),
+        ensures ads_option_view(result) == crate::specs::part1_ads_lookup(owned_extensions_view(self).arbitrary, index, 0),
+            result.is_some() == part2_execution_registry(self).1.contains(index),
     ))]
     pub(crate) fn arbitrary_decomposition(&self, index: u8) -> Option<&ArbitraryDecomposition> {
         let mut position = 0_usize;
         #[cfg_attr(verus_keep_ghost, verus_spec(
             invariant position <= self.arbitrary_decompositions.len(),
+                crate::specs::part1_ads_lookup(owned_extensions_view(self).arbitrary, index, 0)
+                    == crate::specs::part1_ads_lookup(owned_extensions_view(self).arbitrary, index, position as nat),
                 forall|prior: int| 0 <= prior < position ==> self.arbitrary_decompositions@[prior].index != index,
             decreases self.arbitrary_decompositions.len() - position,
         ))]
         while position < self.arbitrary_decompositions.len() {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_ads_lookup, 1); }
             let decomposition = &self.arbitrary_decompositions[position];
             if decomposition.index == index {
                 #[cfg(verus_keep_ghost)]
@@ -445,6 +456,7 @@ impl Part2Extensions {
         }
         #[cfg(verus_keep_ghost)]
         proof! {
+            reveal_with_fuel(crate::specs::part1_ads_lookup, 1);
             if part2_execution_registry(self).1.contains(index) {
                 let prior = choose|prior: int| 0 <= prior < part2_execution_registry(self).1.len()
                     && part2_execution_registry(self).1[prior] == index;

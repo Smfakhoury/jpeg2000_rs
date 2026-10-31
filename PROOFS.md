@@ -15,6 +15,52 @@ contracts and models. Exact run counts and source/tool hashes belong in fresh
 CI artifacts, not committed result snapshots. Independent model-to-standard
 review and official conformance testing remain separate.
 
+## Actual DFS/ADS decomposition resolution
+
+The decomposition resolver in `src/codestream/decomposition.rs` has a total
+Result/complete component-owner relation, including partial commits on error.
+Its sole executed per-style helper implements DFS-first lookup, last-entry
+direction repetition and ADS depth-only validation. The eight additive
+`part1_*decomposition*`, DFS/ADS lookup, depth-validation and setter definitions
+in `specs/mod.rs` are source-derived models, not new format admission rules.
+The existing raw DFS/ADS readers and their contracts are unchanged.
+
+The lookup contracts retain registry membership and additionally return the
+complete first matching payload. Their native `Option<&...>` signatures borrow
+the actual immutable owner; tests check pointer identity as well as payloads.
+The setter relation covers the logical count and all 64 physical styles,
+including untouched tails and every non-direction field. A failing style is
+never committed, but successful earlier components remain committed. Missing
+structures and empty DFS directions remain distinct errors. ADS accepts empty
+depths and arbitrary raw levels/splits, rejecting only depths outside 1..=3.
+
+The resolver's shared `&self`/`&Part2Extensions` parameters frame the parser
+input, limits, cursor, work and packet counters, and every extension field;
+these types have no interior mutability. These are language-level immutable
+frames, not tautological `old`/`final` claims on shared references. Focused
+verification uses the documented `--no-lifetime` boundary and is not a new
+Verus lifetime-verification claim. Full-state tests independently check these
+frames and consume real segment-reader/DFS/ADS producer outputs.
+`Parser::parse_layout` directly calls the resolver after its actual COD/COC
+style construction; no prepared resolution result is supplied.
+
+Checked stage/component increments cannot fail: their loop guards imply
+`stage < levels <= u8::MAX` and `component < components <= u16::MAX`.
+The nonempty DFS guard proves the last-index subtraction and bounded lookup
+safe; the physical style-direction check still fails in native order. Raw
+levels above 32 are not normalized, and local mutations before that failure
+remain uncommitted. Tests use an independently expressed, full-field oracle;
+local qualification also executes the accepted original resolver body and
+equivalent checked-counter controls against the same tests.
+
+Focused evidence must explicitly include both lookups, the setter, the
+per-style helper, the actual resolver, and all five new recursive definitions.
+Nonrecursive model wrappers and closed projections have no standalone SMT
+obligations. Existing module obligations are not a new whole-root proof delta.
+The exact fail-closed inventory bindings and native behavior mutants complement
+these proofs; they do not establish whole-layout/file/public API correctness,
+publication readiness, or normative conformance.
+
 ## Packaged source and repository verification
 
 The crate archive includes the Rust model/proof files required by the
