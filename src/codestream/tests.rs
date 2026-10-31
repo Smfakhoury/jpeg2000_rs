@@ -1,3 +1,4 @@
+use super::image_header::component_depths_uniform;
 use super::*;
 use crate::tier1::SubbandOrientation;
 
@@ -111,6 +112,94 @@ fn reference_decomposition_owner(
             let resolved = reference_decomposition_style(style, extensions)?;
             owner.styles[index] = resolved;
         }
+    }
+    Ok(())
+}
+
+fn raw_component_application_size(components: u16, variant: u8) -> ImageSize {
+    let mut size = raw_resolution_size(
+        if variant == 0 { 0 } else { u32::MAX },
+        17,
+        (0, u8::MAX),
+        0x1234,
+        components,
+    );
+    for (index, info) in size.component_info.iter_mut().enumerate() {
+        info.precision = if variant == 1 {
+            (index as u8).wrapping_mul(17)
+        } else {
+            7
+        };
+        info.signed = variant == 2 && index % 2 != 0;
+        info.x_subsampling = (index as u8).wrapping_mul(3);
+        info.y_subsampling = u8::MAX - index as u8;
+        info.x_registration = (index as u16).wrapping_mul(257);
+        info.y_registration = u16::MAX - info.x_registration;
+    }
+    size
+}
+
+fn reference_uniform_component_depths(size: &ImageSize, first: ComponentInfo) -> bool {
+    (1..usize::from(size.components)).all(|index| {
+        size.component_info
+            .get(index)
+            .is_some_and(|info| (info.precision, info.signed) == (first.precision, first.signed))
+    })
+}
+
+fn reference_component_depth_application(
+    size: &mut ImageSize,
+    depths: &[ComponentBitDepth],
+    offset: usize,
+) -> Result<(), DecodeError> {
+    if depths.is_empty() {
+        return Ok(());
+    }
+    for index in 0..usize::from(size.components) {
+        let depth = depths
+            .get(index)
+            .ok_or_else(|| input_error_literal(offset, MalformedKind::MissingRequiredStructure))?;
+        let info = size
+            .component_info
+            .get_mut(index)
+            .ok_or_else(|| input_error_literal(offset, MalformedKind::InvalidImageGeometry))?;
+        *info = ComponentInfo {
+            precision: depth.precision,
+            signed: depth.signed,
+            ..*info
+        };
+    }
+    if size.components == 0 {
+        return Err(input_error_literal(0, MalformedKind::InvalidImageGeometry));
+    }
+    let first = size.component_info[0];
+    let uniform = reference_uniform_component_depths(size, first);
+    size.uniform_bit_depth = uniform.then_some(first.precision);
+    size.uniform_signed = uniform.then_some(first.signed);
+    Ok(())
+}
+
+fn reference_component_registration_application(
+    size: &mut ImageSize,
+    registrations: &[ComponentRegistration],
+    offset: usize,
+) -> Result<(), DecodeError> {
+    if registrations.is_empty() {
+        return Ok(());
+    }
+    for index in 0..usize::from(size.components) {
+        let registration = registrations
+            .get(index)
+            .ok_or_else(|| input_error_literal(offset, MalformedKind::MissingRequiredStructure))?;
+        let info = size
+            .component_info
+            .get_mut(index)
+            .ok_or_else(|| input_error_literal(offset, MalformedKind::InvalidImageGeometry))?;
+        *info = ComponentInfo {
+            x_registration: registration.horizontal,
+            y_registration: registration.vertical,
+            ..*info
+        };
     }
     Ok(())
 }
@@ -275,6 +364,87 @@ fn actual_decomposition_ads_validates_only_raw_depths_not_levels_or_splits() {
     }
 }
 
+fn component_application_reader_state(parser: &Parser<'_>) -> PacketAdmissionState {
+    PacketAdmissionState {
+        position: parser.position,
+        work: parser.work_units,
+        header_bytes: parser.packet_length_bytes,
+        packet_count: parser.packet_lengths,
+    }
+}
+
+fn assert_component_depth_application(
+    parser: &Parser<'_>,
+    size: ImageSize,
+    depths: &[ComponentBitDepth],
+) {
+    let before = component_application_reader_state(parser);
+    let mut expected = size;
+    let expected_result =
+        reference_component_depth_application(&mut expected, depths, parser.position);
+    let mut actual = size;
+    assert_eq!(
+        parser.apply_component_bit_depths(&mut actual, depths),
+        expected_result
+    );
+    assert_eq!(actual, expected);
+    assert_packet_admission_state(parser, before, parser.input, parser.limits);
+}
+
+fn assert_component_registration_application(
+    parser: &Parser<'_>,
+    size: ImageSize,
+    registrations: &[ComponentRegistration],
+) {
+    let before = component_application_reader_state(parser);
+    let mut expected = size;
+    let expected_result =
+        reference_component_registration_application(&mut expected, registrations, parser.position);
+    let mut actual = size;
+    assert_eq!(
+        parser.apply_component_registrations(&mut actual, registrations),
+        expected_result
+    );
+    assert_eq!(actual, expected);
+    assert_packet_admission_state(parser, before, parser.input, parser.limits);
+}
+
+#[test]
+fn actual_component_uniformity_uses_physical_infos_and_every_raw_first_depth() {
+    let mut contexts = 0;
+    for components in [
+        0,
+        1,
+        2,
+        MAX_COMPONENTS as u16 - 1,
+        MAX_COMPONENTS as u16,
+        MAX_COMPONENTS as u16 + 1,
+        u16::MAX,
+    ] {
+        for variant in 0..3 {
+            let size = raw_component_application_size(components, variant);
+            for precision in 0..=u8::MAX {
+                for signed in [false, true] {
+                    let first = ComponentInfo {
+                        precision,
+                        signed,
+                        x_subsampling: 0,
+                        y_subsampling: u8::MAX,
+                        x_registration: u16::MAX,
+                        y_registration: 0,
+                    };
+                    assert_eq!(
+                        component_depths_uniform(&size, first),
+                        reference_uniform_component_depths(&size, first)
+                    );
+                    contexts += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(contexts, 10_752);
+}
+
 #[test]
 fn actual_decomposition_owner_preserves_error_prefixes_all_slots_and_immutable_reader() {
     let input = [0xa5, 0x5a];
@@ -340,6 +510,79 @@ fn actual_decomposition_owner_preserves_error_prefixes_all_slots_and_immutable_r
         }
     }
     assert_eq!(cases, 10_752);
+}
+
+#[test]
+fn actual_component_depth_application_preserves_prefix_errors_flags_tails_and_reader() {
+    let input = [0xa5, 0x5a];
+    let limits = ResourceLimits::HARDENED;
+    let mut parser = new_parser(&input, &limits).unwrap();
+    parser.work_units = u64::MAX;
+    parser.packet_length_bytes = u64::MAX;
+    parser.packet_lengths = u64::MAX;
+    let mut contexts = 0;
+    for components in [
+        0,
+        1,
+        2,
+        MAX_COMPONENTS as u16 - 1,
+        MAX_COMPONENTS as u16,
+        MAX_COMPONENTS as u16 + 1,
+        u16::MAX,
+    ] {
+        for variant in 0..3 {
+            for uniform_bit_depth in [None, Some(0), Some(u8::MAX)] {
+                for uniform_signed in [None, Some(false), Some(true)] {
+                    let mut size = raw_component_application_size(components, variant);
+                    size.uniform_bit_depth = uniform_bit_depth;
+                    size.uniform_signed = uniform_signed;
+                    for length in [
+                        0,
+                        1,
+                        2,
+                        MAX_COMPONENTS - 1,
+                        MAX_COMPONENTS,
+                        MAX_COMPONENTS + 1,
+                    ] {
+                        for pattern in 0..5 {
+                            let depths: Vec<_> = (0..length)
+                                .map(|index| ComponentBitDepth {
+                                    precision: match pattern {
+                                        0 => 0,
+                                        1 => 7,
+                                        2 => u8::MAX,
+                                        _ => (index as u8).wrapping_mul(17),
+                                    },
+                                    signed: pattern == 2 || (pattern == 4 && index % 2 != 0),
+                                })
+                                .collect();
+                            for position in [0, 17, usize::MAX] {
+                                parser.position = position;
+                                assert_component_depth_application(&parser, size, &depths);
+                                contexts += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(contexts, 17_010);
+    let mut words = 0;
+    parser.position = usize::MAX;
+    for precision in 0..=u8::MAX {
+        for signed in [false, true] {
+            for components in [0, 1, 2, MAX_COMPONENTS as u16, MAX_COMPONENTS as u16 + 1] {
+                let size = raw_component_application_size(components, 2);
+                for length in [1, 2, MAX_COMPONENTS] {
+                    let depths = vec![ComponentBitDepth { precision, signed }; length];
+                    assert_component_depth_application(&parser, size, &depths);
+                    words += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(words, 7_680);
 }
 
 #[test]
@@ -421,6 +664,152 @@ fn actual_decomposition_resolution_consumes_real_dfs_ads_reader_producers() {
     assert_eq!(parser.position, input.len());
     assert_packet_admission_state(&parser, before, &input, &limits);
     assert_eq!(extensions, extension_before);
+}
+
+#[test]
+fn actual_component_registration_preserves_native_bounds_order_and_every_raw_fraction() {
+    let input = [0xa5, 0x5a];
+    let limits = ResourceLimits::HARDENED;
+    let mut parser = new_parser(&input, &limits).unwrap();
+    parser.work_units = u64::MAX;
+    parser.packet_length_bytes = u64::MAX;
+    parser.packet_lengths = u64::MAX;
+    let mut contexts = 0;
+    for components in [
+        0,
+        1,
+        2,
+        MAX_COMPONENTS as u16 - 1,
+        MAX_COMPONENTS as u16,
+        MAX_COMPONENTS as u16 + 1,
+        u16::MAX,
+    ] {
+        for variant in 0..3 {
+            for uniform_bit_depth in [None, Some(0), Some(u8::MAX)] {
+                for uniform_signed in [None, Some(false), Some(true)] {
+                    let mut size = raw_component_application_size(components, variant);
+                    size.uniform_bit_depth = uniform_bit_depth;
+                    size.uniform_signed = uniform_signed;
+                    for length in [
+                        0,
+                        1,
+                        2,
+                        MAX_COMPONENTS - 1,
+                        MAX_COMPONENTS,
+                        MAX_COMPONENTS + 1,
+                    ] {
+                        for pattern in 0..3 {
+                            let registrations: Vec<_> = (0..length)
+                                .map(|index| ComponentRegistration {
+                                    horizontal: if pattern == 0 {
+                                        0
+                                    } else {
+                                        (index as u16).wrapping_mul(257)
+                                    },
+                                    vertical: if pattern == 2 { u16::MAX } else { index as u16 },
+                                })
+                                .collect();
+                            for position in [0, 17, usize::MAX] {
+                                parser.position = position;
+                                assert_component_registration_application(
+                                    &parser,
+                                    size,
+                                    &registrations,
+                                );
+                                contexts += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(contexts, 10_206);
+    parser.position = usize::MAX;
+    let size = raw_component_application_size(1, 1);
+    for horizontal in 0..=u16::MAX {
+        assert_component_registration_application(
+            &parser,
+            size,
+            &[ComponentRegistration {
+                horizontal,
+                vertical: u16::MAX - horizontal,
+            }],
+        );
+    }
+}
+
+#[test]
+fn actual_component_application_consumes_real_siz_cbd_crg_reader_producers() {
+    let mut siz = vec![0, 0];
+    for word in [32_u32, 32, 0, 0, 32, 32, 0, 0] {
+        siz.extend(word.to_be_bytes());
+    }
+    siz.extend(2_u16.to_be_bytes());
+    siz.extend([7, 1, 1, 7, 1, 1]);
+    let mut input = segment(SIZ, &siz);
+    input.extend(segment(CBD, &[0, 2, 7, 0x87]));
+    input.extend(segment(CRG, &[0x12, 0x34, 0xab, 0xcd, 0xff, 0xff, 0, 1]));
+    let limits = ResourceLimits::HARDENED;
+    let mut parser = new_parser(&input, &limits).unwrap();
+    let raw = parser.read_segment().unwrap();
+    let (mut size, _) = parser.parse_siz(raw).unwrap();
+    let mut extensions = Part2Extensions::default();
+    let raw = parser.read_segment().unwrap();
+    parser
+        .parse_cbd(raw, size.components, &mut extensions)
+        .unwrap();
+    let raw = parser.read_segment().unwrap();
+    parser
+        .parse_crg(raw, size.components, &mut extensions)
+        .unwrap();
+    let before = component_application_reader_state(&parser);
+    let original = size;
+    parser
+        .apply_component_bit_depths(&mut size, &extensions.component_bit_depths)
+        .unwrap();
+    parser
+        .apply_component_registrations(&mut size, &extensions.component_registrations)
+        .unwrap();
+    assert_eq!(
+        (size.components, size.uniform_bit_depth, size.uniform_signed),
+        (2, None, None)
+    );
+    assert_eq!(
+        (
+            size.component_info[0].precision,
+            size.component_info[0].signed
+        ),
+        (8, false)
+    );
+    assert_eq!(
+        (
+            size.component_info[1].precision,
+            size.component_info[1].signed
+        ),
+        (8, true)
+    );
+    assert_eq!(
+        (
+            size.component_info[0].x_registration,
+            size.component_info[0].y_registration
+        ),
+        (0x1234, 0xabcd)
+    );
+    assert_eq!(
+        (
+            size.component_info[1].x_registration,
+            size.component_info[1].y_registration
+        ),
+        (u16::MAX, 1)
+    );
+    assert_eq!(size.component_info[2..], original.component_info[2..]);
+    assert_eq!(
+        (size.width, size.height, size.tiles_across, size.tiles_down),
+        (32, 32, 1, 1)
+    );
+    assert_eq!(parser.position, input.len());
+    assert_packet_admission_state(&parser, before, &input, &limits);
 }
 
 #[test]
@@ -7088,6 +7477,488 @@ fn assert_ppm_producer_case(parser: &Parser<'_>, bytes: &[u8], fragments: u16) {
     assert_eq!(
         actual,
         reference_ppm_producer(bytes, fragments, parser.limits)
+    );
+}
+
+#[derive(Clone, Copy)]
+struct PltProducerCase<'a> {
+    payload: &'a [u8],
+    main: PacketLengths<'a>,
+    offset: usize,
+    next: u16,
+    seen: bool,
+    count: u64,
+    bytes: u64,
+    total: u64,
+    state: PacketAdmissionState,
+}
+
+fn raw_plt_producer_case(payload: &[u8], next: u16) -> PltProducerCase<'_> {
+    PltProducerCase {
+        payload,
+        main: PacketLengths {
+            source: PacketLengthSource::None,
+            packet_count: u64::MAX,
+            encoded_bytes: u64::MAX,
+        },
+        offset: usize::MAX,
+        next,
+        seen: false,
+        count: 0,
+        bytes: 0,
+        total: 0,
+        state: raw_packet_admission_state(),
+    }
+}
+
+fn reference_plt_producer(
+    limits: &ResourceLimits,
+    case: &mut PltProducerCase<'_>,
+) -> Result<(), DecodeError> {
+    if case.main.source != PacketLengthSource::None {
+        return Err(input_error_literal(
+            case.offset,
+            MalformedKind::InvalidMarkerOrder,
+        ));
+    }
+    let Some(index) = case.payload.first() else {
+        return Err(input_error_literal(
+            case.offset,
+            MalformedKind::InvalidMarkerLength,
+        ));
+    };
+    if u16::from(*index) != case.next {
+        return Err(input_error_literal(
+            case.offset,
+            MalformedKind::InvalidMarkerOrder,
+        ));
+    }
+    case.next += 1;
+    let encoded = &case.payload[1..];
+    let (count, total) = reference_packet_admission(limits, &mut case.state, encoded, case.offset)?;
+    case.seen = true;
+    let packets = u128::from(case.count) + u128::from(count);
+    if packets > u128::from(u64::MAX) {
+        return Err(input_error_literal(
+            case.offset,
+            MalformedKind::ArithmeticOverflow,
+        ));
+    }
+    case.count = packets as u64;
+    let bytes = u128::from(case.bytes) + encoded.len() as u128;
+    if bytes > u128::from(u64::MAX) {
+        return Err(input_error_literal(
+            case.offset,
+            MalformedKind::ArithmeticOverflow,
+        ));
+    }
+    case.bytes = bytes as u64;
+    let payload = u128::from(case.total) + u128::from(total);
+    if payload > u128::from(u64::MAX) {
+        return Err(input_error_literal(
+            case.offset,
+            MalformedKind::ArithmeticOverflow,
+        ));
+    }
+    case.total = payload as u64;
+    Ok(())
+}
+
+fn assert_plt_producer_case(limits: &ResourceLimits, case: PltProducerCase<'_>) {
+    let input = [0xa5, 0x5a];
+    let mut parser = new_parser(&input, limits).unwrap();
+    set_packet_admission_state(&mut parser, case.state);
+    let mut expected = case;
+    let result = reference_plt_producer(limits, &mut expected);
+    let (mut next, mut seen, mut count, mut bytes, mut total) =
+        (case.next, case.seen, case.count, case.bytes, case.total);
+    assert_eq!(
+        parser.parse_plt(
+            Segment {
+                marker: PPM,
+                offset: case.offset,
+                payload: case.payload
+            },
+            case.main,
+            &mut next,
+            &mut seen,
+            &mut count,
+            &mut bytes,
+            &mut total,
+        ),
+        result
+    );
+    assert_eq!(
+        (next, seen, count, bytes, total),
+        (
+            expected.next,
+            expected.seen,
+            expected.count,
+            expected.bytes,
+            expected.total
+        )
+    );
+    assert_packet_admission_state(&parser, expected.state, &input, limits);
+}
+
+fn assert_ppt_producer_case(
+    limits: &ResourceLimits,
+    main: PackedPacketHeaders<'_>,
+    mut case: PackedProducerCase<'_>,
+) {
+    case.expected_marker = PPT;
+    let input = [0xa5, 0x5a];
+    let mut parser = new_parser(&input, limits).unwrap();
+    set_packet_admission_state(
+        &mut parser,
+        PacketAdmissionState {
+            position: case.position,
+            work: case.work,
+            header_bytes: case.header_bytes,
+            packet_count: case.packet_count,
+        },
+    );
+    let (mut next, mut fragments, mut bytes) = (case.next, case.fragments, case.bytes.clone());
+    let mut expected = case.clone();
+    let result = if main.source == PackedPacketHeaderSource::None {
+        reference_packed_producer(limits, &mut expected)
+    } else {
+        Err(input_error_literal(
+            case.offset,
+            MalformedKind::InvalidMarkerOrder,
+        ))
+    };
+    assert_eq!(
+        parser.parse_ppt(
+            Segment {
+                marker: case.marker,
+                offset: case.offset,
+                payload: case.payload
+            },
+            main,
+            &mut next,
+            &mut fragments,
+            &mut bytes,
+        ),
+        result
+    );
+    assert_eq!(
+        (next, fragments, bytes),
+        (expected.next, expected.fragments, expected.bytes)
+    );
+    assert_packet_admission_state(
+        &parser,
+        PacketAdmissionState {
+            position: expected.position,
+            work: expected.work,
+            header_bytes: expected.header_bytes,
+            packet_count: expected.packet_count,
+        },
+        &input,
+        limits,
+    );
+}
+
+#[test]
+fn actual_plt_admission_preserves_raw_main_precedence_all_indexes_and_short_varints() {
+    let limits = ResourceLimits::HARDENED;
+    let mains = [
+        PacketLengths {
+            source: PacketLengthSource::None,
+            packet_count: u64::MAX,
+            encoded_bytes: u64::MAX,
+        },
+        PacketLengths {
+            source: PacketLengthSource::Plm(&[]),
+            packet_count: 0,
+            encoded_bytes: 0,
+        },
+        PacketLengths {
+            source: PacketLengthSource::Plt(&[0]),
+            packet_count: u64::MAX,
+            encoded_bytes: u64::MAX,
+        },
+    ];
+    let mut contexts = 0;
+    for index in 0..=u8::MAX {
+        for encoded in [&[][..], &[1], &[0], &[0x81, 0], &[0x80]] {
+            let mut payload = vec![index];
+            payload.extend(encoded);
+            for next in [0, 1, 254, 255, 256, u16::MAX] {
+                for main in mains {
+                    for seen in [false, true] {
+                        let mut case = raw_plt_producer_case(&payload, next);
+                        case.main = main;
+                        case.seen = seen;
+                        assert_plt_producer_case(&limits, case);
+                        contexts += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(contexts, 46_080);
+    let mut raw_indexes = 0;
+    for next in 0..=u16::MAX {
+        for payload in [&[][..], &[0], &[255], &[next as u8]] {
+            for main in mains {
+                let mut case = raw_plt_producer_case(payload, next);
+                case.main = main;
+                assert_plt_producer_case(&limits, case);
+                raw_indexes += 1;
+            }
+        }
+    }
+    assert_eq!(raw_indexes, 786_432);
+    let mut words = 0;
+    for word in 0..=u16::MAX {
+        for index in [0, 255] {
+            let mut payload = vec![index];
+            payload.extend(word.to_be_bytes());
+            assert_plt_producer_case(&limits, raw_plt_producer_case(&payload, u16::from(index)));
+            words += 1;
+        }
+    }
+    assert_eq!(words, 131_072);
+}
+
+#[test]
+fn actual_plt_admission_preserves_reader_charges_seen_and_sequential_counter_commits() {
+    let mut contexts = 0;
+    for (header_cap, work_cap, packet_cap) in
+        [(0, 8, 8), (8, 0, 8), (8, 8, 0), (8, 8, 8), (32, 32, 32)]
+    {
+        let limits = ResourceLimits::HARDENED
+            .with_maximum_packet_header_bytes(header_cap)
+            .unwrap()
+            .with_maximum_work_units(work_cap)
+            .unwrap()
+            .with_maximum_packets(packet_cap)
+            .unwrap();
+        let mut states = [raw_packet_admission_state(); 5];
+        states[1].work = u64::MAX;
+        states[2].header_bytes = u64::MAX;
+        states[3].packet_count = u64::MAX;
+        states[4].work = u64::MAX - 1;
+        states[4].header_bytes = u64::MAX - 1;
+        states[4].packet_count = u64::MAX - 1;
+        for encoded in [
+            &[][..],
+            &[1],
+            &[0],
+            &[1, 2],
+            &[0x8f, 0xff, 0xff, 0xff, 0x7f],
+        ] {
+            for index in [0, 255] {
+                let mut payload = vec![index];
+                payload.extend(encoded);
+                for state in states {
+                    for count in [0, u64::MAX - 1, u64::MAX] {
+                        for bytes in [0, u64::MAX - 1, u64::MAX] {
+                            for total in [0, u64::MAX - 3, u64::MAX] {
+                                for seen in [false, true] {
+                                    let mut case =
+                                        raw_plt_producer_case(&payload, u16::from(index));
+                                    case.state = state;
+                                    case.count = count;
+                                    case.bytes = bytes;
+                                    case.total = total;
+                                    case.seen = seen;
+                                    assert_plt_producer_case(&limits, case);
+                                    contexts += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(contexts, 13_500);
+}
+
+#[test]
+fn actual_ppt_admission_preserves_main_conflicts_before_all_fragment_errors_and_frames() {
+    let mains = [
+        PackedPacketHeaders {
+            source: PackedPacketHeaderSource::None,
+            length: usize::MAX,
+            fragments: u16::MAX,
+        },
+        PackedPacketHeaders {
+            source: PackedPacketHeaderSource::MarkerSegments {
+                header: &[],
+                marker: 0,
+                logical_start: usize::MAX,
+            },
+            length: 0,
+            fragments: 0,
+        },
+        PackedPacketHeaders {
+            source: PackedPacketHeaderSource::MarkerSegments {
+                header: &[0xff],
+                marker: PPM,
+                logical_start: 1,
+            },
+            length: usize::MAX,
+            fragments: u16::MAX,
+        },
+    ];
+    let limits = ResourceLimits::HARDENED;
+    let mut contexts = 0;
+    for index in 0..=u8::MAX {
+        for length in [0, 1, 3] {
+            let mut payload = vec![index];
+            payload.extend(vec![0xa5; length]);
+            for main in mains {
+                for next in [0, 1, 254, 255, 256, u16::MAX] {
+                    for fragments in [0, u16::MAX] {
+                        for marker in [PPM, PPT] {
+                            let mut case = raw_packed_producer_case(&payload, next, fragments);
+                            case.marker = marker;
+                            assert_ppt_producer_case(&limits, main, case);
+                            contexts += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(contexts, 55_296);
+    let mut raw_indexes = 0;
+    for next in 0..=u16::MAX {
+        for payload in [&[][..], &[0], &[255], &[next as u8]] {
+            for main in mains {
+                let mut case = raw_packed_producer_case(payload, next, 0);
+                case.marker = PPT;
+                assert_ppt_producer_case(&limits, main, case);
+                raw_indexes += 1;
+            }
+        }
+    }
+    assert_eq!(raw_indexes, 786_432);
+    let mut charges = 0;
+    for (header_cap, work_cap) in [(0, 8), (8, 0), (8, 8)] {
+        let limits = ResourceLimits::HARDENED
+            .with_maximum_packet_header_bytes(header_cap)
+            .unwrap()
+            .with_maximum_work_units(work_cap)
+            .unwrap();
+        for main in mains {
+            for work in [0, u64::MAX] {
+                for header_bytes in [0, u64::MAX] {
+                    for fragments in [0, u16::MAX] {
+                        let mut case = raw_packed_producer_case(&[0, 0xaa], 0, fragments);
+                        case.marker = PPT;
+                        case.work = work;
+                        case.header_bytes = header_bytes;
+                        assert_ppt_producer_case(&limits, main, case);
+                        charges += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(charges, 72);
+}
+
+#[test]
+fn actual_tile_packet_admission_joins_segment_reader_producers_and_final_metadata() {
+    let mut input = segment(PLT, &[0, 3]);
+    input.extend(segment(PPT, &[0, 0xab]));
+    let limits = ResourceLimits::HARDENED;
+    let mut parser = new_parser(&input, &limits).unwrap();
+    let raw = parser.read_segment().unwrap();
+    let main = PacketLengths {
+        source: PacketLengthSource::None,
+        packet_count: u64::MAX,
+        encoded_bytes: u64::MAX,
+    };
+    let (mut next_plt, mut seen, mut count, mut encoded, mut total) = (0, false, 0, 0, 0);
+    parser
+        .parse_plt(
+            raw,
+            main,
+            &mut next_plt,
+            &mut seen,
+            &mut count,
+            &mut encoded,
+            &mut total,
+        )
+        .unwrap();
+    let raw = parser.read_segment().unwrap();
+    let (mut next_ppt, mut fragments, mut bytes) = (0, 0, Vec::new());
+    parser
+        .parse_ppt(
+            raw,
+            PackedPacketHeaders {
+                source: PackedPacketHeaderSource::None,
+                length: usize::MAX,
+                fragments: u16::MAX,
+            },
+            &mut next_ppt,
+            &mut fragments,
+            &mut bytes,
+        )
+        .unwrap();
+    let end = parser.position;
+    let packed = parser
+        .finish_packed_packet_headers(
+            0,
+            end,
+            PackedPacketHeaders::none(),
+            fragments,
+            bytes.len(),
+            17,
+        )
+        .unwrap();
+    let lengths = parser
+        .finish_packet_lengths(
+            0,
+            end,
+            main,
+            seen,
+            count,
+            encoded,
+            total,
+            2,
+            packed.length,
+            17,
+        )
+        .unwrap();
+    assert_eq!((next_plt, seen, count, encoded, total), (1, true, 1, 1, 3));
+    assert_eq!((next_ppt, fragments, bytes), (1, 1, vec![0xab]));
+    assert_eq!((lengths.packet_count, lengths.encoded_bytes), (1, 1));
+    assert_eq!(lengths.source, PacketLengthSource::Plt(&input[..end]));
+    assert_eq!((packed.length, packed.fragments), (1, 1));
+    assert_eq!(
+        packed.source,
+        PackedPacketHeaderSource::MarkerSegments {
+            header: &input[..end],
+            marker: PPT,
+            logical_start: 0,
+        }
+    );
+    if let PacketLengthSource::Plt(header) = lengths.source {
+        assert!(core::ptr::eq(header.as_ptr(), input.as_ptr()));
+    } else {
+        panic!("PLT source was not retained");
+    }
+    if let PackedPacketHeaderSource::MarkerSegments { header, .. } = packed.source {
+        assert!(core::ptr::eq(header.as_ptr(), input.as_ptr()));
+    } else {
+        panic!("PPT source was not retained");
+    }
+    assert_packet_admission_state(
+        &parser,
+        PacketAdmissionState {
+            position: input.len(),
+            work: 4,
+            header_bytes: 2,
+            packet_count: 1,
+        },
+        &input,
+        &limits,
     );
 }
 
@@ -15721,6 +16592,131 @@ fn retains_tile_default_quantization_across_tile_parts() {
             .unwrap()
             .exponent,
         11
+    );
+}
+
+fn index_cache_layout_fixture() -> (Vec<u8>, [Vec<u8>; 2]) {
+    let main = [
+        baseline_headers()[0].clone(),
+        segment(QCD, &[0x40, 0x40]),
+        segment(COC, &[2, 0, 0, 3, 1, 0, 1]),
+        segment(QCC, &[2, 0x40, 0x50]),
+        segment(DFS, &[0, 1, 1, 0x40]),
+        segment(NLT, &[0, 0, 7, 0]),
+    ];
+    let headers = [
+        [
+            vec![
+                segment(COC, &[1, 0, 0, 1, 2, 0, 1]),
+                segment(QCC, &[1, 0x40, 0x58]),
+                segment(DFS, &[0, 1, 1, 0xc0]),
+                segment(NLT, &[0, 0, 8, 0]),
+            ],
+            vec![
+                segment(COD, &[0, 0, 0, 1, 0, 0, 3, 2, 0, 1]),
+                segment(QCD, &[0x40, 0x48]),
+            ],
+            vec![],
+            vec![segment(COC, &[2, 0, 0, 0, 1, 0, 1])],
+        ],
+        [
+            vec![
+                segment(COD, &[0, 0, 0, 1, 0, 0, 1, 3, 0, 1]),
+                segment(QCD, &[0x40, 0x60]),
+                segment(COC, &[2, 0, 0, 2, 0, 0, 1]),
+            ],
+            vec![
+                segment(COC, &[1, 0, 0, 0, 2, 0, 1]),
+                segment(QCC, &[1, 0x40, 0x50]),
+                segment(NLT, &[0, 0, 9, 0]),
+            ],
+            vec![],
+            vec![],
+        ],
+    ];
+    let header_length = 2 + siz_with_components(3).len() + main.iter().map(Vec::len).sum::<usize>();
+    let seed = codestream_with_headers(3, &main, &[], &[]);
+    let mut interleaved = seed[..header_length].to_vec();
+    // Split the existing SIZ into two 32x32 tiles.
+    interleaved[24..28].copy_from_slice(&32_u32.to_be_bytes());
+    let mut separate = [
+        seed[..header_length].to_vec(),
+        seed[..header_length].to_vec(),
+    ];
+    for (part, (first, second)) in headers[0].iter().zip(&headers[1]).enumerate() {
+        for (tile, header) in [first, second].into_iter().enumerate() {
+            let single = codestream_with_headers(3, &main, header, &[0]);
+            let mut chunk = single[header_length..single.len() - 2].to_vec();
+            chunk[10] = u8::try_from(part).unwrap();
+            chunk[11] = 4;
+            separate[tile].extend_from_slice(&chunk);
+            chunk[4..6].copy_from_slice(&u16::try_from(tile).unwrap().to_be_bytes());
+            interleaved.extend_from_slice(&chunk);
+        }
+    }
+    interleaved.extend_from_slice(&EOC.to_be_bytes());
+    for bytes in &mut separate {
+        bytes.extend_from_slice(&EOC.to_be_bytes());
+    }
+    (interleaved, separate)
+}
+
+#[test]
+fn index_cache_preserves_interleaved_latest_part_headers_and_unused_fields() {
+    let (bytes, separate) = index_cache_layout_fixture();
+    let limits = ResourceLimits::default();
+    let layout = parse_layout(&bytes, &limits).unwrap();
+    let references: [Vec<ComponentCodingStyles>; 2] = core::array::from_fn(|tile| {
+        parse_layout(&separate[tile], &limits)
+            .unwrap()
+            .tile_parts
+            .iter()
+            .map(|part| part.component_coding_styles)
+            .collect()
+    });
+    assert_eq!(layout.tile_parts.len(), 8);
+    assert_eq!(layout.info.consumed_bytes, bytes.len() as u64);
+    for (index, actual) in layout.tile_parts.iter().enumerate() {
+        let tile = index % 2;
+        let part = index / 2;
+        assert_eq!(usize::from(actual.tile_index), tile);
+        assert_eq!(usize::from(actual.tile_part_index), part);
+        assert_eq!(actual.component_coding_styles, references[tile][part]);
+    }
+    for (tile, input) in separate.iter().enumerate() {
+        let reference = parse_layout(input, &limits).unwrap();
+        for (part, expected) in reference.tile_parts.iter().enumerate() {
+            let mut expected = expected.clone();
+            expected.tile_index = u16::try_from(tile).unwrap();
+            assert_eq!(layout.tile_parts[2 * part + tile], expected);
+        }
+    }
+    assert_ne!(references[0][0], references[0][1]);
+    assert_eq!(references[0][1], references[0][2]);
+    assert_eq!(references[1][1], references[1][3]);
+}
+
+#[test]
+fn index_cache_preserves_late_tile_error_and_tile_part_limit_priority() {
+    let (mut bytes, _) = index_cache_layout_fixture();
+    let last = bytes
+        .windows(2)
+        .rposition(|marker| marker == SOT.to_be_bytes())
+        .unwrap();
+    bytes[last + 4..last + 6].copy_from_slice(&2_u16.to_be_bytes());
+    assert_eq!(
+        parse_layout(&bytes, &ResourceLimits::default()).unwrap_err(),
+        DecodeError::MalformedInput {
+            offset: last as u64,
+            kind: MalformedKind::InvalidTilePart,
+        }
+    );
+    let limits = ResourceLimits::default()
+        .with_maximum_tile_parts(7)
+        .unwrap();
+    assert_eq!(
+        parse_layout(&bytes, &limits).unwrap_err(),
+        DecodeError::limit(Resource::TileParts, 7, 8)
     );
 }
 

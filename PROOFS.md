@@ -204,6 +204,44 @@ numerical, resource and evidence gates remain unchanged.
 Run the controller regressions with
 `python3 -m unittest validation.tests.test_model_review_hold -v`.
 
+## Actual PLT/PPT tile packet admission
+
+The real `read_tile_part` PLT/PPT branches call extracted `Parser::parse_plt`
+and `Parser::parse_ppt` methods in their original order. Their source-derived
+models live in `specs/packet_input.rs`. Raw main source presence, not counts,
+lengths or fragment metadata, rejects conflicts before payload, index, fragment
+or budget errors. Both contracts cover arbitrary internal states without
+validity premises or prepared outcomes.
+
+PLT retains index-only payloads and every raw `u16` next-index value against
+the actual `u8` payload. The index commits before genuine packet-length
+validation and its reader/work charges. Seen commits only after validation
+succeeds; packet-count, encoded-byte and payload-byte additions then commit
+sequentially, retaining earlier fields and untouched tails on overflow.
+The contract binds the result, full reader and all five mutable scalars.
+PPT checks the raw main conflict before calling the existing actual packed
+fragment producer and retains its full result/reader/index/fragment/byte tuple.
+The executable checks, checked additions, slices and error constructors remain
+the original branch operations, with mutable scalar arguments dereferenced.
+Three ghost-only public `verus_spec` closure postconditions expose the original
+overflow error values to `ok_or_else`; their bodies are checked, not trusted.
+The local argument-count lint allowance keeps those raw frames explicit.
+
+Independent native references cover 46,080 PLT source/index contexts, 786,432
+raw-index/empty contexts, 131,072 two-byte varint contexts, 13,500 sequential
+charge/counter contexts, 55,296 PPT conflict/index/fragment contexts, 786,432
+PPT raw-index/empty contexts and 72 budget/overflow contexts. A real segment
+reader joins both producers to both final metadata methods, including full
+reader accounting and borrowed source identity. Strict named-contract mutation
+bindings reject changed initial arguments, final frames, vacuous preconditions,
+partial outcomes and missing actual callers.
+
+These are source-derived local contracts, not model-to-standard review,
+official conformance or document-use authority. The outer
+main/tile/file/parser/F2/F4/F8 proof joins remain separate. The two new models
+are nonrecursive; existing raw validation and packed-fragment models are reused
+without a proof-only decoder or new trust, verifier allowances, caps or pins.
+
 ## Actual packet metadata finalization
 
 The actual packet-length sum consumes raw source variants and the genuine
@@ -237,9 +275,10 @@ repository's `ensures returns` form, avoiding static-receiver inference without
 macro-internal markers or verification allowances.
 
 This source-derived development does not establish model-to-standard review,
-official conformance or document-use rights. Actual PLT production,
-`read_tile_part`, layout/public decoder and F2/F4/F8 composition remain separate;
-the executable caller reference is not a proof of those outer joins.
+official conformance or document-use rights. Actual PLT/PPT admission is
+described above; `read_tile_part`, layout/public decoder and F2/F4/F8 composition
+remain separate; the executable caller reference is not a proof of those outer
+joins.
 
 ## Actual packet-length admission and PLM group production
 
@@ -266,8 +305,8 @@ wide-arithmetic references cover 786,432 short-varint contexts, 12,000
 charge/overflow/limit contexts, 156,672 PLM index/truncation/frame contexts,
 262,144 raw length words and 1,080 PLM partial-commit contexts. A real segment
 reader joins three borrowed groups, including an empty group. These tests
-are not official conformance evidence. PLT production and outer
-parser/F2/F4/F8 joins remain separate.
+are not official conformance evidence. PLT/PPT admission has its own local
+contracts above; outer parser/F2/F4/F8 joins remain separate.
 
 ## Actual packed-header fragment and PPM-frame byte production
 
@@ -907,6 +946,44 @@ limit fixture exercises otherwise non-public cap combinations and array
 frontiers; no production cap or public configuration API changes. Remaining coding/
 quantization/Part2/tile/layout parsing and outer file/F2/F4/final F8 remain
 separate.
+
+## Actual component depth and registration application
+
+The sole main-header depth and registration loops are now
+`Parser::apply_component_bit_depths` and
+`Parser::apply_component_registrations` in `image_header.rs`. Their layout
+call sites remain at the original points, before tile packet loops.
+`component_depths_uniform` executes the former short-circuit physical lookup.
+The existing actual SIZ/CBD/CRG producer contracts and exact malformed error
+constructor are reused, not replaced.
+
+Six additional opaque source-derived models use the existing
+`Part1ParsedImageSize` and `ComponentInfo`. The three `_from` definitions
+recurse with decreasing logical count; their three wrappers are nonrecursive
+and have no separate termination SMT jobs. The actual helpers bind total
+Results and the entire mutable image observation. The immutable `&self`
+receiver frames every parser/reader/limits/work field through Rust ownership.
+No normalized image, coherent optional flags, admitted precision, prepared
+result bank or caller-provided outcome is required.
+
+Missing depth/registration precedes physical slot bounds. Earlier component
+writes survive a later error, while uniform flags change only after all
+depth writes and the original first-component lookup. Empty arrays preserve
+all fields. Zero logical components with nonempty depths still fail at offset
+zero; nonempty registrations still succeed. All unused physical tails,
+unrelated geometry, sampling and raw registration fractions are preserved.
+The removed checked increment cannot overflow: its branch has
+`component < components <= u16::MAX`.
+
+Independent full-state native references exercise raw logical/physical count
+mismatches, zero descriptors, independently absent uniform flags, every first
+precision/sign pair, every registration word, prefix errors and reader frames.
+A real reader/SIZ/CBD/CRG join and strict inventory mutations bind the actual
+methods, model arguments, old/final image projections and real layout callers.
+Focused local proof/native evidence is not a fresh hosted whole-root or
+archive gate. Whole layout/read_tile_part/public parser composition,
+model-to-standard fidelity, official conformance and issue #133 completion
+remain separate.
 
 ## Complete native raw codestream reader
 

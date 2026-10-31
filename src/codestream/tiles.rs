@@ -109,6 +109,12 @@ impl<'a> Parser<'a> {
     }
 
     #[allow(clippy::too_many_arguments)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures match result {
+            Ok((payload, _, _)) => payload.tile_index == tile_part.tile_index,
+            Err(_) => true,
+        },
+    ))]
     pub(super) fn read_tile_part(
         &mut self,
         tile_part: TilePart,
@@ -282,72 +288,19 @@ impl<'a> Parser<'a> {
                         tile_mco_seen = true;
                         mct_parameters.order = self.parse_mco(segment)?;
                     } else if segment.marker == PLT {
-                        if main_packet_lengths.is_present() {
-                            return Err(DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::InvalidMarkerOrder,
-                            ));
-                        }
-                        if segment.payload.is_empty() {
-                            return Err(DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::InvalidMarkerLength,
-                            ));
-                        }
-                        let index = u16::from(segment.payload[0]);
-                        if index != next_plt_index || index > u16::from(u8::MAX) {
-                            return Err(DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::InvalidMarkerOrder,
-                            ));
-                        }
-                        next_plt_index = next_plt_index.checked_add(1).ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::ArithmeticOverflow,
-                            )
-                        })?;
-                        let encoded = segment.payload.get(1..).ok_or_else(|| {
-                            DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::InvalidMarkerLength,
-                            )
-                        })?;
-                        let (count, total) =
-                            self.validate_packet_lengths(encoded, segment.offset)?;
-                        plt_seen = true;
-                        plt_packet_count =
-                            plt_packet_count.checked_add(count).ok_or_else(|| {
-                                DecodeError::malformed(
-                                    self.offset(segment.offset),
-                                    MalformedKind::ArithmeticOverflow,
-                                )
-                            })?;
-                        plt_encoded_bytes = plt_encoded_bytes
-                            .checked_add(encoded.len() as u64)
-                            .ok_or_else(|| {
-                                DecodeError::malformed(
-                                    self.offset(segment.offset),
-                                    MalformedKind::ArithmeticOverflow,
-                                )
-                            })?;
-                        plt_payload_bytes =
-                            plt_payload_bytes.checked_add(total).ok_or_else(|| {
-                                DecodeError::malformed(
-                                    self.offset(segment.offset),
-                                    MalformedKind::ArithmeticOverflow,
-                                )
-                            })?;
-                    } else if segment.marker == PPT {
-                        if main_packed_packet_headers.is_present() {
-                            return Err(DecodeError::malformed(
-                                self.offset(segment.offset),
-                                MalformedKind::InvalidMarkerOrder,
-                            ));
-                        }
-                        self.parse_packed_fragment(
+                        self.parse_plt(
                             segment,
-                            PPT,
+                            main_packet_lengths,
+                            &mut next_plt_index,
+                            &mut plt_seen,
+                            &mut plt_packet_count,
+                            &mut plt_encoded_bytes,
+                            &mut plt_payload_bytes,
+                        )?;
+                    } else if segment.marker == PPT {
+                        self.parse_ppt(
+                            segment,
+                            main_packed_packet_headers,
                             &mut next_ppt_index,
                             &mut ppt_fragments,
                             &mut ppt_bytes,
