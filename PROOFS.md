@@ -901,6 +901,44 @@ frontiers; no production cap or public configuration API changes. Remaining codi
 quantization/Part2/tile/layout parsing and outer file/F2/F4/final F8 remain
 separate.
 
+## Actual component depth and registration application
+
+The sole main-header depth and registration loops are now
+`Parser::apply_component_bit_depths` and
+`Parser::apply_component_registrations` in `image_header.rs`. Their layout
+call sites remain at the original points, before tile packet loops.
+`component_depths_uniform` executes the former short-circuit physical lookup.
+The existing actual SIZ/CBD/CRG producer contracts and exact malformed error
+constructor are reused, not replaced.
+
+Six additional opaque source-derived models use the existing
+`Part1ParsedImageSize` and `ComponentInfo`. The three `_from` definitions
+recurse with decreasing logical count; their three wrappers are nonrecursive
+and have no separate termination SMT jobs. The actual helpers bind total
+Results and the entire mutable image observation. The immutable `&self`
+receiver frames every parser/reader/limits/work field through Rust ownership.
+No normalized image, coherent optional flags, admitted precision, prepared
+result bank or caller-provided outcome is required.
+
+Missing depth/registration precedes physical slot bounds. Earlier component
+writes survive a later error, while uniform flags change only after all
+depth writes and the original first-component lookup. Empty arrays preserve
+all fields. Zero logical components with nonempty depths still fail at offset
+zero; nonempty registrations still succeed. All unused physical tails,
+unrelated geometry, sampling and raw registration fractions are preserved.
+The removed checked increment cannot overflow: its branch has
+`component < components <= u16::MAX`.
+
+Independent full-state native references exercise raw logical/physical count
+mismatches, zero descriptors, independently absent uniform flags, every first
+precision/sign pair, every registration word, prefix errors and reader frames.
+A real reader/SIZ/CBD/CRG join and strict inventory mutations bind the actual
+methods, model arguments, old/final image projections and real layout callers.
+Focused local proof/native evidence is not a fresh hosted whole-root or
+archive gate. Whole layout/read_tile_part/public parser composition,
+model-to-standard fidelity, official conformance and issue #133 completion
+remain separate.
+
 ## Complete native raw codestream reader
 
 Actual parser input admission and every raw reader operation now bind the

@@ -1220,6 +1220,25 @@ _PROFILE_BYTES_CONTRACTS = {
     ),
 }
 
+_COMPONENT_HEADER_APPLICATION_CONTRACTS = {
+    ("src/codestream/image_header.rs", "component_depths_uniform"): (
+        "part1_component_depths_uniform", r"\1", None,
+        _coverage_call("parsed_image_size_view", "size") + r"\s*,\s*first",
+    ),
+    ("src/codestream/image_header.rs", "Parser::apply_component_bit_depths"): (
+        "part1_apply_component_depths", r"\1",
+        _coverage_call("parsed_image_size_view", _coverage_call("final", "size")),
+        _coverage_call("parsed_image_size_view", _coverage_call("old", "size"))
+        + r"\s*,\s*depths\s*@\s*,\s*self\.position",
+    ),
+    ("src/codestream/image_header.rs", "Parser::apply_component_registrations"): (
+        "part1_apply_component_registrations", r"\1",
+        _coverage_call("parsed_image_size_view", _coverage_call("final", "size")),
+        _coverage_call("parsed_image_size_view", _coverage_call("old", "size"))
+        + r"\s*,\s*registrations\s*@\s*,\s*self\.position",
+    ),
+}
+
 _COMPONENT_DEPTH_BYTES_CONTRACTS = {
     ("src/codestream/image_header.rs", "Parser::parse_cbd"): (
         "part1_parse_cbd", r"\1",
@@ -2615,6 +2634,7 @@ def validate_normative_coverage(
                 or _COMPONENT_MARKER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECOMPOSITION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_DEPTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _COMPONENT_HEADER_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROFILE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_LENGTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
