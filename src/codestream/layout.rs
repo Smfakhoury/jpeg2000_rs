@@ -269,42 +269,8 @@ impl<'a> Parser<'a> {
         if !pending_mct.is_empty() || !pending_mcc.is_empty() {
             return Err(parser.malformed_here(MalformedKind::MissingRequiredStructure));
         }
-        if !part2_extensions.component_bit_depths.is_empty() {
-            let mut component = 0_u16;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant component <= image_size.components,
-                    decreases image_size.components - component,
-                )
-            )]
-            while component < image_size.components {
-                let depth = *part2_extensions
-                    .component_bit_depths
-                    .get(usize::from(component))
-                    .ok_or_else(|| {
-                        parser.malformed_here(MalformedKind::MissingRequiredStructure)
-                    })?;
-                let info = image_size
-                    .component_info
-                    .get_mut(usize::from(component))
-                    .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidImageGeometry))?;
-                info.precision = depth.precision;
-                info.signed = depth.signed;
-                component = component
-                    .checked_add(1)
-                    .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            }
-            let first = image_size.component(0)?;
-            let uniform = (1..image_size.components).all(|component| {
-                matches!(
-                    image_size.component(component),
-                    Ok(info) if info.precision == first.precision && info.signed == first.signed
-                )
-            });
-            image_size.uniform_bit_depth = if uniform { Some(first.precision) } else { None };
-            image_size.uniform_signed = if uniform { Some(first.signed) } else { None };
-        }
+        parser
+            .apply_component_bit_depths(&mut image_size, &part2_extensions.component_bit_depths)?;
         let main_header_end = parser.position;
         let ppm_frames = parser.parse_ppm_frames(&ppm_bytes, ppm_fragments)?;
         let main_header = parser
@@ -387,33 +353,10 @@ impl<'a> Parser<'a> {
                 MalformedKind::MissingRequiredStructure,
             ));
         }
-        if !part2_extensions.component_registrations.is_empty() {
-            let mut component = 0_u16;
-            #[cfg_attr(
-                verus_keep_ghost,
-                verus_spec(
-                    invariant component <= image_size.components,
-                    decreases image_size.components - component,
-                )
-            )]
-            while component < image_size.components {
-                let registration = *part2_extensions
-                    .component_registrations
-                    .get(usize::from(component))
-                    .ok_or_else(|| {
-                        parser.malformed_here(MalformedKind::MissingRequiredStructure)
-                    })?;
-                let info = image_size
-                    .component_info
-                    .get_mut(usize::from(component))
-                    .ok_or_else(|| parser.malformed_here(MalformedKind::InvalidImageGeometry))?;
-                info.x_registration = registration.horizontal;
-                info.y_registration = registration.vertical;
-                component = component
-                    .checked_add(1)
-                    .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
-            }
-        }
+        parser.apply_component_registrations(
+            &mut image_size,
+            &part2_extensions.component_registrations,
+        )?;
         let main_mct_parameters = MctParameters {
             arrays: mct_arrays,
             records: mct_records,

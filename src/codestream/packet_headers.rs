@@ -414,6 +414,124 @@ impl PacketLengthIter<'_> {
     }
 }
 impl<'a> Parser<'a> {
+    #[allow(clippy::too_many_arguments)]
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), *final(next_index), *final(seen),
+            *final(packet_count), *final(encoded_bytes), *final(payload_bytes))
+            == crate::specs::part1_parse_plt(parser_view(old(self)), segment_view(segment),
+                packet_lengths_view(&main), *old(next_index), *old(seen),
+                *old(packet_count), *old(encoded_bytes), *old(payload_bytes)),
+    ))]
+    pub(super) fn parse_plt(
+        &mut self,
+        segment: Segment<'a>,
+        main: PacketLengths<'a>,
+        next_index: &mut u16,
+        seen: &mut bool,
+        packet_count: &mut u64,
+        encoded_bytes: &mut u64,
+        payload_bytes: &mut u64,
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_plt); }
+        if main.is_present() {
+            return Err(DecodeError::malformed(
+                self.offset(segment.offset),
+                MalformedKind::InvalidMarkerOrder,
+            ));
+        }
+        if segment.payload.is_empty() {
+            return Err(DecodeError::malformed(
+                self.offset(segment.offset),
+                MalformedKind::InvalidMarkerLength,
+            ));
+        }
+        let index = u16::from(segment.payload[0]);
+        if index != *next_index || index > u16::from(u8::MAX) {
+            return Err(DecodeError::malformed(
+                self.offset(segment.offset),
+                MalformedKind::InvalidMarkerOrder,
+            ));
+        }
+        *next_index = next_index.checked_add(1).ok_or_else(|| {
+            DecodeError::malformed(
+                self.offset(segment.offset),
+                MalformedKind::ArithmeticOverflow,
+            )
+        })?;
+        let encoded = segment.payload.get(1..).ok_or_else(|| {
+            DecodeError::malformed(
+                self.offset(segment.offset),
+                MalformedKind::InvalidMarkerLength,
+            )
+        })?;
+        let (count, total) = self.validate_packet_lengths(encoded, segment.offset)?;
+        *seen = true;
+        *packet_count = packet_count.checked_add(count).ok_or_else(
+            #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                ensures error == crate::specs::part1_packet_input_error(
+                    segment.offset, MalformedKind::ArithmeticOverflow),
+            ))]
+            || {
+                DecodeError::malformed(
+                    self.offset(segment.offset),
+                    MalformedKind::ArithmeticOverflow,
+                )
+            },
+        )?;
+        *encoded_bytes = encoded_bytes.checked_add(encoded.len() as u64).ok_or_else(
+            #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                    ensures error == crate::specs::part1_packet_input_error(
+                        segment.offset, MalformedKind::ArithmeticOverflow),
+                ))]
+            || {
+                DecodeError::malformed(
+                    self.offset(segment.offset),
+                    MalformedKind::ArithmeticOverflow,
+                )
+            },
+        )?;
+        *payload_bytes = payload_bytes.checked_add(total).ok_or_else(
+            #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                ensures error == crate::specs::part1_packet_input_error(
+                    segment.offset, MalformedKind::ArithmeticOverflow),
+            ))]
+            || {
+                DecodeError::malformed(
+                    self.offset(segment.offset),
+                    MalformedKind::ArithmeticOverflow,
+                )
+            },
+        )?;
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parser_view(final(self)), *final(next_index), *final(fragments), final(bytes)@)
+            == crate::specs::part1_parse_ppt(parser_view(old(self)), segment_view(segment),
+                packed_packet_headers_view(&main), *old(next_index), *old(fragments), old(bytes)@),
+    ))]
+    pub(super) fn parse_ppt(
+        &mut self,
+        segment: Segment<'a>,
+        main: PackedPacketHeaders<'a>,
+        next_index: &mut u16,
+        fragments: &mut u16,
+        bytes: &mut Vec<u8>,
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_parse_ppt); }
+        if main.is_present() {
+            return Err(DecodeError::malformed(
+                self.offset(segment.offset),
+                MalformedKind::InvalidMarkerOrder,
+            ));
+        }
+        self.parse_packed_fragment(segment, PPT, next_index, fragments, bytes)
+    }
+
     #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
         ensures (result, parser_view(final(self)), *final(next_index), packet_length_groups_view(final(groups)@))

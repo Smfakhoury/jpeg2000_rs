@@ -923,6 +923,39 @@ _PACKET_LENGTH_ADMISSION_CONTRACTS = {
     ),
 }
 
+_TILE_PACKET_ADMISSION_CONTRACTS = {
+    ("src/codestream/packet_headers.rs", "Parser::parse_plt"): (
+        "part1_parse_plt", r"\1",
+        _coverage_call("parser_view", _coverage_call("final", "self"))
+        + r"\s*,\s*\*\s*" + _coverage_call("final", "next_index")
+        + r"\s*,\s*\*\s*" + _coverage_call("final", "seen")
+        + r"\s*,\s*\*\s*" + _coverage_call("final", "packet_count")
+        + r"\s*,\s*\*\s*" + _coverage_call("final", "encoded_bytes")
+        + r"\s*,\s*\*\s*" + _coverage_call("final", "payload_bytes"),
+        _coverage_call("parser_view", _coverage_call("old", "self"))
+        + r"\s*,\s*" + _coverage_call("segment_view", "segment")
+        + r"\s*,\s*" + _coverage_call("packet_lengths_view", r"&\s*main")
+        + r"\s*,\s*\*\s*" + _coverage_call("old", "next_index")
+        + r"\s*,\s*\*\s*" + _coverage_call("old", "seen")
+        + r"\s*,\s*\*\s*" + _coverage_call("old", "packet_count")
+        + r"\s*,\s*\*\s*" + _coverage_call("old", "encoded_bytes")
+        + r"\s*,\s*\*\s*" + _coverage_call("old", "payload_bytes"),
+    ),
+    ("src/codestream/packet_headers.rs", "Parser::parse_ppt"): (
+        "part1_parse_ppt", r"\1",
+        _coverage_call("parser_view", _coverage_call("final", "self"))
+        + r"\s*,\s*\*\s*" + _coverage_call("final", "next_index")
+        + r"\s*,\s*\*\s*" + _coverage_call("final", "fragments")
+        + r"\s*,\s*" + _coverage_call("final", "bytes") + r"\s*@",
+        _coverage_call("parser_view", _coverage_call("old", "self"))
+        + r"\s*,\s*" + _coverage_call("segment_view", "segment")
+        + r"\s*,\s*" + _coverage_call("packed_packet_headers_view", r"&\s*main")
+        + r"\s*,\s*\*\s*" + _coverage_call("old", "next_index")
+        + r"\s*,\s*\*\s*" + _coverage_call("old", "fragments")
+        + r"\s*,\s*" + _coverage_call("old", "bytes") + r"\s*@",
+    ),
+}
+
 _PACKET_METADATA_FINALIZATION_CONTRACTS = {
     ("src/codestream/packet_headers.rs", "sum_packet_lengths"): (
         "part1_sum_packet_lengths", r"\1", None,
@@ -1184,6 +1217,25 @@ _PROFILE_BYTES_CONTRACTS = {
     ("src/codestream/profile.rs", "Parser::parse_profile_number"): (
         "part1_parse_profile_number", _coverage_call("profile_number_outcome", r"\1"), None,
         _coverage_call("segment_view", "segment"),
+    ),
+}
+
+_COMPONENT_HEADER_APPLICATION_CONTRACTS = {
+    ("src/codestream/image_header.rs", "component_depths_uniform"): (
+        "part1_component_depths_uniform", r"\1", None,
+        _coverage_call("parsed_image_size_view", "size") + r"\s*,\s*first",
+    ),
+    ("src/codestream/image_header.rs", "Parser::apply_component_bit_depths"): (
+        "part1_apply_component_depths", r"\1",
+        _coverage_call("parsed_image_size_view", _coverage_call("final", "size")),
+        _coverage_call("parsed_image_size_view", _coverage_call("old", "size"))
+        + r"\s*,\s*depths\s*@\s*,\s*self\.position",
+    ),
+    ("src/codestream/image_header.rs", "Parser::apply_component_registrations"): (
+        "part1_apply_component_registrations", r"\1",
+        _coverage_call("parsed_image_size_view", _coverage_call("final", "size")),
+        _coverage_call("parsed_image_size_view", _coverage_call("old", "size"))
+        + r"\s*,\s*registrations\s*@\s*,\s*self\.position",
     ),
 }
 
@@ -2600,6 +2652,7 @@ def validate_normative_coverage(
                 or _COMPONENT_MARKER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECOMPOSITION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_DEPTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _COMPONENT_HEADER_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROFILE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _NONLINEAR_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_LENGTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
@@ -2614,6 +2667,7 @@ def validate_normative_coverage(
                 or _TRANSFORM_GRAPH_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKED_HEADER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_LENGTH_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TILE_PACKET_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PACKET_METADATA_FINALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TRANSFORM_ARRAY_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECODER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))

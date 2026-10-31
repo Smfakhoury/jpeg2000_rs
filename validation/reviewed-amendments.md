@@ -21,6 +21,7 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-193-packet-metadata` | Proposed exact source-derived raw packet sum and metadata finalizers, result models and regressions; no source-integration or normative approval | #193; original CI41084399839 / Verus41084400145; fresh source checks required after adoption |
 | `proposal-195-component-style-cache` | Proposed exact three-path duplicate-cache correction and latest-owner proof; eligibility only, not source approval | #195; original CI41110257458 / Verus41110257409; fresh source checks and separate review required after adoption |
 | `proposal-197-tile-packet-admission` | Proposed exact seven-path actual PLT/PPT producer contracts, models and regressions; eligibility only | #197; original CI41135383976 / Verus41135383979; final refresh, full checks and separate source review required |
+| `proposal-198-component-depth-registration` | Proposed exact seven-path component-depth/registration application and physical uniformity; eligibility only | #198; original CI41144651127 / Verus41144651097; final refresh and separate source review required |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
@@ -30,6 +31,48 @@ No record permits unlisted model/proof Rust or controller changes, combined
 amendments, or changed verifier/dependency pins and resource caps. An explicitly
 adopted source-derived proof profile can admit only its exact listed additions;
 gate eligibility does not establish their correspondence with a standard.
+
+### Actual component-depth and registration application
+
+The proposed #198 record covers exactly the seven protected paths of
+`component-depth-registration`. The fixed profile was separately adopted
+through #199 and accepted from actual main; its forward permission is spent.
+Current accepted main `327e02acf96643ffa90fdf380817ec0823a65f7f`
+includes the independently reviewed cache and packet-producer increments.
+Fresh CI41143644722 and Verus41143644713 accepted that main with 336 Python
+tests without skips, 3,521/0 per root/archive replay and all normal gates.
+
+Exact source `40d2711c808632170de1ed00a498f7390bb9db2e` passed original
+CI41144651127 and Verus41144651097: 337 Python tests without skips,
+674 library plus six example tests and three doctests on the MSRV,
+3,528/0 per root and byte-bound archive replay, 173 archive entries with
+157 byte-bound Rust files, and all existing numerical, HT, consumer and
+65-record resource gates. All 4,564 prior observed items remain identical;
+three actual helpers and six new models give 4,573 observed definitions.
+Source-function coverage is not measured.
+
+The real main-header application sites call the actual component-depth and
+registration helpers in their original order. Complete results bind arbitrary
+raw logical counts, physical slots, first-depth precision/sign, partial updates,
+flags, unused tails and reader frames without normalized-image premises.
+Actual SIZ/CBD/CRG reader joins and native behavior mutations exercise these
+boundaries. Eleven reachable helper mutants were rejected on the same core
+helper/model bytes; baseline and equivalent checked-increment controls passed.
+
+The original helper focus has six obligations across three executing functions.
+Three recursive model jobs are added and the two extracted inline layout
+traversals remove two old jobs: net seven, not nine new functions or proof jobs.
+The three nonrecursive wrappers have no standalone termination jobs. Actual
+whole-root/archive measurements above establish the final counts.
+
+This proposal preserves all eleven prior record objects and adds only the
+exact component record below. The shared inventory retains every accepted
+packet requirement plus the component requirement; helper/model bytes remain
+identical to the earlier qualified component implementation. Adoption establishes
+eligibility, not source review or integration. Final refresh, full checks,
+fresh ready policy check, separate source review, normal merge and actual-main
+acceptance remain required. Outer parser/public composition and independent
+normative qualification are not completed here.
 
 ### Actual PLT/PPT tile-packet admission
 
@@ -1348,6 +1391,45 @@ not independent human/normative approval; no publication is authorized.
         "validation/tests/test_framework.py": {
           "before": "e260337c210b0c1b7ab0d959b9fd6eebb630cea0",
           "after": "b8bef762be5ce1630b79964d58986ce43833116a"
+        }
+      }
+    },
+    {
+      "id": "proposal-198-component-depth-registration",
+      "profile": "component-depth-registration",
+      "source_pr": 198,
+      "source_head": "40d2711c808632170de1ed00a498f7390bb9db2e",
+      "ci_run": 41144651127,
+      "verus_run": 41144651097,
+      "rationale": "Complete actual CBD/CRG application and physical uniformity with total raw-state results, exact prefix errors, flags, tails and reader frames; retain accepted packet requirements and strict real-producer regressions. Eligibility only, not source integration, outer composition or normative certification.",
+      "paths": {
+        "src/codestream/layout.rs": {
+          "before": "bf51820d4ff7fb07a08f778f4930b01cec47a09a",
+          "after": "3b6c15fdfb3530656d8c31d3380f4e90545f45c4"
+        },
+        "src/codestream/image_header.rs": {
+          "before": "8097986505cb3648d8f286e5503cf2392010d825",
+          "after": "4da02579c26b4a9d256dcb0fa33881ce9f4b359a"
+        },
+        "src/codestream/tests.rs": {
+          "before": "04674a4d307721f62f297c1cf50f3d8aae6c948d",
+          "after": "87f81b6b666e0158abf90e9979701808215fcfd7"
+        },
+        "specs/mod.rs": {
+          "before": "75b6291ea1bbd43e57860303452f0e80790dabfa",
+          "after": "dcd03b15ee413b334404f4a597d0bb6bd19eb594"
+        },
+        "validation/framework.py": {
+          "before": "130956f39e2bc0df1f697552e884964ffe3f4c5f",
+          "after": "88851b1a123dde18d527c10f35164e3775d03ca6"
+        },
+        "validation/normative-coverage.json": {
+          "before": "efe35f0c9fcd27bfef93f30ada3eed642eb29d44",
+          "after": "4f71439c38267c0c48e348a88e180cadd682e415"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "b8bef762be5ce1630b79964d58986ce43833116a",
+          "after": "0f1269e3439de9ffd79b2bee610e9674dcb4f193"
         }
       }
     }

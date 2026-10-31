@@ -8,12 +8,165 @@ use super::{
 };
 #[cfg(verus_keep_ghost)]
 use super::{
-    owned_extensions_view, parsed_siz_outcome, parser_view, segment_view, siz_components_view,
+    owned_extensions_view, parsed_image_size_view, parsed_siz_outcome, parser_view, segment_view,
+    siz_components_view,
 };
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 
+#[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_component_depths_uniform(parsed_image_size_view(size), first),
+))]
+pub(super) fn component_depths_uniform(size: &ImageSize, first: ComponentInfo) -> bool {
+    #[cfg(verus_keep_ghost)]
+    proof_decl! { let ghost goal = crate::specs::part1_component_depths_uniform(parsed_image_size_view(size), first); }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal(crate::specs::part1_component_depths_uniform); }
+    let mut component = 1_u16;
+    #[cfg_attr(verus_keep_ghost, verus_spec(
+        invariant
+            goal == crate::specs::part1_component_depths_uniform(parsed_image_size_view(size), first),
+            goal == crate::specs::part1_component_depths_uniform_from(parsed_image_size_view(size), first, component as nat),
+        decreases size.components as int - component as int,
+    ))]
+    while component < size.components {
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_component_depths_uniform_from, 1); }
+        let info = match size.component(component) {
+            Ok(value) => value,
+            Err(_) => return false,
+        };
+        if info.precision != first.precision || info.signed != first.signed {
+            return false;
+        }
+        component += 1;
+    }
+    #[cfg(verus_keep_ghost)]
+    proof! { reveal_with_fuel(crate::specs::part1_component_depths_uniform_from, 1); }
+    true
+}
+
 impl<'a> Parser<'a> {
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parsed_image_size_view(final(size))) == crate::specs::part1_apply_component_depths(
+            parsed_image_size_view(old(size)), depths@, self.position),
+    ))]
+    pub(super) fn apply_component_bit_depths(
+        &self,
+        size: &mut ImageSize,
+        depths: &[ComponentBitDepth],
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost initial = parsed_image_size_view(size);
+            let ghost goal = crate::specs::part1_apply_component_depths(initial, depths@, self.position);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_apply_component_depths); }
+        if depths.is_empty() {
+            return Ok(());
+        }
+        let mut component = 0_u16;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant component <= size.components,
+                initial == parsed_image_size_view(old(size)),
+                goal == crate::specs::part1_apply_component_depths(initial, depths@, self.position),
+                goal == crate::specs::part1_apply_component_depths_from(
+                    parsed_image_size_view(size), depths@, self.position, component as nat),
+            decreases size.components - component,
+        ))]
+        while component < size.components {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_apply_component_depths_from, 1); }
+            let index = usize::from(component);
+            if index >= depths.len() {
+                return Err(self.malformed_here(MalformedKind::MissingRequiredStructure));
+            }
+            let depth = depths[index];
+            if index >= size.component_info.len() {
+                return Err(self.malformed_here(MalformedKind::InvalidImageGeometry));
+            }
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = parsed_image_size_view(size); }
+            size.component_info[index].precision = depth.precision;
+            size.component_info[index].signed = depth.signed;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(size.component_info@ =~= before.infos.update(index as int, ComponentInfo {
+                    precision: depth.precision, signed: depth.signed, ..before.infos[index as int]
+                }));
+            }
+            component += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_apply_component_depths_from, 1); }
+        let first = size.component(0)?;
+        let uniform = component_depths_uniform(size, first);
+        size.uniform_bit_depth = if uniform { Some(first.precision) } else { None };
+        size.uniform_signed = if uniform { Some(first.signed) } else { None };
+        Ok(())
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (result, parsed_image_size_view(final(size))) == crate::specs::part1_apply_component_registrations(
+            parsed_image_size_view(old(size)), registrations@, self.position),
+    ))]
+    pub(super) fn apply_component_registrations(
+        &self,
+        size: &mut ImageSize,
+        registrations: &[ComponentRegistration],
+    ) -> Result<(), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof_decl! {
+            let ghost initial = parsed_image_size_view(size);
+            let ghost goal = crate::specs::part1_apply_component_registrations(initial, registrations@, self.position);
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal(crate::specs::part1_apply_component_registrations); }
+        if registrations.is_empty() {
+            return Ok(());
+        }
+        let mut component = 0_u16;
+        #[cfg_attr(verus_keep_ghost, verus_spec(
+            invariant component <= size.components,
+                initial == parsed_image_size_view(old(size)),
+                goal == crate::specs::part1_apply_component_registrations(initial, registrations@, self.position),
+                goal == crate::specs::part1_apply_component_registrations_from(
+                    parsed_image_size_view(size), registrations@, self.position, component as nat),
+            decreases size.components - component,
+        ))]
+        while component < size.components {
+            #[cfg(verus_keep_ghost)]
+            proof! { reveal_with_fuel(crate::specs::part1_apply_component_registrations_from, 1); }
+            let index = usize::from(component);
+            if index >= registrations.len() {
+                return Err(self.malformed_here(MalformedKind::MissingRequiredStructure));
+            }
+            let registration = registrations[index];
+            if index >= size.component_info.len() {
+                return Err(self.malformed_here(MalformedKind::InvalidImageGeometry));
+            }
+            #[cfg(verus_keep_ghost)]
+            proof_decl! { let ghost before = parsed_image_size_view(size); }
+            size.component_info[index].x_registration = registration.horizontal;
+            size.component_info[index].y_registration = registration.vertical;
+            #[cfg(verus_keep_ghost)]
+            proof! {
+                assert(size.component_info@ =~= before.infos.update(index as int, ComponentInfo {
+                    x_registration: registration.horizontal, y_registration: registration.vertical,
+                    ..before.infos[index as int]
+                }));
+            }
+            component += 1;
+        }
+        #[cfg(verus_keep_ghost)]
+        proof! { reveal_with_fuel(crate::specs::part1_apply_component_registrations_from, 1); }
+        Ok(())
+    }
+
     #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
         ensures (result, parser_view(final(self)), *final(next_index), owned_extensions_view(final(extensions)))
