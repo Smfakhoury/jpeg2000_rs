@@ -22,6 +22,7 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-195-component-style-cache` | Proposed exact three-path duplicate-cache correction and latest-owner proof; eligibility only, not source approval | #195; original CI41110257458 / Verus41110257409; fresh source checks and separate review required after adoption |
 | `proposal-197-tile-packet-admission` | Proposed exact seven-path actual PLT/PPT producer contracts, models and regressions; eligibility only | #197; original CI41135383976 / Verus41135383979; final refresh, full checks and separate source review required |
 | `proposal-198-component-depth-registration` | Proposed exact seven-path component-depth/registration application and physical uniformity; eligibility only | #198; original CI41144651127 / Verus41144651097; final refresh and separate source review required |
+| `proposal-200-decomposition-resolution` | Proposed exact nine-path actual DFS/ADS lookup, setter and owner-resolution contracts; eligibility only | #200; original CI41153180810 / Verus41153180822; final refresh and separate source review required |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
@@ -31,6 +32,41 @@ No record permits unlisted model/proof Rust or controller changes, combined
 amendments, or changed verifier/dependency pins and resource caps. An explicitly
 adopted source-derived proof profile can admit only its exact listed additions;
 gate eligibility does not establish their correspondence with a standard.
+
+### Actual decomposition lookup and owner resolution
+
+The proposed #200 record covers exactly the nine protected paths of
+`decomposition-resolution`, relative to accepted main
+`3d9832086f6bf7a62551908a66e3ae99e2686602`. All twelve earlier registry objects
+remain unchanged. The actual first-match DFS/ADS lookups, complete style setter,
+executing resolution helper and ordered owner traversal use eight additive
+source-derived models and three closed projections. Preserve raw duplicate
+precedence, invalid/empty payload handling, component counts and physical holes,
+stage limits, partial owner commits, tails and immutable parser frames.
+
+Held source `92d08756a49eddaca6a4e1d927e12374b53a0a31` passed original
+[CI41153180810](https://github.com/microsoft/jpeg2000_rs/actions/runs/41153180810)
+and [Verus41153180822](https://github.com/microsoft/jpeg2000_rs/actions/runs/41153180822):
+343 Python tests without skips, 3,535 verified/zero errors separately for the
+root and byte-bound actual package archive, MSRV 680 library plus six example
+tests and three doctests, and all 4,573 prior observed items plus twelve exact
+additions. Observed items are not a function-coverage measurement. The measured
+net increase of seven verification jobs includes five recursive model jobs
+and two net actual-module jobs; projections and nonrecursive definitions are
+not counted as independent SMT jobs.
+
+This documentation proposal needs its own complete qualification and separate
+review. After normal adoption and actual-main acceptance, #200 still needs a
+final source refresh, complete fresh gates, a fresh Ready policy check,
+independent actual-source review, normal guarded merge and fresh actual-main
+validation. No outer parser/public-image composition, selected-edition
+correspondence, official conformance or publication is approved here.
+
+The separate deferred operation in
+[tile-layout-input-profiles-authorization.md](tile-layout-input-profiles-authorization.md)
+adds no source record. It must wait until #200 itself is normally merged and
+accepted by fresh actual-main validation. Earlier forwards, including #203,
+are spent and cannot authorize that operation.
 
 ### Actual component-depth and registration application
 
@@ -1430,6 +1466,53 @@ not independent human/normative approval; no publication is authorized.
         "validation/tests/test_framework.py": {
           "before": "b8bef762be5ce1630b79964d58986ce43833116a",
           "after": "0f1269e3439de9ffd79b2bee610e9674dcb4f193"
+        }
+      }
+    },
+    {
+      "id": "proposal-200-decomposition-resolution",
+      "profile": "decomposition-resolution",
+      "source_pr": 200,
+      "source_head": "92d08756a49eddaca6a4e1d927e12374b53a0a31",
+      "ci_run": 41153180810,
+      "verus_run": 41153180822,
+      "rationale": "Complete actual first-match DFS/ADS lookup, style setter and ordered owner resolution with source-derived raw results, exact error order, partial commits, tails and parser frames; preserve accepted component/packet/cache producers and strict regressions. Eligibility only, not source integration, outer composition or normative certification.",
+      "paths": {
+        "src/codestream/decomposition.rs": {
+          "before": "c1ce6dc3d16d14d636719790e9b5e8bcbe1851c9",
+          "after": "fe9e6748ad146d88088e8a0384a5f8edb309101d"
+        },
+        "src/codestream/extensions.rs": {
+          "before": "f016e820bab1d68e265da480e090f43f28ab5a51",
+          "after": "e42d80f187e7b428852410de4f8b291f2e53e48b"
+        },
+        "src/codestream/coding_style.rs": {
+          "before": "9b19da5edabff4faeff7475b9c88f18e1be2ad55",
+          "after": "d937e2e20ac3bb15b06ea5c031d436cf20e53d90"
+        },
+        "src/codestream/proof_support.rs": {
+          "before": "909b70c57267fc8592e09ec1aaaef7d0ead9f59c",
+          "after": "aed8844b95b495da27add74d8c804e1c946adf5d"
+        },
+        "src/codestream/tests.rs": {
+          "before": "87f81b6b666e0158abf90e9979701808215fcfd7",
+          "after": "5e7547b86070596dd64a38b90297ced7b4c2aaed"
+        },
+        "specs/mod.rs": {
+          "before": "dcd03b15ee413b334404f4a597d0bb6bd19eb594",
+          "after": "9ef8b6a88ee07594c83e68629f1d59735725462b"
+        },
+        "validation/framework.py": {
+          "before": "88851b1a123dde18d527c10f35164e3775d03ca6",
+          "after": "3ae67cfe274b84e8169ad97113a95199fdcf9cd5"
+        },
+        "validation/normative-coverage.json": {
+          "before": "4f71439c38267c0c48e348a88e180cadd682e415",
+          "after": "8469e4fd72db58d19d71fabf3b2d8d181764abfb"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "0f1269e3439de9ffd79b2bee610e9674dcb4f193",
+          "after": "e31370e9ca7f27ae54f80b39fa1ac97f23d556af"
         }
       }
     }
