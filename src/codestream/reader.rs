@@ -260,6 +260,9 @@ impl<'a> Parser<'a> {
 pub(super) const fn is_standalone_marker(marker: u16) -> bool {
     matches!(marker, SOC | SOD | EOC | 0xff92)
 }
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_known_segment_marker(marker),
+))]
 pub(super) const fn is_known_segment_marker(marker: u16) -> bool {
     matches!(
         marker,
@@ -290,6 +293,9 @@ pub(super) const fn is_known_segment_marker(marker: u16) -> bool {
             | SOT
     )
 }
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_allowed_main_header(marker),
+))]
 pub(super) const fn is_allowed_main_header(marker: u16) -> bool {
     matches!(
         marker,
@@ -316,6 +322,9 @@ pub(super) const fn is_allowed_main_header(marker: u16) -> bool {
             | ATK
     )
 }
+#[cfg_attr(verus_keep_ghost, verus_spec(result =>
+    ensures result == crate::specs::part1_allowed_tile_header(marker),
+))]
 pub(super) const fn is_allowed_tile_header(marker: u16) -> bool {
     matches!(
         marker,
