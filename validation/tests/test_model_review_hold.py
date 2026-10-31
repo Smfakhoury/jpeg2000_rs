@@ -1205,6 +1205,119 @@ class ModelReviewHoldTests(unittest.TestCase):
                     with patch.object(model_review_hold, "REGISTRY", registry):
                         self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
 
+    def input_producer_profiles(self):
+        return {
+            "tile-data-window": {
+                "src/codestream/tiles.rs", "src/codestream/proof_support.rs",
+                "src/codestream/tests.rs", "specs/packet_input.rs", "validation/framework.py",
+                "validation/normative-coverage.json", "validation/tests/test_framework.py",
+            },
+            "layout-prologue": {
+                "src/codestream/layout.rs", "src/codestream/proof_support.rs",
+                "src/codestream/tests.rs", "specs/layout_input.rs", "specs/mod.rs",
+                "validation/framework.py", "validation/normative-coverage.json",
+                "validation/tests/test_framework.py", "validation/expected-package-files.txt",
+            },
+        }
+
+    def input_producer_fixture(self, profile):
+        paths = self.input_producer_profiles()[profile]
+        self.assertEqual(model_review_hold.AMENDMENT_PROFILES[profile], paths)
+        originals = {path: f"original {path}\n" for path in paths
+                     if path != "specs/layout_input.rs"}
+        return self.layout_fixture(
+            originals, {path: f"producer result {path}\n" for path in paths},
+            profile, "Exact source-derived tile window or layout prologue contracts.",
+        )
+
+    def test_input_producer_profiles_require_exact_trusted_adoption(self):
+        for profile in self.input_producer_profiles():
+            with self.subTest(profile=profile):
+                base, head, entry = self.input_producer_fixture(profile)
+                if profile == "layout-prologue":
+                    self.assertIsNone(entry["paths"]["specs/layout_input.rs"]["before"])
+                with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+                    self.assertEqual(set(model_review_hold.held_changes(
+                        self.repository, base, head)), set(entry["paths"]))
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertEqual(model_review_hold.held_changes(
+                        self.repository, base, head), [])
+
+    def test_input_producer_profiles_reject_each_changed_identity(self):
+        for profile in self.input_producer_profiles():
+            base, head, entry = self.input_producer_fixture(profile)
+            for index, path in enumerate(entry["paths"]):
+                with self.subTest(profile=profile, path=path):
+                    self.git("checkout", "-b", f"changed-{profile}-{index}", head)
+                    self.write(path, self.git("show", f"{head}:{path}") + "changed\n")
+                    with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                        self.assertIn(path, model_review_hold.held_changes(
+                            self.repository, base, self.commit()))
+
+    def test_input_producer_profiles_reject_other_sources_and_controls(self):
+        extras = (
+            "src/codestream.rs", "src/error.rs", "src/codestream/layout.rs",
+            "src/codestream/image_header.rs", "src/codestream/quantization.rs",
+            "src/codestream/tiles.rs", "src/codestream/reader.rs",
+            "src/codestream/extensions.rs", "specs/mod.rs", "specs/packet_input.rs",
+            "specs/layout_input.rs", "specs/new.rs", "proofs/new.rs",
+            "validation/resource_benchmarks.py", "validation/generate-proof-coverage.py",
+            "validation/check-model-review-hold.py", "Cargo.toml", "Cargo.lock",
+            "rust-toolchain.toml", ".github/workflows/verus.yml",
+        )
+        for profile in self.input_producer_profiles():
+            base, head, entry = self.input_producer_fixture(profile)
+            for index, path in enumerate(extras):
+                if path in entry["paths"]:
+                    continue
+                with self.subTest(profile=profile, path=path):
+                    self.git("checkout", "-b", f"extra-{profile}-{index}", head)
+                    self.write(path, f"unapproved extra change {profile}\n")
+                    with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                        self.assertIn(path, model_review_hold.held_changes(
+                            self.repository, base, self.commit()))
+
+    def test_input_producer_profiles_reject_incomplete_or_expanded_records(self):
+        for profile in self.input_producer_profiles():
+            _, _, original = self.input_producer_fixture(profile)
+            for path in original["paths"]:
+                with self.subTest(profile=profile, missing=path):
+                    entry = copy.deepcopy(original)
+                    del entry["paths"][path]
+                    with self.assertRaises(ValueError):
+                        model_review_hold.read_reviewed_amendments(self.registry([entry]))
+            for path in ("src/error.rs", "specs/new.rs", "validation/check-model-review-hold.py"):
+                with self.subTest(profile=profile, expanded=path):
+                    entry = copy.deepcopy(original)
+                    entry["paths"][path] = copy.deepcopy(entry["paths"]["validation/framework.py"])
+                    with self.assertRaises(ValueError):
+                        model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
+    def test_input_producer_profiles_reject_exactly_bound_combined_sources(self):
+        for profile, paths in self.input_producer_profiles().items():
+            for other, other_paths in model_review_hold.AMENDMENT_PROFILES.items():
+                if other == profile:
+                    continue
+                with self.subTest(profile=profile, other=other):
+                    base, head, template = self.layout_fixture(
+                        {path: f"original {path}\n" for path in paths | other_paths},
+                        {path: f"combined {path}\n" for path in paths | other_paths},
+                        profile, "Two individually exact records must not admit combined source.",
+                    )
+                    entries = [
+                        dict(template, id=f"combined-{name}", profile=name, source_head=head,
+                             paths={
+                                 path: {"before": self.git("rev-parse", f"{base}:{path}"),
+                                        "after": self.git("rev-parse", f"{head}:{path}")}
+                                 for path in scope
+                             })
+                        for name, scope in ((profile, paths), (other, other_paths))
+                    ]
+                    registry = self.registry(entries)
+                    self.assertEqual(len(model_review_hold.read_reviewed_amendments(registry)), 2)
+                    with patch.object(model_review_hold, "REGISTRY", registry):
+                        self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
+
     def test_invalid_trusted_registry_causes_explicit_cli_failure(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
         head = self.commit()
