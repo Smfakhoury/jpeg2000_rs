@@ -906,6 +906,305 @@ class ModelReviewHoldTests(unittest.TestCase):
         with patch.object(model_review_hold, "REGISTRY", self.registry([cache, packet])):
             self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
 
+    def component_depth_registration_fixture(self):
+        paths = {
+            "src/codestream/layout.rs", "src/codestream/image_header.rs",
+            "src/codestream/tests.rs", "specs/mod.rs",
+            "validation/framework.py", "validation/normative-coverage.json",
+            "validation/tests/test_framework.py",
+        }
+        self.assertEqual(model_review_hold.AMENDMENT_PROFILES["component-depth-registration"],
+                         paths)
+        return self.layout_fixture(
+            {path: f"original {path}\n" for path in paths},
+            {path: f"component application {path}\n" for path in paths},
+            "component-depth-registration",
+            "Exact actual CBD/CRG application and physical uniformity with complete frames.",
+        )
+
+    def test_component_application_requires_exact_trusted_adoption(self):
+        base, head, entry = self.component_depth_registration_fixture()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(self.repository, base, head)),
+                             set(entry["paths"]))
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_component_application_rejects_each_changed_source_model_or_binding(self):
+        base, head, entry = self.component_depth_registration_fixture()
+        for index, path in enumerate(entry["paths"]):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"changed-component-application-{index}", head)
+                self.write(path, self.git("show", f"{head}:{path}") + "changed\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_component_application_does_not_authorize_other_models_or_controls(self):
+        base, head, entry = self.component_depth_registration_fixture()
+        for index, path in enumerate((
+            "src/codestream.rs", "src/codestream/tiles.rs",
+            "src/codestream/decomposition.rs", "src/codestream/coding_style.rs",
+            "src/codestream/packet_headers.rs", "src/error.rs", "specs/packet_input.rs",
+            "specs/new.rs", "proofs/new.rs", "validation/resource_benchmarks.py",
+            "validation/generate-proof-coverage.py", "validation/check-model-review-hold.py",
+            "Cargo.toml", "Cargo.lock", "rust-toolchain.toml", ".github/workflows/verus.yml",
+        )):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"extra-component-application-{index}", head)
+                self.write(path, "unapproved extra change\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_component_application_rejects_expansion_and_incomplete_records(self):
+        _, _, original = self.component_depth_registration_fixture()
+        for path in ("src/error.rs", "src/codestream/tiles.rs", "specs/new.rs",
+                     "validation/check-model-review-hold.py"):
+            with self.subTest(path=path):
+                entry = copy.deepcopy(original)
+                entry["paths"][path] = entry["paths"].pop("specs/mod.rs")
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+        for path in original["paths"]:
+            with self.subTest(missing=path):
+                entry = copy.deepcopy(original)
+                del entry["paths"][path]
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
+    def test_component_and_tile_records_reject_even_exact_combined_source(self):
+        profile = "component-depth-registration"
+        component_paths = model_review_hold.AMENDMENT_PROFILES[profile]
+        for other_profile in ("tile-component-style-cache", "tile-packet-admission"):
+            with self.subTest(profile=other_profile):
+                other_paths = model_review_hold.AMENDMENT_PROFILES[other_profile]
+                base, head, component = self.layout_fixture(
+                    {path: f"original {path}\n" for path in component_paths | other_paths},
+                    {path: f"combined source {path}\n" for path in component_paths | other_paths},
+                    profile, "Exact combined source must remain held.",
+                )
+                entries = []
+                for name, paths in ((profile, component_paths), (other_profile, other_paths)):
+                    entries.append(dict(
+                        component, id=f"combined-{name}", profile=name, source_head=head,
+                        paths={
+                            path: {"before": self.git("rev-parse", f"{base}:{path}"),
+                                   "after": self.git("rev-parse", f"{head}:{path}")}
+                            for path in paths
+                        },
+                    ))
+                registry = self.registry(entries)
+                self.assertEqual(len(model_review_hold.read_reviewed_amendments(registry)), 2)
+                with patch.object(model_review_hold, "REGISTRY", registry):
+                    self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
+
+    def decomposition_resolution_fixture(self):
+        paths = {
+            "src/codestream/decomposition.rs", "src/codestream/extensions.rs",
+            "src/codestream/coding_style.rs", "src/codestream/proof_support.rs",
+            "src/codestream/tests.rs", "specs/mod.rs", "validation/framework.py",
+            "validation/normative-coverage.json", "validation/tests/test_framework.py",
+        }
+        self.assertEqual(model_review_hold.AMENDMENT_PROFILES["decomposition-resolution"],
+                         paths)
+        return self.layout_fixture(
+            {path: f"original {path}\n" for path in paths},
+            {path: f"decomposition resolution {path}\n" for path in paths},
+            "decomposition-resolution",
+            "Exact first-match DFS/ADS, style setter and actual resolution contracts.",
+        )
+
+    def test_decomposition_resolution_requires_exact_trusted_adoption(self):
+        base, head, entry = self.decomposition_resolution_fixture()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(self.repository, base, head)),
+                             set(entry["paths"]))
+        with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+            self.assertEqual(model_review_hold.held_changes(self.repository, base, head), [])
+
+    def test_decomposition_resolution_rejects_each_changed_source_model_or_binding(self):
+        base, head, entry = self.decomposition_resolution_fixture()
+        for index, path in enumerate(entry["paths"]):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"changed-decomposition-{index}", head)
+                self.write(path, self.git("show", f"{head}:{path}") + "changed\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_decomposition_resolution_does_not_authorize_other_models_or_controls(self):
+        base, head, entry = self.decomposition_resolution_fixture()
+        for index, path in enumerate((
+            "src/codestream.rs", "src/codestream/tiles.rs", "src/codestream/layout.rs",
+            "src/codestream/image_header.rs", "src/codestream/packet_headers.rs",
+            "src/error.rs", "specs/packet_input.rs", "specs/new.rs", "proofs/new.rs",
+            "validation/resource_benchmarks.py", "validation/generate-proof-coverage.py",
+            "validation/check-model-review-hold.py", "Cargo.toml", "Cargo.lock",
+            "rust-toolchain.toml", ".github/workflows/verus.yml",
+        )):
+            with self.subTest(path=path):
+                self.git("checkout", "-b", f"extra-decomposition-{index}", head)
+                self.write(path, "unapproved extra change\n")
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertIn(path, model_review_hold.held_changes(
+                        self.repository, base, self.commit()))
+
+    def test_decomposition_resolution_rejects_expansion_and_incomplete_records(self):
+        _, _, original = self.decomposition_resolution_fixture()
+        for path in ("src/error.rs", "src/codestream/tiles.rs", "specs/new.rs",
+                     "validation/check-model-review-hold.py"):
+            with self.subTest(path=path):
+                entry = copy.deepcopy(original)
+                entry["paths"][path] = entry["paths"].pop("specs/mod.rs")
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+        for path in original["paths"]:
+            with self.subTest(missing=path):
+                entry = copy.deepcopy(original)
+                del entry["paths"][path]
+                with self.assertRaises(ValueError):
+                    model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
+    def test_decomposition_records_reject_even_exact_combined_source(self):
+        profile = "decomposition-resolution"
+        resolution_paths = model_review_hold.AMENDMENT_PROFILES[profile]
+        for other_profile in ("component-depth-registration", "tile-component-style-cache",
+                              "tile-packet-admission"):
+            with self.subTest(profile=other_profile):
+                other_paths = model_review_hold.AMENDMENT_PROFILES[other_profile]
+                base, head, resolution = self.layout_fixture(
+                    {path: f"original {path}\n" for path in resolution_paths | other_paths},
+                    {path: f"combined source {path}\n" for path in resolution_paths | other_paths},
+                    profile, "Exact combined source must remain held.",
+                )
+                entries = []
+                for name, paths in ((profile, resolution_paths), (other_profile, other_paths)):
+                    entries.append(dict(
+                        resolution, id=f"combined-{name}", profile=name, source_head=head,
+                        paths={
+                            path: {"before": self.git("rev-parse", f"{base}:{path}"),
+                                   "after": self.git("rev-parse", f"{head}:{path}")}
+                            for path in paths
+                        },
+                    ))
+                registry = self.registry(entries)
+                self.assertEqual(len(model_review_hold.read_reviewed_amendments(registry)), 2)
+                with patch.object(model_review_hold, "REGISTRY", registry):
+                    self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
+
+    def main_and_sot_profiles(self):
+        return {
+            "main-component-finalization": {
+                "src/codestream/layout.rs", "src/codestream/coding_style.rs",
+                "src/codestream/quantization.rs", "src/codestream/proof_support.rs",
+                "src/codestream/tests.rs", "specs/mod.rs", "validation/framework.py",
+                "validation/normative-coverage.json", "validation/tests/test_framework.py",
+            },
+            "sot-reader-marker": {
+                "src/codestream/tiles.rs", "src/codestream/reader.rs",
+                "src/codestream/proof_support.rs", "src/codestream/tests.rs", "specs/mod.rs",
+                "validation/framework.py", "validation/normative-coverage.json",
+                "validation/tests/test_framework.py",
+            },
+        }
+
+    def main_or_sot_fixture(self, profile):
+        paths = self.main_and_sot_profiles()[profile]
+        self.assertEqual(model_review_hold.AMENDMENT_PROFILES[profile], paths)
+        return self.layout_fixture(
+            {path: f"original {path}\n" for path in paths},
+            {path: f"producer result {path}\n" for path in paths},
+            profile, "Exact source-derived main finalization or SOT reader contracts.",
+        )
+
+    def test_main_and_sot_profiles_require_exact_trusted_adoption(self):
+        for profile in self.main_and_sot_profiles():
+            with self.subTest(profile=profile):
+                base, head, entry = self.main_or_sot_fixture(profile)
+                with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+                    self.assertEqual(set(model_review_hold.held_changes(
+                        self.repository, base, head)), set(entry["paths"]))
+                with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                    self.assertEqual(model_review_hold.held_changes(
+                        self.repository, base, head), [])
+
+    def test_main_and_sot_profiles_reject_each_changed_identity(self):
+        for profile in self.main_and_sot_profiles():
+            base, head, entry = self.main_or_sot_fixture(profile)
+            for index, path in enumerate(entry["paths"]):
+                with self.subTest(profile=profile, path=path):
+                    self.git("checkout", "-b", f"changed-{profile}-{index}", head)
+                    self.write(path, self.git("show", f"{head}:{path}") + "changed\n")
+                    with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                        self.assertIn(path, model_review_hold.held_changes(
+                            self.repository, base, self.commit()))
+
+    def test_main_and_sot_profiles_reject_other_sources_and_controls(self):
+        extras = (
+            "src/codestream.rs", "src/error.rs", "src/codestream/layout.rs",
+            "src/codestream/quantization.rs", "src/codestream/tiles.rs",
+            "src/codestream/reader.rs", "src/codestream/extensions.rs",
+            "specs/packet_input.rs", "specs/new.rs", "proofs/new.rs",
+            "validation/resource_benchmarks.py", "validation/generate-proof-coverage.py",
+            "validation/check-model-review-hold.py", "Cargo.toml", "Cargo.lock",
+            "rust-toolchain.toml", ".github/workflows/verus.yml",
+        )
+        for profile in self.main_and_sot_profiles():
+            base, head, entry = self.main_or_sot_fixture(profile)
+            for index, path in enumerate(extras):
+                if path in entry["paths"]:
+                    continue
+                with self.subTest(profile=profile, path=path):
+                    self.git("checkout", "-b", f"extra-{profile}-{index}", head)
+                    self.write(path, f"unapproved extra change {profile}\n")
+                    with patch.object(model_review_hold, "REGISTRY", self.registry([entry])):
+                        self.assertIn(path, model_review_hold.held_changes(
+                            self.repository, base, self.commit()))
+
+    def test_main_and_sot_profiles_reject_incomplete_or_expanded_records(self):
+        for profile in self.main_and_sot_profiles():
+            _, _, original = self.main_or_sot_fixture(profile)
+            for path in original["paths"]:
+                with self.subTest(profile=profile, missing=path):
+                    entry = copy.deepcopy(original)
+                    del entry["paths"][path]
+                    with self.assertRaises(ValueError):
+                        model_review_hold.read_reviewed_amendments(self.registry([entry]))
+            for path in ("src/error.rs", "specs/new.rs", "validation/check-model-review-hold.py"):
+                with self.subTest(profile=profile, expanded=path):
+                    entry = copy.deepcopy(original)
+                    entry["paths"][path] = copy.deepcopy(entry["paths"]["specs/mod.rs"])
+                    with self.assertRaises(ValueError):
+                        model_review_hold.read_reviewed_amendments(self.registry([entry]))
+
+    def test_main_and_sot_profiles_reject_exactly_bound_combined_sources(self):
+        profiles = self.main_and_sot_profiles()
+        for profile, paths in profiles.items():
+            others = set(profiles) | {"component-depth-registration", "decomposition-resolution",
+                                      "tile-component-style-cache", "tile-packet-admission"}
+            for other in others - {profile}:
+                with self.subTest(profile=profile, other=other):
+                    other_paths = model_review_hold.AMENDMENT_PROFILES[other]
+                    base, head, template = self.layout_fixture(
+                        {path: f"original {path}\n" for path in paths | other_paths},
+                        {path: f"combined {path}\n" for path in paths | other_paths},
+                        profile, "Two individually exact records must not admit combined source.",
+                    )
+                    entries = [
+                        dict(template, id=f"combined-{name}", profile=name, source_head=head,
+                             paths={
+                                 path: {"before": self.git("rev-parse", f"{base}:{path}"),
+                                        "after": self.git("rev-parse", f"{head}:{path}")}
+                                 for path in scope
+                             })
+                        for name, scope in ((profile, paths), (other, other_paths))
+                    ]
+                    registry = self.registry(entries)
+                    self.assertEqual(len(model_review_hold.read_reviewed_amendments(registry)), 2)
+                    with patch.object(model_review_hold, "REGISTRY", registry):
+                        self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
+
     def test_invalid_trusted_registry_causes_explicit_cli_failure(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
         head = self.commit()

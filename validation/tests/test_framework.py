@@ -1117,6 +1117,12 @@ class FrameworkTests(WorkingFiles):
             framework._PACKET_LENGTH_ADMISSION_CONTRACTS, 2,
         )
 
+    def test_inventory_binds_actual_plt_ppt_main_conflicts_and_full_sequential_counter_frames(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-tile-packet-admission"},
+            framework._TILE_PACKET_ADMISSION_CONTRACTS, 2,
+        )
+
     def test_inventory_tracks_relocated_parser_tests_and_rejects_stale_or_missing_bindings(self):
         self._assert_relocated_test_bindings(
             "part1-complete-native-packet-length-admission",
@@ -1232,6 +1238,12 @@ class FrameworkTests(WorkingFiles):
         self._assert_complete_packet_contract_bindings(
             {"part1-complete-native-packet-metadata-finalization"},
             framework._PACKET_METADATA_FINALIZATION_CONTRACTS, 3,
+        )
+
+    def test_inventory_binds_actual_depth_registration_prefix_frames_and_real_uniformity(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part2-complete-native-component-header-application"},
+            framework._COMPONENT_HEADER_APPLICATION_CONTRACTS, 3,
         )
 
     def test_inventory_binds_actual_mct_all_numeric_bytes_rounding_limits_and_complete_array_fields(self):

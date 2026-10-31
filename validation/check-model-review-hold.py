@@ -10,6 +10,30 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "validation/reviewed-amendments.md"
 AMENDMENT_PROFILES = {
+    "main-component-finalization": frozenset({
+        "src/codestream/layout.rs", "src/codestream/coding_style.rs",
+        "src/codestream/quantization.rs", "src/codestream/proof_support.rs",
+        "src/codestream/tests.rs", "specs/mod.rs", "validation/framework.py",
+        "validation/normative-coverage.json", "validation/tests/test_framework.py",
+    }),
+    "sot-reader-marker": frozenset({
+        "src/codestream/tiles.rs", "src/codestream/reader.rs",
+        "src/codestream/proof_support.rs", "src/codestream/tests.rs", "specs/mod.rs",
+        "validation/framework.py", "validation/normative-coverage.json",
+        "validation/tests/test_framework.py",
+    }),
+    "decomposition-resolution": frozenset({
+        "src/codestream/decomposition.rs", "src/codestream/extensions.rs",
+        "src/codestream/coding_style.rs", "src/codestream/proof_support.rs",
+        "src/codestream/tests.rs", "specs/mod.rs", "validation/framework.py",
+        "validation/normative-coverage.json", "validation/tests/test_framework.py",
+    }),
+    "component-depth-registration": frozenset({
+        "src/codestream/layout.rs", "src/codestream/image_header.rs",
+        "src/codestream/tests.rs", "specs/mod.rs",
+        "validation/framework.py", "validation/normative-coverage.json",
+        "validation/tests/test_framework.py",
+    }),
     "tile-packet-admission": frozenset({
         "src/codestream/tiles.rs", "src/codestream/packet_headers.rs",
         "src/codestream/tests.rs", "specs/packet_input.rs",
