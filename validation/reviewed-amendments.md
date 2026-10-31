@@ -23,6 +23,7 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-197-tile-packet-admission` | Proposed exact seven-path actual PLT/PPT producer contracts, models and regressions; eligibility only | #197; original CI41135383976 / Verus41135383979; final refresh, full checks and separate source review required |
 | `proposal-198-component-depth-registration` | Proposed exact seven-path component-depth/registration application and physical uniformity; eligibility only | #198; original CI41144651127 / Verus41144651097; final refresh and separate source review required |
 | `proposal-200-decomposition-resolution` | Proposed exact nine-path actual DFS/ADS lookup, setter and owner-resolution contracts; eligibility only | #200; original CI41153180810 / Verus41153180822; final refresh and separate source review required |
+| `proposal-202-sot-reader-marker` | Proposed exact eight-path actual SOT reader and marker-admission Result/frame refinement; eligibility only | #202; original CI41252094188 / Verus41252094124; final refresh and separate source review required |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
@@ -32,6 +33,40 @@ No record permits unlisted model/proof Rust or controller changes, combined
 amendments, or changed verifier/dependency pins and resource caps. An explicitly
 adopted source-derived proof profile can admit only its exact listed additions;
 gate eligibility does not establish their correspondence with a standard.
+
+### Actual SOT reader and marker admission
+
+The proposed #202 record covers exactly the eight protected paths of
+`sot-reader-marker`, relative to accepted main
+`1d20c2425b61029755a78f65916f60dc26d93f7e`. All thirteen earlier registry
+objects remain unchanged. The fixed profile is already adopted; this is only
+its exact source record, not another controller operation or source approval.
+
+Held source `30102aad867548e6f07907f2db099f1072583650` passed original
+[CI41252094188](https://github.com/microsoft/jpeg2000_rs/actions/runs/41252094188)
+and [Verus41252094124](https://github.com/microsoft/jpeg2000_rs/actions/runs/41252094124):
+349 Python tests without skips, MSRV 685 library plus six example tests and
+three doctests, 3,535 verified/zero errors separately for the root and actual
+173-entry/157-Rust-file package archive, and all normal numerical, HT, consumer
+and resource gates. All 4,585 prior observed items plus six exact additions
+were retained. Existing jobs were strengthened without a net obligation-count
+increase; observed items and timing rows are not exhaustive function coverage.
+
+The sole executing SOT reader preserves segment-reader partial commits and
+the original marker/payload/count/length error order. Its full raw relation
+includes all returned tile-part fields and the final reader frame. Three
+executing marker predicates and four source-derived model definitions retain
+the exact old admission sets and reader behavior. No new format feature,
+normalized input premise, toolchain pin, trust or resource-limit change is
+authorized.
+
+This documentation-only proposal needs its own complete qualification and
+independent record review. Normal adoption and fresh actual-main acceptance
+must precede final #202 source refresh, fresh full gates and Ready policy,
+separate actual-source review, guarded merge and fresh actual-main source
+acceptance. The source remains draft and policy-held until those steps are
+satisfied. No whole public decoder, lifetime, official conformance or
+publication completion follows from the record.
 
 ### Actual decomposition lookup and owner resolution
 
@@ -1513,6 +1548,49 @@ not independent human/normative approval; no publication is authorized.
         "validation/tests/test_framework.py": {
           "before": "0f1269e3439de9ffd79b2bee610e9674dcb4f193",
           "after": "e31370e9ca7f27ae54f80b39fa1ac97f23d556af"
+        }
+      }
+    },
+    {
+      "id": "proposal-202-sot-reader-marker",
+      "profile": "sot-reader-marker",
+      "source_pr": 202,
+      "source_head": "30102aad867548e6f07907f2db099f1072583650",
+      "ci_run": 41252094188,
+      "verus_run": 41252094124,
+      "rationale": "Complete actual SOT Result and parser frame with source-derived exact marker-admission predicates, raw header fields, preserved error precedence and segment-reader partial commits. Existing models, pins, admission sets and caps unchanged. Eligibility only, not source integration, lifetime, normative or publication approval.",
+      "paths": {
+        "src/codestream/reader.rs": {
+          "before": "ebad4a7821322e99dfeeabed632b213ca8f2b4c2",
+          "after": "919bb9b17339dd840baea88a9db938e557dea11c"
+        },
+        "src/codestream/tiles.rs": {
+          "before": "8507fac5449134d6de3d312abf25a47cfcc08cc5",
+          "after": "f8c2abf6108357ff18816823f47f45c078fb0d48"
+        },
+        "src/codestream/proof_support.rs": {
+          "before": "aed8844b95b495da27add74d8c804e1c946adf5d",
+          "after": "6d50a37e0fb7c8b4ef622bb07e6594fe7955873a"
+        },
+        "src/codestream/tests.rs": {
+          "before": "5e7547b86070596dd64a38b90297ced7b4c2aaed",
+          "after": "aba72932ab810a90463c9795e642dd55a8cbfd6f"
+        },
+        "specs/mod.rs": {
+          "before": "9ef8b6a88ee07594c83e68629f1d59735725462b",
+          "after": "8ae9fac97ff55d537da1a4c765dc0721a619f93e"
+        },
+        "validation/framework.py": {
+          "before": "3ae67cfe274b84e8169ad97113a95199fdcf9cd5",
+          "after": "8bbb5258e27a611a4a0a29926113d7d4d1cdbf93"
+        },
+        "validation/normative-coverage.json": {
+          "before": "8469e4fd72db58d19d71fabf3b2d8d181764abfb",
+          "after": "5e0befd4bd0b07be56823da34f0c207956b12180"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "e31370e9ca7f27ae54f80b39fa1ac97f23d556af",
+          "after": "4c22aed6faff81a3ad5852769b2fd63c798efa05"
         }
       }
     }
