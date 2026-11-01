@@ -1031,6 +1031,30 @@ check every 16-bit marker, input admission and arbitrary cursor/resource/error
 states, including exact reader fields and payloads after failure. This is a
 real raw-byte producer milestone, not whole parser or conformance closure.
 
+## Actual raw SOT reader and source marker admission
+
+The existing `Parser::read_sot` composes the actual segment reader into a
+complete header-result/parser-state relation, without a supplied segment or
+normalized header premise. Reader failures precede SOT checks; segment work
+and cursor commits, error offsets, unused counters, input/limits and every
+returned header field are preserved. Tile counts remain raw `u64` values;
+zero part count and zero length retain their original bypasses.
+
+The three existing known/main/tile marker predicates bind exact source sets
+over all `u16` words. The already-proved standalone policy is reused, not
+reimplemented. Four additive nonrecursive models and two closed header-result
+projections add no independent SMT body jobs. The four actual executable
+contracts require positive SMT verification; frontend-only model selection
+is not a proof count.
+
+Native differential tests enumerate every marker word and tile index, all
+part-index/count pairs with selected length frontiers, raw cursor/work/limit
+and unused-counter states, truncations and payload lengths, and actual
+SOT/tile-header/SOD joins including the unchanged layout caller. These finite
+checks are not exhaustive source coverage or independent normative
+correspondence. Whole-parser/public/file decoding, lifetime verification,
+archive/root replay and conformance qualification remain separate.
+
 ## Complete native full and selected typed layout decoding
 
 Actual `typed_layout` now has a complete typed-image Result contract through

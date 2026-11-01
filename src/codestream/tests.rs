@@ -1,4 +1,5 @@
 use super::image_header::component_depths_uniform;
+use super::reader::{is_allowed_main_header, is_allowed_tile_header, is_known_segment_marker};
 use super::*;
 use crate::tier1::SubbandOrientation;
 
@@ -7977,6 +7978,304 @@ fn raw_packet_admission_state() -> PacketAdmissionState {
         header_bytes: 0,
         packet_count: 0,
     }
+}
+
+fn reference_sot_reader(
+    input: &[u8],
+    limits: &ResourceLimits,
+    state: &mut PacketAdmissionState,
+    tile_count: u64,
+) -> Result<(usize, u32, u16, u8, u8), DecodeError> {
+    let offset = state.position;
+    let malformed = |kind| input_error_literal(offset, kind);
+    let start = offset as u128;
+    if start + 2 > input.len() as u128 {
+        return Err(malformed(MalformedKind::Truncated));
+    }
+    let word = u16::from_be_bytes([input[offset], input[offset + 1]]);
+    if input[offset] != 255 || matches!(input[offset + 1], 0 | 255) {
+        return Err(malformed(MalformedKind::InvalidMarker));
+    }
+    let work = u128::from(state.work) + 1;
+    if work > u128::from(u64::MAX) {
+        return Err(malformed(MalformedKind::ArithmeticOverflow));
+    }
+    state.work = work as u64;
+    if state.work > limits.maximum_work_units() {
+        return Err(DecodeError::LimitExceeded {
+            resource: Resource::WorkUnits,
+            limit: limits.maximum_work_units(),
+            actual: state.work,
+        });
+    }
+    if [0xff4f, 0xff93, 0xffd9, 0xff92].contains(&word) {
+        return Err(malformed(MalformedKind::InvalidMarkerOrder));
+    }
+    if start + 4 > input.len() as u128 {
+        return Err(malformed(MalformedKind::Truncated));
+    }
+    let length = u16::from_be_bytes([input[offset + 2], input[offset + 3]]) as u128;
+    if length < 2 {
+        return Err(malformed(MalformedKind::InvalidMarkerLength));
+    }
+    let end = start + 2 + length;
+    if end > usize::MAX as u128 {
+        return Err(malformed(MalformedKind::ArithmeticOverflow));
+    }
+    if end > input.len() as u128 {
+        return Err(malformed(MalformedKind::Truncated));
+    }
+    state.position = end as usize;
+    let payload = &input[offset + 4..end as usize];
+    if word != 0xff90 || payload.len() != 8 {
+        return Err(malformed(MalformedKind::InvalidTilePart));
+    }
+    let tile = u16::from_be_bytes(payload[..2].try_into().unwrap());
+    let bytes = u32::from_be_bytes(payload[2..6].try_into().unwrap());
+    let (part, count) = (payload[6], payload[7]);
+    if u64::from(tile) >= tile_count || (count > 0 && part >= count) || (bytes > 0 && bytes < 14) {
+        return Err(malformed(MalformedKind::InvalidTilePart));
+    }
+    Ok((offset, bytes, tile, part, count))
+}
+
+fn assert_sot_reader_case(
+    input: &[u8],
+    limits: &ResourceLimits,
+    state: PacketAdmissionState,
+    tile_count: u64,
+) {
+    let mut parser = Parser {
+        input,
+        limits,
+        position: state.position,
+        work_units: state.work,
+        packet_length_bytes: state.header_bytes,
+        packet_lengths: state.packet_count,
+    };
+    let mut expected = state;
+    let result = reference_sot_reader(input, limits, &mut expected, tile_count);
+    assert_eq!(
+        parser.read_sot(tile_count).map(|header| (
+            header.start,
+            header.length,
+            header.tile_index,
+            header.tile_part_index,
+            header.tile_part_count,
+        )),
+        result
+    );
+    assert_packet_admission_state(&parser, expected, input, limits);
+}
+
+#[test]
+fn actual_marker_admission_matches_independent_complete_u16_policy_sets() {
+    let known = [
+        0xff50, 0xff51, 0xff52, 0xff53, 0xff55, 0xff56, 0xff57, 0xff58, 0xff59, 0xff5c, 0xff5d,
+        0xff5e, 0xff5f, 0xff60, 0xff61, 0xff63, 0xff64, 0xff72, 0xff73, 0xff74, 0xff75, 0xff76,
+        0xff77, 0xff78, 0xff79, 0xff90,
+    ];
+    let main = [
+        0xff50, 0xff52, 0xff53, 0xff55, 0xff56, 0xff57, 0xff59, 0xff5c, 0xff5d, 0xff5e, 0xff5f,
+        0xff60, 0xff63, 0xff64, 0xff72, 0xff73, 0xff74, 0xff75, 0xff76, 0xff77, 0xff78, 0xff79,
+    ];
+    let tile = [
+        0xff52, 0xff53, 0xff58, 0xff5c, 0xff5d, 0xff5e, 0xff5f, 0xff61, 0xff64, 0xff72, 0xff73,
+        0xff74, 0xff75, 0xff76, 0xff77, 0xff78, 0xff79,
+    ];
+    for marker in 0..=u16::MAX {
+        assert_eq!(is_known_segment_marker(marker), known.contains(&marker));
+        assert_eq!(is_allowed_main_header(marker), main.contains(&marker));
+        assert_eq!(is_allowed_tile_header(marker), tile.contains(&marker));
+    }
+}
+
+#[test]
+fn actual_sot_reader_preserves_all_marker_words_and_original_reader_errors() {
+    let limits = ResourceLimits::HARDENED;
+    let mut contexts = 0;
+    for marker in 0..=u16::MAX {
+        let input = segment(marker, &[0, 0, 0, 0, 0, 14, 0, 1]);
+        for work in [0, u64::MAX] {
+            assert_sot_reader_case(
+                &input,
+                &limits,
+                PacketAdmissionState {
+                    position: 0,
+                    work,
+                    header_bytes: u64::MAX,
+                    packet_count: u64::MAX,
+                },
+                1,
+            );
+            contexts += 1;
+        }
+    }
+    assert_eq!(contexts, 131_072);
+}
+
+#[test]
+fn actual_sot_reader_derives_every_tile_index_and_exact_tile_count_boundary() {
+    let limits = ResourceLimits::HARDENED;
+    let mut contexts = 0;
+    for index in 0..=u16::MAX {
+        let mut payload = index.to_be_bytes().to_vec();
+        payload.extend([0, 0, 0, 14, 0, 1]);
+        let input = segment(SOT, &payload);
+        for count in [
+            0,
+            1,
+            u64::from(index),
+            u64::from(index) + 1,
+            65_535,
+            65_536,
+            u64::MAX,
+        ] {
+            let mut state = raw_packet_admission_state();
+            state.position = 0;
+            assert_sot_reader_case(&input, &limits, state, count);
+            contexts += 1;
+        }
+    }
+    assert_eq!(contexts, 458_752);
+}
+
+#[test]
+fn actual_sot_reader_preserves_zero_count_length_bypasses_and_all_part_indexes() {
+    let limits = ResourceLimits::HARDENED;
+    let mut contexts = 0;
+    for part in 0..=u8::MAX {
+        for count in 0..=u8::MAX {
+            for length in [0_u32, 1, 13, 14, 15, 65_535, 65_536, u32::MAX] {
+                let mut payload = vec![0, 0];
+                payload.extend(length.to_be_bytes());
+                payload.extend([part, count]);
+                let input = segment(SOT, &payload);
+                let mut state = raw_packet_admission_state();
+                state.position = 0;
+                assert_sot_reader_case(&input, &limits, state, 1);
+                contexts += 1;
+            }
+        }
+    }
+    assert_eq!(contexts, 524_288);
+}
+
+#[test]
+fn actual_sot_reader_preserves_truncations_work_error_order_full_frames_and_real_sequence() {
+    let input = segment(SOT, &[0, 0, 0, 0, 0, 14, 0, 1]);
+    let mut contexts = 0;
+    for end in 0..=input.len() {
+        for position in [0, 1, 2, 12, 13, usize::MAX] {
+            for work in [0, 1, u64::MAX - 1, u64::MAX] {
+                for cap in [0, 1, 2, ResourceLimits::HARDENED.maximum_work_units()] {
+                    let limits = ResourceLimits::HARDENED
+                        .with_maximum_work_units(cap)
+                        .unwrap();
+                    for header_bytes in [0, u64::MAX] {
+                        for packet_count in [0, u64::MAX] {
+                            assert_sot_reader_case(
+                                &input[..end],
+                                &limits,
+                                PacketAdmissionState {
+                                    position,
+                                    work,
+                                    header_bytes,
+                                    packet_count,
+                                },
+                                u64::MAX,
+                            );
+                            contexts += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(contexts, 4_992);
+    for length in [0_u16, 1, 2, 9, 10, 11, u16::MAX] {
+        let mut bytes = input.clone();
+        bytes[2..4].copy_from_slice(&length.to_be_bytes());
+        let mut state = raw_packet_admission_state();
+        state.position = 0;
+        assert_sot_reader_case(&bytes, &ResourceLimits::HARDENED, state, 1);
+    }
+    for payload_len in (0..=16).chain([255, 65_533]) {
+        let bytes = segment(SOT, &vec![0; payload_len]);
+        let mut state = raw_packet_admission_state();
+        state.position = 0;
+        assert_sot_reader_case(&bytes, &ResourceLimits::HARDENED, state, 1);
+    }
+    let limits = ResourceLimits::HARDENED;
+    let mut sequence = vec![0x11, 0x22, 0x33];
+    sequence.extend(&input);
+    sequence.extend(segment(COM, &[0, 1, b'x']));
+    sequence.extend(SOD.to_be_bytes());
+    sequence.extend(segment(SOT, &[0, 1, 0, 0, 0, 0, u8::MAX, 0]));
+    let mut parser = new_parser(&sequence, &limits).unwrap();
+    parser.position = 3;
+    assert_eq!(
+        parser.read_sot(2).unwrap(),
+        TilePart {
+            start: 3,
+            length: 14,
+            tile_index: 0,
+            tile_part_index: 0,
+            tile_part_count: 1,
+        }
+    );
+    let comment = parser.read_segment().unwrap();
+    assert_eq!(
+        (comment.marker, comment.offset, comment.payload),
+        (COM, 15, &[0, 1, b'x'][..])
+    );
+    assert!(is_allowed_tile_header(comment.marker));
+    parser.expect_standalone(SOD).unwrap();
+    assert_eq!(
+        parser.read_sot(2).unwrap(),
+        TilePart {
+            start: 24,
+            length: 0,
+            tile_index: 1,
+            tile_part_index: u8::MAX,
+            tile_part_count: 0,
+        }
+    );
+    assert_packet_admission_state(
+        &parser,
+        PacketAdmissionState {
+            position: sequence.len(),
+            work: 4,
+            header_bytes: 0,
+            packet_count: 0,
+        },
+        &sequence,
+        &limits,
+    );
+    let data = [1, 2, 3];
+    let bytes = codestream_with_headers(
+        1,
+        &baseline_headers(),
+        &[segment(COM, &[0, 1, b'x'])],
+        &data,
+    );
+    let layout = parse_layout(&bytes, &limits).unwrap();
+    assert_eq!(layout.tile_parts.len(), 1);
+    let tile = &layout.tile_parts[0];
+    assert_eq!(
+        (
+            tile.tile_index,
+            tile.tile_part_index,
+            tile.tile_part_count,
+            tile.data
+        ),
+        (0, 0, 1, &data[..])
+    );
+    assert!(
+        bytes
+            .windows(tile.data.len())
+            .any(|window| core::ptr::eq(window.as_ptr(), tile.data.as_ptr()))
+    );
 }
 
 fn reference_packet_admission(
