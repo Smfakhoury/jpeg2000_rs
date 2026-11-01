@@ -1,6 +1,44 @@
+use super::{
+    Part1CodestreamReader, part1_codestream_find_eoc, part1_codestream_malformed,
+    part1_codestream_position,
+};
 use vstd::prelude::*;
 
 verus! {
+
+#[verifier::opaque]
+pub open spec fn part1_tile_data_window<'a>(
+    state: Part1CodestreamReader<'a>, data_start: usize, start: usize, length: u32,
+) -> (Result<(usize, Seq<u8>), crate::DecodeError>, Part1CodestreamReader<'a>)
+{
+    if length == 0 {
+        let searched = part1_codestream_find_eoc(state);
+        match searched.0 {
+            Err(error) => (Err(error), searched.1),
+            Ok(end) => {
+                let committed = part1_codestream_position(searched.1, end);
+                if data_start > end || end > committed.input.len() {
+                    (Err(part1_codestream_malformed(end, crate::MalformedKind::InvalidTilePart)), committed)
+                } else {
+                    (Ok((end, committed.input.subrange(data_start as int, end as int))), committed)
+                }
+            },
+        }
+    } else if length as int > usize::MAX {
+        (Err(part1_codestream_malformed(state.position, crate::MalformedKind::InvalidTilePart)), state)
+    } else if start as int + length as int > usize::MAX {
+        (Err(part1_codestream_malformed(state.position, crate::MalformedKind::ArithmeticOverflow)), state)
+    } else {
+        let end = (start + length as usize) as usize;
+        if end < state.position || end > state.input.len() {
+            (Err(part1_codestream_malformed(start, crate::MalformedKind::InvalidTilePart)), state)
+        } else if data_start > end || end > state.input.len() {
+            (Err(part1_codestream_malformed(state.position, crate::MalformedKind::InvalidTilePart)), state)
+        } else {
+            (Ok((end, state.input.subrange(data_start as int, end as int))), state)
+        }
+    }
+}
 
 pub enum Part1PackedHeaderSource {
     None,

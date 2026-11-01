@@ -950,6 +950,52 @@ class FrameworkTests(WorkingFiles):
             framework._CODESTREAM_READER_CONTRACTS, 10,
         )
 
+    def test_inventory_binds_actual_raw_tile_data_window_result_and_complete_reader_frame(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-tile-data-window"},
+            framework._TILE_DATA_WINDOW_CONTRACTS, 1,
+        )
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            entry for entry in coverage["requirements"]
+            if entry["id"] == "part1-complete-native-tile-data-window"
+        ]
+        model = next(
+            reference for reference in coverage["requirements"][0]["spec_refs"]
+            if reference["symbol"] == "part1_tile_data_window"
+        )
+        self.assertEqual(model["path"], "specs/packet_input.rs")
+        wrong_path = copy.deepcopy(coverage)
+        next(
+            reference for reference in wrong_path["requirements"][0]["spec_refs"]
+            if reference["symbol"] == "part1_tile_data_window"
+        )["path"] = "specs/mod.rs"
+        old_source = framework.ROOT / "specs/mod.rs"
+        old_text = old_source.read_text()
+        read_text = Path.read_text
+
+        def duplicate_model(path, *args, **kwargs):
+            return (old_text + "\npub open spec fn part1_tile_data_window() {}\n"
+                    if path == old_source else read_text(path, *args, **kwargs))
+
+        with mock.patch.object(Path, "read_text", duplicate_model), \
+                self.assertRaisesRegex(ValueError, "model must be bound to specs/packet_input.rs"):
+            framework.validate_normative_coverage(wrong_path)
+        source = framework.ROOT / "src/codestream/tiles.rs"
+        original = source.read_text()
+        read_text = Path.read_text
+        for projection in ["unlisted_outcome(result)", "result"]:
+            modified = original.replace("tile_data_window_outcome(result)", projection, 1)
+            self.assertNotEqual(modified, original)
+
+            def altered(path, *args, **kwargs):
+                return modified if path == source else read_text(path, *args, **kwargs)
+
+            with self.subTest(projection=projection), \
+                    mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_actual_raw_siz_full_geometry_and_component_payload_result(self):
         self._assert_complete_packet_contract_bindings(
             {"part1-complete-native-raw-siz-geometry"},

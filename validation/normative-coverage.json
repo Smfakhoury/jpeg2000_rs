@@ -86,6 +86,31 @@
       ]
     },
     {
+      "id": "part1-complete-native-tile-data-window",
+      "topic": "One actual executed tile-data range/slice producer on arbitrary raw reader state, data start, tile-part start and u32 length. Zero length reuses the fully contracted EOC scan, preserving its work and cursor partial failures, and commits end before slice lookup. Fixed length preserves conversion, checked addition, range-before-slice precedence, distinct original offsets, and never commits cursor. Both read_tile_part branches call this single implementation; existing contracted packet metadata finalizers retain original order, with the fixed cursor store only after both succeed. No SOT validity, cursor/range/admission premises, supplied end/data/results, new format checks, trust, budgets or resource-policy changes. Outer tile/header/public composition and normative qualification remain separate.",
+      "implementation_refs": [
+        {"path": "src/codestream/tiles.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream/tiles.rs", "symbol": "Parser::tile_data_window"}
+      ],
+      "spec_refs": [
+        {"path": "specs/packet_input.rs", "symbol": "part1_tile_data_window"},
+        {"path": "specs/mod.rs", "symbol": "part1_codestream_find_eoc"},
+        {"path": "specs/packet_input.rs", "symbol": "part1_finish_packet_lengths"},
+        {"path": "specs/packet_input.rs", "symbol": "part1_finish_packed_packet_headers"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream/tiles.rs", "symbol": "Parser::tile_data_window"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream/proof_support.rs", "symbol": "parser_view"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "tile_data_window_outcome"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream/tests.rs", "symbol": "actual_raw_tile_data_window_matches_independent_full_state_reference"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_tile_data_window_reader_joins_preserve_metadata_failure_cursor_order"}
+      ]
+    },
+    {
       "id": "part1-complete-native-packet-metadata-finalization",
       "topic": "Actual raw packet-length sum and full packet-length/packed-header final Results. Sum keeps None zero, raw Plt rejection at zero, actual Plm varint errors at their source positions and checked total overflow at zero. PLT overrides main only after genuine input bounds/slice; absent selected lengths skip all range/sum/logical-size checks, while present data derives the actual declared sum and checked data-plus-packed byte comparison in native error order. Raw counts/encoded-byte/source fields are not normalized. PPT zero fragments preserves every arbitrary main field even invalid supplied ranges; nonzero derives the exact borrowed input header, PPT marker, logical start, length and fragment fields. Independent full-reader frames and actual PLM/PPT producer-to-finisher regression; no prepared payload/results, validity premises, new trust/caps/pins/budgets or termination bypass. Actual PLT/PPT admission has its own row; outer main/tile/file/parser/F2/F4/F8 composition remains separate.",
       "implementation_refs": [
@@ -1204,6 +1229,7 @@
         {"path": "src/codestream/layout.rs", "symbol": "parse_layout"},
         {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
         {"path": "src/codestream/tiles.rs", "symbol": "Parser::read_tile_part"},
+        {"path": "src/codestream/tiles.rs", "symbol": "Parser::tile_data_window"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::read_segment"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::expect_standalone"},
         {"path": "src/codestream/tiles.rs", "symbol": "Parser::find_eoc"},
