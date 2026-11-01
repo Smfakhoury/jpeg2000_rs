@@ -15,6 +15,28 @@ contracts and models. Exact run counts and source/tool hashes belong in fresh
 CI artifacts, not committed result snapshots. Independent model-to-standard
 review and official conformance testing remain separate.
 
+## Proposed SOT reader and marker-admission record
+
+The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
+proposes only the exact eight protected paths of the independently adopted
+`sot-reader-marker` profile for #202. This branch adds no executing decoder,
+model, controller or test change. The proposed source refines the actual
+marker-admission predicates and SOT reader, retaining the complete Result,
+all tile-part header fields and the reader/input/limits/accounting frame.
+
+The source uses the actual segment reader before its original SOT marker,
+payload-length, tile-index, tile-part-count and declared-length checks.
+Malformed/error precedence, segment-reader partial commits and raw counts are
+preserved; no prepared reader result or normalized header is supplied.
+Its additive models and projections do not change earlier model meanings.
+
+Record adoption is eligibility only. After independent record review and
+normal adoption, #202 still requires a refresh from accepted main, fresh full
+source and actual archive qualification, a fresh Ready policy check,
+independent source review, guarded merge and fresh actual-main acceptance.
+This does not establish complete outer parsing, public image composition,
+Verus lifetime analysis, standards correspondence or publication readiness.
+
 ## Actual DFS/ADS decomposition resolution
 
 The decomposition resolver in `src/codestream/decomposition.rs` has a total
