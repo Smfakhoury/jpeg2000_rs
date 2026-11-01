@@ -21,6 +21,8 @@ mod tag_tree;
 pub use tag_tree::*;
 mod packet_input;
 pub use packet_input::*;
+mod layout_input;
+pub use layout_input::*;
 
 pub use crate::proofs::internal_specs::{
     part2_composition_layer_prefix_matches, part2_composition_layer_prefix_safe,

@@ -226,6 +226,62 @@ numerical, resource and evidence gates remain unchanged.
 Run the controller regressions with
 `python3 -m unittest validation.tests.test_model_review_hold -v`.
 
+## Actual layout SOC/SIZ prologue
+
+The sole `Parser::parse_layout` now calls the extracted
+`Parser::parse_layout_prologue` for exactly its original first operations:
+expect SOC, read the whole segment, require SIZ, parse SIZ, then obtain the
+main-header start. No check, charge, error constructor or executing order
+changes. The caller retains the original mutable image binding and all later
+main-header/layout orchestration.
+
+One additive, nonrecursive source-derived model in
+[`specs/layout_input.rs`](specs/layout_input.rs) composes the unchanged actual
+standalone-reader, segment-reader and SIZ contracts. The unconditional contract
+binds the complete raw result and full final reader to the initial reader,
+without valid-position, input-admission, budget-success or prepared-result
+premises. A closed result projection retains every ImageSize/component/unused
+array field, raw r_siz, main-header start and error. The parser view retains
+input, limits, cursor, work and both packet-accounting fields.
+
+SOC advances the cursor before charging; segment reading charges before order
+and length checks and commits its end before the SIZ gate or SIZ parsing.
+Those partial commits survive every later failure. The helper does not repeat
+the public initializer's input limit check, and accepts arbitrary private
+parser states, including out-of-range cursors and overflowing work counters.
+Wrong-marker errors use the segment start, not the committed reader end.
+
+Native/MSRV regressions replay the pre-extraction prologue using the existing
+separately tested reader/SIZ leaves, exhaust all first-marker, second-marker
+and length words under multiple budgets, and check arbitrary cursors/counters,
+every truncated prefix, input-admission bypass and borrowed input/limit
+identity. Independently constructed successful images cover all component
+slots, nonuniform descriptors, raw r_siz and the unconsumed main-header suffix;
+a real layout caller regression joins the helper to existing orchestration.
+Strict framework regressions reject weakened results, inputs, final frames,
+vacuous premises and missing actual callers. Behavior-changing controls must
+fail genuine SMT postconditions and these native regressions, not merely fail
+to compile.
+
+This is bounded source-derived engineering, not normative certification,
+independent model-to-standard review or official conformance. Existing models
+remain unchanged. The rest of the main/tile/layout parser, public decoder and
+F2/F4/F8 proof joins remain separate. Local proof replay uses the pristine
+pinned release through the existing read-only loader helper with its disclosed
+`--no-lifetime`; ordinary Rust checks enforce borrowing. Original logs, positive
+SMT rows and measured baseline/candidate module job counts belong in the local
+evidence, not a release attestation.
+
+The local refresh from `38b845cf3a89758aeb87b3ed55ff6188643c2ed4`
+onto accepted main `614f3509aac0117a5c171813bfa0578775e6dc37`
+retains that helper/model and the current SOT/DFS producers, physical component
+tails and existing inventory objects. Qualification must use freshly captured
+matched parent/candidate root and actual Cargo archive inputs, not historical
+summary counts. The original source, ancestors and evidence remain read-only.
+This candidate is LOCAL only: it does not change controller/profile/registry
+data, authorize GitHub writes, establish lifetime verification, or close
+standard/conformance, actual-main, SourceReady or publication requirements.
+
 ## Actual PLT/PPT tile packet admission
 
 The real `read_tile_part` PLT/PPT branches call extracted `Parser::parse_plt`
