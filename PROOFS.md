@@ -67,6 +67,11 @@ the complete error is returned and that internal owner is consumed, not staged
 or exposed as an alternate result. Raw counts, physical holes, positional
 indices and unused tails are not normalized.
 
+Earlier inventory requirement objects are retained exactly. Their named caller
+check may follow one owning-type finalizer stage only when both actual call
+edges and that stage's exact, premise-free total-Result contract are present.
+Removing either edge or weakening the intermediate contract fails closed.
+
 Fresh matched-parent/root/archive and focused proof evidence belongs in the
 local qualification receipt, not inferred from definition counts or earlier
 runs. Verification retains the pinned `--no-lifetime` boundary. This is a

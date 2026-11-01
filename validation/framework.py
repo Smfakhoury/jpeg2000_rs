@@ -2177,7 +2177,36 @@ def validate_normative_coverage(
         path: Path, caller: str, callee: str, *, require_caller_body: bool,
     ) -> bool:
         if require_caller_body:
-            return same_file_call(path, caller, callee, distinct_file=True)
+            if same_file_call(path, caller, callee, distinct_file=True):
+                return True
+            owner = caller.rsplit("::", 1)[0] if "::" in caller else None
+            for (relay_path, relay), binding in _MAIN_COMPONENT_FINALIZATION_CONTRACTS.items():
+                if owner is None or not relay.startswith(owner + "::"):
+                    continue
+                relay_short = relay.rsplit("::", 1)[-1]
+                if relay_short == callee or not same_file_call(
+                    path, caller, relay_short, distinct_file=True,
+                ):
+                    continue
+                resolved = (ROOT / relay_path).resolve()
+                header = function_header(resolved, relay)
+                if header is None or not same_file_call(
+                    resolved, relay, callee, distinct_file=True,
+                ):
+                    continue
+                text = source_text(resolved)
+                start = text.rfind("#[cfg_attr(verus_keep_ghost, verus_spec(", 0, header.start())
+                contract = text[start:header.start()] if start >= 0 else ""
+                model, projection, final_state, arguments = binding
+                # Preserve earlier caller objects through one actual, total-Result stage.
+                if final_state is None and re.search(
+                    r"\bverus_spec\(\s*(\w+)\s*=>\s*ensures\s+"
+                    + projection + r"\s*==\s*crate::specs::" + re.escape(model)
+                    + r"\s*\(\s*" + arguments + r"\s*,?\s*\)\s*,?\s*\)\)\]",
+                    contract,
+                ):
+                    return True
+            return False
         text = source_text(path)
         if re.fullmatch(r"\w+", callee) is None:
             return re.search(rf"\b{re.escape(callee)}\s*\(", text) is not None
