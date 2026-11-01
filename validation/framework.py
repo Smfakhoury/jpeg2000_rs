@@ -1404,6 +1404,15 @@ _SIZ_GEOMETRY_CONTRACTS = {
     ),
 }
 
+_TILE_DATA_WINDOW_CONTRACTS = {
+    ("src/codestream/tiles.rs", "Parser::tile_data_window"): (
+        "part1_tile_data_window", _coverage_call("tile_data_window_outcome", r"\1"),
+        _coverage_call("parser_view", _coverage_call("final", "self")),
+        _coverage_call("parser_view", _coverage_call("old", "self"))
+        + r"\s*,\s*data_start\s*,\s*start\s*,\s*length",
+    ),
+}
+
 _CODESTREAM_READER_CONTRACTS = {
     ("src/codestream/reader.rs", "new_parser"): (
         "part1_codestream_reader_new", _coverage_call("parser_initial_outcome", r"\1"), None, r"input\s*@\s*,\s*limits",
@@ -2655,6 +2664,7 @@ def validate_normative_coverage(
                 or _NONLINEAR_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TYPED_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _CODESTREAM_READER_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TILE_DATA_WINDOW_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SIZ_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _CODING_STYLE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_STYLE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
@@ -2694,6 +2704,10 @@ def validate_normative_coverage(
             )
             if header_contract:
                 expected_result_model = header_contract[0]
+            if (reference["path"], reference["symbol"]) in _TILE_DATA_WINDOW_CONTRACTS and {
+                "path": "specs/packet_input.rs", "symbol": "part1_tile_data_window",
+            } not in entry["spec_refs"]:
+                raise ValueError("tile-data window model must be bound to specs/packet_input.rs")
             if (reference["path"], reference["symbol"]) in (
                 ("src/tier1/coding.rs", "Tier1CodingStyle::set_force_high_throughput"),
                 ("src/tier1/contributions.rs", "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"),

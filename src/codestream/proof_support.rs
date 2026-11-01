@@ -665,6 +665,12 @@ verus! {
         match result { Err(error) => Err(error), Ok(parser) => Ok(parser_view(&parser)) }
     }
 
+    closed spec fn tile_data_window_outcome(result: Result<(usize, &[u8]), DecodeError>)
+        -> Result<(usize, Seq<u8>), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok((end, data)) => Ok((end, data@)) }
+    }
+
     closed spec fn segment_view(segment: Segment<'_>) -> crate::specs::Part1CodestreamSegment {
         crate::specs::Part1CodestreamSegment { marker: segment.marker, offset: segment.offset, payload: segment.payload@ }
     }

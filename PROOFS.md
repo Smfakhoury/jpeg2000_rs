@@ -302,6 +302,74 @@ described above; `read_tile_part`, layout/public decoder and F2/F4/F8 compositio
 remain separate; the executable caller reference is not a proof of those outer
 joins.
 
+## Actual tile-data window production
+
+`Parser::tile_data_window` is the single executed range/slice producer used by
+both `read_tile_part` branches. Its total source-derived model consumes the
+complete raw `parser_view`, explicit original data/start offsets and u32 length,
+without SOT, cursor, range or admission premises. The existing EOC contract
+derives zero-length scanning, including partial work/cursor updates and errors;
+the original end store precedes slice lookup. Fixed lengths retain conversion,
+checked addition, range-before-slice precedence and every original error offset,
+without storing the cursor. The actual caller still runs the existing contracted
+length/header finalizers in order and stores the fixed end only after both
+succeed. Payload construction and all other reader bodies are unchanged.
+
+The additive `part1_tile_data_window` model lives in `specs/packet_input.rs`;
+its actual helper contract and reveal resolve through the existing
+`crate::specs` re-export. Explicit imports reuse the root reader/EOC/frame
+models, without moving or changing any integrated models in `specs/mod.rs`.
+The inventory/framework bind this model to its exact packet-input source path;
+even a duplicate model at the former root path is rejected. This distinguishes
+the already-adopted fixed seven-path tile-data-window profile from the separate
+eight-path SOT scope; no amendment/profile authorization is made here.
+
+The result projection observes end and borrowed bytes, with every reader field
+on success and error. The explicit data offset also covers raw reversed or
+out-of-input slices; genuine callers pass their original current position.
+Independent wide-arithmetic/full-state tests exercise 200,000 contexts, including
+missing/first EOC, raw cursors, work limits/overflow, fixed boundaries/addition
+overflow, slice errors, untouched counters, and exact borrowed pointer identity.
+Four actual PLT/PPT/SOD reader joins distinguish successful and failing metadata
+finalization for zero/fixed lengths; four additional raw finalizer failures
+preserve the helper's resulting frame. Conversion failure is modeled but is not
+executable for u32-to-usize on the tested 64-bit targets.
+
+Original local evidence remains under ignored `target/tile-data-window/`.
+The source198-main refresh onto `313a1d089491fdc8e752d9e39546b6905b999469`
+is indexed by `refresh-313a1d0/index.json`: commands/logs, source/tool/binary hashes,
+source-inlining equivalence,
+two runtime/SMT positive controls and four assertion/SMT-rejected executing-helper
+mutants. Both Rust 1.93.1 and MSRV 1.88 rerun the two focused window tests;
+the original qualification's 668 library and six example tests remain indexed
+separately, not relabeled as refreshed full-suite results. Focused inventory
+binding/mutation tests, fmt and pinned-toolchain Clippy pass.
+MSRV Clippy with `-D warnings` retains the baseline's unrelated unknown
+`manual_is_multiple_of` lint; the same run with only unknown lints allowed passes.
+Pristine pinned Verus/Rust 1.98.1 verifies matching tile-module jobs 9 -> 10 and
+metadata-finalizer jobs 2 -> 2, and packet-input jobs 9 -> 9, with explicit
+nonzero successful SMT rows.
+These are focused counts, not whole-root/archive qualification; the existing
+`--no-lifetime` boundary is unchanged. Outer tile/header/public composition and
+normative qualification remain separate.
+
+The local additive refresh is based only on accepted main
+`2732fcb51d476d3665245dc59be4268ed796ed8a`, retaining the qualified
+`e609ff450080ff71b4897c667a8321907a061be4` helper/model and historical receipts.
+The current controller's 17 profiles and 14 reviewed-record objects are not
+changed. Record 205 adopts the separate SOT scope, not this window source or a
+window record; unaccepted SOT source is not incorporated. Fresh local receipts
+under `target/tile-window-current2732/index.json` bind the frozen current source,
+pristine whole-root and actual source-archive verification, focused native and
+source/caller/full-frame checks, and exact package membership and order.
+Historical focused counts above are not current whole-crate counts. Dependency
+reuse is limited to identical pinned third-party Cargo inputs; project outputs
+and proof-result caches are not reused. These technical checks retain
+`--no-lifetime` and do not establish whole-decoder correctness, lifetime
+verification, normative fidelity, publication readiness, or source/record
+approval. An accepted SOT integration requires an ancestry refresh before any
+separate window record pipeline; this candidate stops locally.
+
 ## Actual packet-length admission and PLM group production
 
 Actual packet-length admission binds its full parser state and result to the

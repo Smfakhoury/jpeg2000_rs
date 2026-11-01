@@ -16059,6 +16059,319 @@ fn actual_raw_reader_derives_marker_payload_cursor_work_and_partial_error_state(
     assert_eq!(state_cases, 1_808);
 }
 
+fn reference_tile_data_window(
+    input: &[u8],
+    limits: &ResourceLimits,
+    state: &mut PacketAdmissionState,
+    data_start: usize,
+    start: usize,
+    length: u32,
+) -> Result<(usize, Vec<u8>), DecodeError> {
+    let end = if length == 0 {
+        loop {
+            let Some(word) = input.get(state.position..).and_then(|tail| tail.get(..2)) else {
+                return Err(input_error_literal(
+                    state.position,
+                    MalformedKind::Truncated,
+                ));
+            };
+            let charged = u128::from(state.work) + 1;
+            if charged > u128::from(u64::MAX) {
+                return Err(input_error_literal(
+                    state.position,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+            state.work = charged as u64;
+            if state.work > limits.maximum_work_units() {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::WorkUnits,
+                    limit: limits.maximum_work_units(),
+                    actual: state.work,
+                });
+            }
+            if word == [255, 217] {
+                break state.position;
+            }
+            state.position += 1;
+        }
+    } else {
+        if u128::from(length) > usize::MAX as u128 {
+            return Err(input_error_literal(
+                state.position,
+                MalformedKind::InvalidTilePart,
+            ));
+        }
+        let wide = start as u128 + u128::from(length);
+        if wide > usize::MAX as u128 {
+            return Err(input_error_literal(
+                state.position,
+                MalformedKind::ArithmeticOverflow,
+            ));
+        }
+        let end = wide as usize;
+        if end < state.position || end > input.len() {
+            return Err(input_error_literal(start, MalformedKind::InvalidTilePart));
+        }
+        end
+    };
+    if data_start > end || end > input.len() {
+        return Err(input_error_literal(
+            state.position,
+            MalformedKind::InvalidTilePart,
+        ));
+    }
+    Ok((end, input[data_start..end].to_vec()))
+}
+
+#[test]
+fn actual_raw_tile_data_window_matches_independent_full_state_reference() {
+    let limits = [
+        ResourceLimits::HARDENED,
+        ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+        ResourceLimits::HARDENED.with_maximum_work_units(1).unwrap(),
+        ResourceLimits::HARDENED.with_maximum_work_units(2).unwrap(),
+        ResourceLimits::HARDENED
+            .with_maximum_input_bytes(0)
+            .unwrap(),
+    ];
+    let fixtures: &[&[u8]] = &[
+        &[],
+        &[255],
+        &[0],
+        &[255, 217],
+        &[0, 255, 217],
+        &[255, 0, 255, 217],
+        &[255, 217, 0, 255, 217],
+        &[1, 2, 3],
+    ];
+    let mut cases = 0;
+    let (mut successes, mut slice_errors, mut scans, mut overflows) = (0, 0, 0, 0);
+    for &input in fixtures {
+        for limit in &limits {
+            for position in [0, 1, input.len(), input.len() + 1, usize::MAX] {
+                for work in [0, 1, u64::MAX - 1, u64::MAX] {
+                    for (header_bytes, packet_count) in [(0, 0), (u64::MAX, 17)] {
+                        for data_start in [0, 1, input.len(), input.len() + 1, usize::MAX] {
+                            for start in [0, 1, input.len(), usize::MAX - 1, usize::MAX] {
+                                for length in [0, 1, 2, input.len() as u32, u32::MAX] {
+                                    let initial = PacketAdmissionState {
+                                        position,
+                                        work,
+                                        header_bytes,
+                                        packet_count,
+                                    };
+                                    let mut expected = initial;
+                                    let reference = reference_tile_data_window(
+                                        input,
+                                        limit,
+                                        &mut expected,
+                                        data_start,
+                                        start,
+                                        length,
+                                    );
+                                    let mut parser = Parser {
+                                        input,
+                                        limits: limit,
+                                        position,
+                                        work_units: work,
+                                        packet_length_bytes: header_bytes,
+                                        packet_lengths: packet_count,
+                                    };
+                                    let actual = parser.tile_data_window(data_start, start, length);
+                                    assert_eq!(
+                                        actual.map(|(end, data)| (end, data.to_vec())),
+                                        reference,
+                                        "position={position} start={start} length={length} data_start={data_start}"
+                                    );
+                                    assert_packet_admission_state(&parser, expected, input, limit);
+                                    if let Ok((end, data)) = actual {
+                                        assert!(core::ptr::eq(
+                                            data.as_ptr(),
+                                            input[data_start..end].as_ptr()
+                                        ));
+                                        successes += 1;
+                                    } else if actual
+                                        == Err(input_error_literal(
+                                            expected.position,
+                                            MalformedKind::InvalidTilePart,
+                                        ))
+                                        && (length == 0
+                                            || (start as u128 + u128::from(length)
+                                                <= input.len() as u128
+                                                && start as u128 + u128::from(length)
+                                                    >= position as u128))
+                                    {
+                                        slice_errors += 1;
+                                    }
+                                    if expected.position != initial.position {
+                                        scans += 1;
+                                    }
+                                    if matches!(
+                                        actual,
+                                        Err(DecodeError::MalformedInput {
+                                            kind: MalformedKind::ArithmeticOverflow,
+                                            ..
+                                        })
+                                    ) {
+                                        overflows += 1;
+                                    }
+                                    cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(cases, 200_000);
+    assert_eq!(
+        (successes, slice_errors, scans, overflows),
+        (7_720, 8_030, 2_100, 54_250)
+    );
+    eprintln!(
+        "tile window: cases={cases} success={successes} slice_errors={slice_errors} scans={scans} overflows={overflows}"
+    );
+}
+
+#[test]
+fn actual_tile_data_window_reader_joins_preserve_metadata_failure_cursor_order() {
+    let limits = ResourceLimits::HARDENED;
+    let mut joins = 0;
+    for zero_length in [false, true] {
+        for bad_lengths in [false, true] {
+            let mut input = vec![0x42, 0x43];
+            input.extend(segment(PLT, &[0, if bad_lengths { 2 } else { 3 }]));
+            input.extend(segment(PPT, &[0, 0xab]));
+            input.extend(SOD.to_be_bytes());
+            let data_start = input.len();
+            input.extend([0x12, 0x34]);
+            let end = input.len();
+            input.extend(EOC.to_be_bytes());
+            let mut parser = new_parser(&input, &limits).unwrap();
+            parser.position = 2;
+            let style = parser
+                .parse_cod(Segment {
+                    marker: COD,
+                    offset: 0,
+                    payload: &[0, 0, 0, 1, 0, 0, 2, 2, 0, 1],
+                })
+                .unwrap();
+            let quantization = Quantization::reversible_default(style);
+            let result = parser.read_tile_part(
+                TilePart {
+                    start: 1,
+                    length: if zero_length { 0 } else { (end - 1) as u32 },
+                    tile_index: 17,
+                    tile_part_index: 23,
+                    tile_part_count: 29,
+                },
+                (style, quantization),
+                ComponentCodingStyles::uniform(1, style).unwrap(),
+                ComponentQuantizations::uniform(1, quantization).unwrap(),
+                RoiShifts::none(),
+                ProgressionChanges::none(),
+                MctParameters {
+                    arrays: Vec::new(),
+                    records: Vec::new(),
+                    order: Vec::new(),
+                },
+                Part2Extensions::default(),
+                1,
+                PacketLengths::none(),
+                PackedPacketHeaders::none(),
+            );
+            if bad_lengths {
+                assert_eq!(
+                    result.err(),
+                    Some(input_error_literal(1, MalformedKind::InvalidPacketLength))
+                );
+            } else {
+                let (payload, _, _) = result.unwrap();
+                assert_eq!(
+                    (
+                        payload.tile_index,
+                        payload.tile_part_index,
+                        payload.tile_part_count
+                    ),
+                    (17, 23, 29)
+                );
+                assert_eq!(payload.data, [0x12, 0x34]);
+                assert!(core::ptr::eq(
+                    payload.data.as_ptr(),
+                    input[data_start..end].as_ptr()
+                ));
+                assert_eq!(payload.packet_lengths.packet_count(), 1);
+                assert_eq!(payload.packet_lengths.encoded_bytes(), 1);
+                assert_eq!(
+                    payload.packed_packet_headers.reassemble(&limits).unwrap(),
+                    [0xab]
+                );
+            }
+            assert_packet_admission_state(
+                &parser,
+                PacketAdmissionState {
+                    position: if zero_length || !bad_lengths {
+                        end
+                    } else {
+                        data_start
+                    },
+                    work: if zero_length { 8 } else { 5 },
+                    header_bytes: 2,
+                    packet_count: 1,
+                },
+                &input,
+                &limits,
+            );
+            joins += 1;
+        }
+    }
+    assert_eq!(joins, 4);
+
+    // Both metadata finalizers can fail after a successful raw window.
+    for length in [0, 4] {
+        let input = [0x12, 0x34, 255, 217];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let (_, data) = parser.tile_data_window(0, 0, length).unwrap();
+        let expected = PacketAdmissionState {
+            position: if length == 0 { 2 } else { 0 },
+            work: if length == 0 { 3 } else { 0 },
+            header_bytes: 0,
+            packet_count: 0,
+        };
+        assert_eq!(
+            parser.finish_packet_lengths(
+                usize::MAX,
+                0,
+                PacketLengths::none(),
+                true,
+                0,
+                0,
+                0,
+                data.len(),
+                0,
+                19,
+            ),
+            Err(input_error_literal(19, MalformedKind::InvalidTilePart))
+        );
+        assert_packet_admission_state(&parser, expected, &input, &limits);
+        assert_eq!(
+            parser.finish_packed_packet_headers(
+                usize::MAX,
+                0,
+                PackedPacketHeaders::none(),
+                1,
+                0,
+                23,
+            ),
+            Err(input_error_literal(23, MalformedKind::InvalidTilePart))
+        );
+        assert_packet_admission_state(&parser, expected, &input, &limits);
+    }
+    eprintln!("tile window joins: reader=4 raw_finalizer_failures=4");
+}
+
 #[test]
 fn progression_change_component_indexes_follow_csiz_width() {
     let limits = ResourceLimits::default();
