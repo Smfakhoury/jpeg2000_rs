@@ -9,7 +9,9 @@ use super::{
     Quantization, RGN, RoiShifts, SOD, SOT, TilePart, TilePartPayload,
 };
 #[cfg(verus_keep_ghost)]
-use super::{parser_view, tile_part_header_outcome, tile_part_owned_view};
+use super::{
+    parser_view, tile_data_window_outcome, tile_part_header_outcome, tile_part_owned_view,
+};
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 
@@ -427,12 +429,7 @@ impl<'a> Parser<'a> {
 
         let data_start = self.position;
         if tile_part.length == 0 {
-            let end = self.find_eoc()?;
-            self.position = end;
-            let data = self
-                .input
-                .get(data_start..end)
-                .ok_or_else(|| self.malformed_here(MalformedKind::InvalidTilePart))?;
+            let (_, data) = self.tile_data_window(data_start, tile_part.start, tile_part.length)?;
             let packet_lengths = self.finish_packet_lengths(
                 tile_header_start,
                 tile_header_end,
@@ -481,22 +478,7 @@ impl<'a> Parser<'a> {
             ));
         }
 
-        let tile_part_length = usize::try_from(tile_part.length)
-            .map_err(|_| self.malformed_here(MalformedKind::InvalidTilePart))?;
-        let end = tile_part
-            .start
-            .checked_add(tile_part_length)
-            .ok_or_else(|| self.malformed_here(MalformedKind::ArithmeticOverflow))?;
-        if end < self.position || end > self.input.len() {
-            return Err(DecodeError::malformed(
-                self.offset(tile_part.start),
-                MalformedKind::InvalidTilePart,
-            ));
-        }
-        let data = self
-            .input
-            .get(data_start..end)
-            .ok_or_else(|| self.malformed_here(MalformedKind::InvalidTilePart))?;
+        let (end, data) = self.tile_data_window(data_start, tile_part.start, tile_part.length)?;
         let packet_lengths = self.finish_packet_lengths(
             tile_header_start,
             tile_header_end,
@@ -544,6 +526,65 @@ impl<'a> Parser<'a> {
             mct_parameters,
             part2_extensions,
         ))
+    }
+
+    #[cfg_attr(verus_keep_ghost, verifier::spinoff_prover)]
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (tile_data_window_outcome(result), parser_view(final(self)))
+            == crate::specs::part1_tile_data_window(parser_view(old(self)), data_start, start, length),
+    ))]
+    pub(super) fn tile_data_window(
+        &mut self,
+        data_start: usize,
+        start: usize,
+        length: u32,
+    ) -> Result<(usize, &'a [u8]), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(tile_data_window_outcome);
+            reveal(parser_view);
+            reveal(crate::specs::part1_tile_data_window);
+        }
+        if length == 0 {
+            let end = self.find_eoc()?;
+            self.position = end;
+            let data = self.input.get(data_start..end).ok_or_else(
+                #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                        ensures error == crate::specs::part1_codestream_malformed(
+                            self.position, MalformedKind::InvalidTilePart),
+                    ))]
+                || self.malformed_here(MalformedKind::InvalidTilePart),
+            )?;
+            return Ok((end, data));
+        }
+        let tile_part_length = usize::try_from(length).map_err(
+            #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                ensures error == crate::specs::part1_codestream_malformed(
+                    self.position, MalformedKind::InvalidTilePart),
+            ))]
+            |_error| self.malformed_here(MalformedKind::InvalidTilePart),
+        )?;
+        let end = start.checked_add(tile_part_length).ok_or_else(
+            #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                ensures error == crate::specs::part1_codestream_malformed(
+                    self.position, MalformedKind::ArithmeticOverflow),
+            ))]
+            || self.malformed_here(MalformedKind::ArithmeticOverflow),
+        )?;
+        if end < self.position || end > self.input.len() {
+            return Err(DecodeError::malformed(
+                self.offset(start),
+                MalformedKind::InvalidTilePart,
+            ));
+        }
+        let data = self.input.get(data_start..end).ok_or_else(
+            #[cfg_attr(verus_keep_ghost, verus_spec(error: DecodeError =>
+                ensures error == crate::specs::part1_codestream_malformed(
+                    self.position, MalformedKind::InvalidTilePart),
+            ))]
+            || self.malformed_here(MalformedKind::InvalidTilePart),
+        )?;
+        Ok((end, data))
     }
 
     #[cfg_attr(verus_keep_ghost, verus_spec(result =>
