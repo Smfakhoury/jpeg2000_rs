@@ -15,6 +15,32 @@ contracts and models. Exact run counts and source/tool hashes belong in fresh
 CI artifacts, not committed result snapshots. Independent model-to-standard
 review and official conformance testing remain separate.
 
+## Proposed exact main-component finalizer record
+
+The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
+proposes only the nine protected paths of the existing
+`main-component-finalization` profile for #208. This record branch changes
+documentation only; the fifteen existing records, seventeen profiles,
+decoder/model source, pins and resource caps are unchanged.
+
+The exact source amendment is measured against accepted main
+`6d613158e0d5b0908908cb93f1a1846b77beab9e`. Its held technical source is
+`adeaaa3b0129c4f5030222384c210cf25c22f950`, with original CI
+`41362592419` and Verus `41362592321`. Every protected regular-file Git blob
+pair is included, not a subset or an authorization for a combined amendment.
+
+The proposed source refines the actual main component style/quantization
+finalizers, raw owner lookup, ordered updates, errors and full parser frames.
+It preserves the accepted tile-data window and all earlier model meanings.
+It does not prove complete main-header traversal, inherited tile configuration,
+raw public decoding, lifetime analysis or normative correspondence.
+
+Record adoption provides eligibility only. After separate record review,
+normal guarded adoption and fresh actual-main acceptance, #208 still requires
+refreshed source ancestry, fresh gates and Ready hold, separate actual-source
+review, normal guarded merge and fresh main acceptance. This record is not
+source approval, official conformance qualification or publication completion.
+
 ## Proposed exact tile-data-window record
 
 The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
