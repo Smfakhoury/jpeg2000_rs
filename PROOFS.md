@@ -15,6 +15,29 @@ contracts and models. Exact run counts and source/tool hashes belong in fresh
 CI artifacts, not committed result snapshots. Independent model-to-standard
 review and official conformance testing remain separate.
 
+## Proposed exact tile-data-window record
+
+The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
+proposes only the seven protected paths of the already adopted
+`tile-data-window` profile for #206. This branch changes documentation only,
+not any executing body, model, controller, test, pin or resource limit.
+
+The proposed source factors the two actual tile-data range paths into one
+executing helper with a complete Result/final-reader relation. It preserves
+the zero-length path's early cursor commit before packet metadata errors and
+the fixed-length path's late commit after both metadata finalizers succeed.
+Raw length/start/range failures, partial updates and all reader accounting
+fields retain their original behavior; no normalized input or supplied range
+result is introduced.
+
+The additive model remains in the existing packet input module, preserving
+the independent seven-path profile rather than changing the SOT model scope.
+Normal record adoption and fresh main acceptance provide eligibility only.
+Refreshed full source/archive gates, fresh Ready policy, independent source
+review, guarded merge and fresh actual-main source acceptance remain required.
+No whole public decoder, Verus lifetime analysis, standards correspondence,
+official conformance or publication completion is established here.
+
 ## Proposed SOT reader and marker-admission record
 
 The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
