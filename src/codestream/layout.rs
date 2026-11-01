@@ -7,10 +7,10 @@ use super::profile::classify_codestream_profile;
 use super::reader::{is_allowed_main_header, is_known_segment_marker, new_parser};
 use super::{
     ADS, ATK, CAP, CBD, COC, COD, CPF, CRG, CodestreamInfo, CodestreamLayout,
-    ComponentCodingStyles, ComponentQuantizations, DFS, DecodeError, EOC, MAX_COMPONENTS, MCC, MCO,
-    MCT, MalformedKind, MctParameters, NLT, PLM, POC, PPM, PRF, PackedPacketHeaderSource,
-    PackedPacketHeaders, PacketLengths, Parser, Part2Extensions, ProgressionChanges, QCC, QCD, RGN,
-    Resource, ResourceLimits, RoiShifts, SIZ, SOC, SOT, TLM, TilePartPayload,
+    ComponentQuantizations, DFS, DecodeError, EOC, MAX_COMPONENTS, MCC, MCO, MCT, MalformedKind,
+    MctParameters, NLT, PLM, POC, PPM, PRF, PackedPacketHeaderSource, PackedPacketHeaders,
+    PacketLengths, Parser, Part2Extensions, ProgressionChanges, QCC, QCD, RGN, Resource,
+    ResourceLimits, RoiShifts, SIZ, SOC, SOT, TLM, TilePartPayload,
 };
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
@@ -283,64 +283,18 @@ impl<'a> Parser<'a> {
         let qcd_segment = qcd_segment
             .ok_or_else(|| DecodeError::malformed(0, MalformedKind::MissingRequiredStructure))?;
         let quantization = parser.parse_qcd(qcd_segment, coding_style)?;
-        let mut component_coding_styles =
-            ComponentCodingStyles::new(image_size.components, coding_style)?;
-        let mut component = 0_u16;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component <= image_size.components,
-                decreases image_size.components - component,
-            )
-        )]
-        while component < image_size.components {
-            let coc_segment = match coc_segments.get(usize::from(component)) {
-                Some(segment) => *segment,
-                None => None,
-            };
-            if let Some(segment) = coc_segment {
-                let (_, style) = parser.parse_coc(segment, image_size.components, coding_style)?;
-                component_coding_styles.set(component, style)?;
-            }
-            component = component
-                .checked_add(1)
-                .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
-        }
-        parser.resolve_decomposition_structures(&mut component_coding_styles, &part2_extensions)?;
-        let mut component_quantizations =
-            ComponentQuantizations::new(image_size.components, quantization)?;
-        component = 0;
-        #[cfg_attr(
-            verus_keep_ghost,
-            verus_spec(
-                invariant component <= image_size.components,
-                decreases image_size.components - component,
-            )
-        )]
-        while component < image_size.components {
-            let qcc_segment = match qcc_segments.get(usize::from(component)) {
-                Some(segment) => *segment,
-                None => None,
-            };
-            if let Some(segment) = qcc_segment {
-                let style = component_coding_styles.style(component)?;
-                let (_, component_quantization) =
-                    parser.parse_qcc(segment, image_size.components, style)?;
-                component_quantizations.set(component, component_quantization)?;
-            }
-            if !component_quantizations
-                .quantization(component)?
-                .is_compatible_with(component_coding_styles.style(component)?)
-            {
-                return Err(DecodeError::malformed(
-                    0,
-                    MalformedKind::InvalidQuantization,
-                ));
-            }
-            component = component
-                .checked_add(1)
-                .ok_or_else(|| parser.malformed_here(MalformedKind::ArithmeticOverflow))?;
-        }
+        let component_coding_styles = parser.finish_main_component_styles(
+            image_size.components,
+            coding_style,
+            &coc_segments,
+            &part2_extensions,
+        )?;
+        let component_quantizations = parser.finish_main_component_quantizations(
+            image_size.components,
+            quantization,
+            &component_coding_styles,
+            &qcc_segments,
+        )?;
         parser.validate_progression_changes(
             &progression_changes,
             coding_style.layers,

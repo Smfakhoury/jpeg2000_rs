@@ -1008,6 +1008,41 @@ class FrameworkTests(WorkingFiles):
             framework._DECOMPOSITION_RESOLUTION_CONTRACTS, 5,
         )
 
+    def test_inventory_binds_actual_main_component_factories_finalizers_and_complete_results(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-main-component-finalization"},
+            framework._MAIN_COMPONENT_FINALIZATION_CONTRACTS, 6,
+        )
+
+    def test_inventory_requires_actual_layout_calls_to_both_main_component_finalizers(self):
+        original = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        entry = next(item for item in original["requirements"]
+                     if item["id"] == "part1-complete-native-main-component-finalization")
+        source = framework.ROOT / "src/codestream/layout.rs"
+        native = source.read_text()
+        read_text = Path.read_text
+        for symbol in ("finish_main_component_styles", "finish_main_component_quantizations"):
+            coverage = copy.deepcopy(original)
+            isolated = copy.deepcopy(entry)
+            reference = next(ref for ref in isolated["contract_refs"]
+                             if ref["symbol"] == f"Parser::{symbol}")
+            isolated["contract_refs"] = [reference]
+            isolated["proof_refs"] = [reference]
+            isolated["implementation_refs"] = [
+                {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
+            ]
+            coverage["requirements"] = [isolated]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            changed = native.replace(f"parser.{symbol}(", f"parser.unlisted_{symbol}(", 1)
+            self.assertNotEqual(native, changed)
+
+            def altered(path, *args, **kwargs):
+                return changed if path == source else read_text(path, *args, **kwargs)
+
+            with self.subTest(symbol=symbol), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_raw_cbd_partial_depth_prefix_and_complete_owner_frames(self):
         self._assert_complete_packet_contract_bindings(
             {"part2-complete-native-raw-component-depth-bytes"},
