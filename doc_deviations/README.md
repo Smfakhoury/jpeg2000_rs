@@ -7,6 +7,52 @@ This folder is self-contained for review: actual test sources, native traces,
 build recipes, portable reproduction archives and upstream licenses are included.
 No live DeepSpec database or copyrighted standards document is included.
 
+## Independently reproduce from this repository
+
+Requirements: Linux, Python 3.12+, Git, Bash/sh, `patch`, and Rust/Cargo 1.93.1
+through rustup. Allow several GiB of temporary build space. Cargo may download
+the normal locked dependencies on first use; no model service is contacted.
+
+From the repository root:
+
+```sh
+rustup toolchain install 1.93.1 --profile minimal
+python3 doc_deviations/verify.py --check
+python3 doc_deviations/verify.py --all --output ../jpeg2000-deviation-results
+```
+
+`--check` verifies all five archive hashes and checks the unpacked evidence
+against the sealed originals. `--all` runs every packaged finding, including the
+separately qualified U1, sequentially in disposable source trees. It does not
+modify production files in your checkout. The aggregate `report.json`, child
+reports, build logs and complete native output are saved in the new output
+directory. A zero exit means **the specified failures reproduced**, not that the
+decoder passed conformance tests. Missing cases, unexpected passes, different
+failures, build errors and timeouts cannot produce success.
+
+For a smaller selection:
+
+```sh
+python3 doc_deviations/verify.py --finding F31 --output ../vbas-results
+python3 doc_deviations/verify.py --finding T1 --finding T2 --output ../transform-results
+python3 -m unittest discover -s doc_deviations -p test_verify.py
+```
+
+Use a new output directory for each run. The Git checkout must contain commit
+`69fe0bce9024ab5a4cb6556e3ebdf91134324148`; a shallow clone may require fetching
+that commit first. Reproduction intentionally uses that revision, not arbitrary
+local changes or a newer decoder revision. Inspect the linked test assertions,
+fixtures, registration patches and recipes to evaluate the oracles independently.
+These scripts execute native builds/tests and are **not a sandbox**.
+
+The complete entry point was independently rerun on November 2, 2026:
+all five components reproduced their expected failures. See the
+[fresh aggregate report](verification/report.json) and
+[verification notes](verification/README.md) for the complete logs and counting
+distinctions. All eight entry-point regression checks pass.
+
+## Review results and limits
+
 **33 curated test-backed review rows, plus one separately qualified unit witness.**
 These are not 33 certified defects or universal MUST violations. The 92 failed
 generated cases also include overlapping observations, candidates and

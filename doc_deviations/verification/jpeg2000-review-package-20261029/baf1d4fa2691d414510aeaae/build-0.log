@@ -1,0 +1,4 @@
+patching file src/jpip.rs
+   Compiling jpeg2000_rs v0.1.0 (/home/sfakhoury/.copilot/session-state/3616dccb-c271-4597-9bee-9739f2e96b70/files/jpeg2000-independent-review-20261102/jpeg2000-review-package-20261029/.work/baf1d4fa2691d414510aeaae-7q9t2o8z/source)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.23s
+  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)

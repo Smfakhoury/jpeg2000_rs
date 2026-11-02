@@ -1,0 +1,50 @@
+
+running 1 test
+test jp2::tests::spec_cdef_separates_channel_and_colour_domains ... unit route BoxReader -> parse_channel_definition: channels=1, N=3, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=1, N=4, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=1, N=4, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=1, N=4, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=2, N=4, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=2, N=5, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=2, N=5, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=2, N=5, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=3, N=5, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=3, N=5, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=3, N=5, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=3, N=6, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=3, N=6, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=3, N=6, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=4, N=6, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=4, N=6, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=4, N=6, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=4, N=7, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=4, N=7, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=4, N=7, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=8, N=10, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=8, N=10, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=8, N=10, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=8, N=11, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=8, N=11, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=8, N=11, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=64, N=66, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=64, N=66, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=64, N=66, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=64, N=67, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=64, N=67, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+unit route BoxReader -> parse_channel_definition: channels=64, N=67, RGB, unsigned, direct component mapping, base=73, cdef_offset=37
+
+thread 'jp2::tests::spec_cdef_separates_channel_and_colour_domains' (66244) panicked at src/jp2.rs:3958:9:
+channels=1: RGB colour indices 1,2,3 must be retained independently of channel count: Err(MalformedInput { offset: 110, kind: InvalidBoxContents })
+last valid channel 0, channels=1: Err(MalformedInput { offset: 110, kind: InvalidBoxContents })
+channels=2: RGB colour indices 1,2,3 must be retained independently of channel count: Err(MalformedInput { offset: 110, kind: InvalidBoxContents })
+last valid channel 1, channels=2: Err(MalformedInput { offset: 110, kind: InvalidBoxContents })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    jp2::tests::spec_cdef_separates_channel_and_colour_domains
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.00s
+

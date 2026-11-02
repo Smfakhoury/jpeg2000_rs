@@ -1,0 +1,4 @@
+patching file src/jpip.rs
+Hunk #2 succeeded at 5803 (offset 2 lines).
+   Compiling jpeg2000_rs v0.1.0 (/home/sfakhoury/.copilot/session-state/3616dccb-c271-4597-9bee-9739f2e96b70/files/jpeg2000-independent-review-20261102/jpeg2000-review-package-20261029/.work/32cc62dbf63c6da1321051c0-ieih6ysy/source)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.58s

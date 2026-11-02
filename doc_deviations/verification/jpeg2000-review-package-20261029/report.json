@@ -1,0 +1,1278 @@
+{
+  "revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "selected_findings": [
+    "F01",
+    "F02",
+    "F03",
+    "F04",
+    "F05",
+    "F06",
+    "F07",
+    "F08",
+    "F09",
+    "F10",
+    "F11",
+    "F12",
+    "F13",
+    "F14",
+    "F15",
+    "F16",
+    "F17",
+    "F18",
+    "F19",
+    "F20",
+    "F21",
+    "F22",
+    "F23",
+    "F24",
+    "F25",
+    "F26",
+    "F27"
+  ],
+  "started_at": "20261102T190859Z",
+  "suites": [
+    {
+      "suite": "2bbb4b7f6d9814081dc6d341",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "validation/build_nonlinear_lookup_contract.py"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.504,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "efad0ebad5f0e363d0ab2122",
+          "findings": [
+            "F01"
+          ],
+          "argv": [
+            "target/nonlinear-lookup-contract",
+            "--exact",
+            "codestream::tests::nonlinear_lookup_standard_header_precedence",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.008,
+          "log": "efad0ebad5f0e363d0ab2122.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "c7779586ba7e5308becdb3ab",
+      "build": [
+        {
+          "argv": [
+            "bash",
+            "-c",
+            "set -e; patch --batch --fuzz=0 -p1 < validation/plm-standard-tests.patch; cargo test --locked --lib --no-run; for binary in target/debug/deps/jpeg2000_rs-*; do if [ -f \"$binary\" ] && [ -x \"$binary\" ]; then cp \"$binary\" target/plm-standard-tests; exit 0; fi; done; exit 127"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.305,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "b062a512e7267bca1f14bad8",
+          "findings": [
+            "F02"
+          ],
+          "argv": [
+            "target/plm-standard-tests",
+            "codestream::tests::standard_plm::standard_plm_octet_counts_and_wire_order",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.033,
+          "log": "b062a512e7267bca1f14bad8.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "a352b8922cbf51067edebe9c",
+      "build": [
+        {
+          "argv": [
+            "bash",
+            "-c",
+            "printf '\\ninclude!(\"resolve_mct_contract.rs\");\\n' >> src/codestream/tests.rs && cargo test --locked --lib --no-run --target-dir target/deepspec-mct"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.0,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "87e93cf11efec2e559bb6034",
+          "findings": [
+            "F03"
+          ],
+          "argv": [
+            "bash",
+            "-c",
+            "for bin in target/deepspec-mct/debug/deps/jpeg2000_rs-*; do if test -x \"$bin\" && ! test -d \"$bin\"; then exec \"$bin\" --exact codestream::tests::resolve_mct_collection_clause_7ca4daea --nocapture; fi; done; exit 2"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.115,
+          "log": "87e93cf11efec2e559bb6034.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "9a82786057472396f5b9ef42",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "validation/read-tile-part-contract.py",
+            "build"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.752,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "db69a93bf86d084071e11986",
+          "findings": [
+            "F04"
+          ],
+          "argv": [
+            "python3",
+            "validation/read-tile-part-contract.py",
+            "run",
+            "plm_plt"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "db69a93bf86d084071e11986.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "19e89c8564c4bcac4d2588b1",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "import json, shutil, subprocess, sys\np = subprocess.run(['cargo', 'test', '--lib', '--no-run', '--message-format=json'], stdout=subprocess.PIPE, text=True)\nif p.returncode:\n    print(p.stdout)\n    sys.exit(p.returncode)\nartifacts = [json.loads(line) for line in p.stdout.splitlines() if line.startswith('{')]\n[executable] = [a['executable'] for a in artifacts if a.get('reason') == 'compiler-artifact' and a.get('executable') and a['target']['name'] == 'jpeg2000_rs' and a['profile']['test']]\nshutil.copy2(executable, 'target/typed-layout-contract')"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.651,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "43212f9b85589508f443ca6f",
+          "findings": [
+            "F05"
+          ],
+          "argv": [
+            "target/typed-layout-contract",
+            "decode::typed_layout_contract_tests::typed_layout_inverse_nlt_after_reconstruction_preserves_geometry",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "43212f9b85589508f443ca6f.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "166619668a5d7e448c6c7ed7",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--forward",
+            "-p1",
+            "-i",
+            "validation/crg-context-tests.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.008,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "--no-run",
+            "--target-dir",
+            "target/deepspec-crg"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.001,
+          "log": "build-1.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "cc6701332d6429318af1632c",
+          "findings": [
+            "F06"
+          ],
+          "argv": [
+            "python3",
+            "-c",
+            "import os, subprocess; from pathlib import Path; binaries = [p for p in Path('target/deepspec-crg/debug/deps').glob('jpeg2000_rs-*') if p.is_file() and os.access(p, os.X_OK)]; assert len(binaries) == 1, binaries; name = 'decode::tests::selected_color_context_uses_crg_component_separation'; assert name + ': test' in subprocess.check_output([str(binaries[0]), '--list'], text=True).splitlines(); os.execv(str(binaries[0]), [str(binaries[0]), '--exact', name, '--nocapture'])"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.215,
+          "log": "cc6701332d6429318af1632c.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "dcdc31654724c4c2ad030fd2",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "from pathlib import Path; p=Path('src/decode.rs'); s=p.read_text(); anchor='#[cfg(test)]\\nmod tests {\\n'; assert s.count(anchor)==1; p.write_text(s.replace(anchor, anchor+'    mod jph_contract;\\n', 1))"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--locked",
+            "--no-run"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.2,
+          "log": "build-1.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "debd9f4cb2047d9570f27b9b",
+          "findings": [
+            "F07"
+          ],
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--locked",
+            "decode::tests::jph_contract::typed_planes_independent_of_colour_conversion",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "debd9f4cb2047d9570f27b9b.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "56c3811ca88c040d23aa7d2a",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "validation/build-jp2-header-spec-tests.py"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 15.102,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "349f62632c2048a190657687",
+          "findings": [
+            "F08"
+          ],
+          "argv": [
+            "target/jp2-header-spec-tests",
+            "--exact",
+            "jp2::tests::spec_header_ignores_later_colour_semantics",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.008,
+          "log": "349f62632c2048a190657687.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "d558f26e6e40b685f1a86c0c",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--forward",
+            "-p1",
+            "-i",
+            "cdef-spec-tests.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "sh",
+            "-eu",
+            "-c",
+            "grep -Fq 'fn spec_cdef_retains_every_admitted_description()' src/jp2.rs; grep -Fq 'fn spec_cdef_separates_channel_and_colour_domains()' src/jp2.rs; grep -Fq 'failures.join(\"\\n\")' src/jp2.rs; cargo test --lib --locked --no-run --target-dir target/deepspec-cdef; set -- $(find target/deepspec-cdef/debug/deps -maxdepth 1 -type f -name 'jpeg2000_rs-*' -executable); test \"$#\" -eq 1; cp \"$1\" target/deepspec-cdef/cdef-tests; target/deepspec-cdef/cdef-tests --list | grep -Fx 'jp2::tests::spec_cdef_retains_every_admitted_description: test'; target/deepspec-cdef/cdef-tests --list | grep -Fx 'jp2::tests::spec_cdef_separates_channel_and_colour_domains: test'"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.904,
+          "log": "build-1.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "93c8c78793c85a4f283ead83",
+          "findings": [
+            "F09"
+          ],
+          "argv": [
+            "target/deepspec-cdef/cdef-tests",
+            "--exact",
+            "jp2::tests::spec_cdef_separates_channel_and_colour_domains",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.008,
+          "log": "93c8c78793c85a4f283ead83.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "ea8d9c3e31baf68e430c41aa",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--forward",
+            "-p1",
+            "-i",
+            "jp2-spec-registration.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "python3",
+            "validation/jp2_spec_runner.py",
+            "build"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.254,
+          "log": "build-1.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "e68962b8c90cb4b6836ef844",
+          "findings": [
+            "F10"
+          ],
+          "argv": [
+            "python3",
+            "validation/jp2_spec_runner.py",
+            "spec_later_jp2_codestreams_preserve_first_display"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "e68962b8c90cb4b6836ef844.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        },
+        {
+          "case": "68574d962e014b599022f579",
+          "findings": [
+            "F25"
+          ],
+          "argv": [
+            "python3",
+            "validation/jp2_spec_runner.py",
+            "spec_signature_first_fixed_and_unique"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.064,
+          "log": "68574d962e014b599022f579.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        },
+        {
+          "case": "1732b85cde6699859e0f568a",
+          "findings": [
+            "F25"
+          ],
+          "argv": [
+            "python3",
+            "validation/jp2_spec_runner.py",
+            "spec_file_type_immediate_and_unique"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.064,
+          "log": "1732b85cde6699859e0f568a.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "5419dc777157dc2a298419c7",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--forward",
+            "-p1",
+            "-i",
+            "tests/jpip-context-registration.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "from pathlib import Path; s=Path('src/jpip.rs').read_text(); t=Path('src/jpip_header_context_contract_tests.rs').read_text(); assert s.count('include!(\"jpip_header_context_contract_tests.rs\");') == 1; assert 'fn fresh_header_context_preserves_absence_and_independent_standard_history()' in t; assert 'fn parses_all_three_standard_header_forms_and_auxiliary()' in s; assert 'fn rejects_malformed_prefixes_and_vbas()' in s"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "build-1.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "--no-run"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.004,
+          "log": "build-2.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "a17a60fedfd5f588b3c6f6a3",
+          "findings": [
+            "F11"
+          ],
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "jpip::tests::fresh_header_context_preserves_absence_and_independent_standard_history",
+            "--",
+            "--exact"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "a17a60fedfd5f588b3c6f6a3.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "944e3d6310a427b8a34ed222",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "register_normalization_contract_tests.py"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--no-run",
+            "--quiet"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.701,
+          "log": "build-1.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "75d55d0e82420b19700d15de",
+          "findings": [
+            "F12"
+          ],
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--quiet",
+            "--",
+            "jpip::tests::automatic_normalization_accepts_optional_wire_sod_contract",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "75d55d0e82420b19700d15de.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "baf1d4fa2691d414510aeaae",
+      "build": [
+        {
+          "argv": [
+            "bash",
+            "-eu",
+            "-c",
+            "patch --batch --forward -p1 < validation/databin-contract-tests.patch; grep -Fq 'include!(\"jpip_databin_contract_tests.rs\");' src/jpip.rs; cargo test --lib --no-run --locked; python3 validation/databin-contract-runner.py"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.353,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "6430a2e679802b9144ea5a4b",
+          "findings": [
+            "F13"
+          ],
+          "argv": [
+            "target/databin-contract-tests",
+            "jpip::tests::metadata_databin_identity_ignores_codestream",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.033,
+          "log": "6430a2e679802b9144ea5a4b.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        },
+        {
+          "case": "99fed806685c9122fb266211",
+          "findings": [
+            "F17"
+          ],
+          "argv": [
+            "target/databin-contract-tests",
+            "jpip::tests::standard_databin_class_assignment",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "99fed806685c9122fb266211.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "8a33f3c4299ccaa7ac8de80c",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--forward",
+            "-p1",
+            "-i",
+            "precinct-map-test-registration.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "from pathlib import Path; s=Path('src/jpip.rs').read_text(); t=Path('src/jpip_precinct_map_contract.rs').read_text(); assert 'include!(\"jpip_precinct_map_contract.rs\");' in s; assert 'fn derive_precinct_map_matches_standard_geometry_contract()' in t; assert 'failures.is_empty()' in t; assert 'requested' not in t"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "build-1.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "--no-run"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.405,
+          "log": "build-2.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "1b6ab2a4ad1f14f5081e6afd",
+          "findings": [
+            "F14",
+            "F15"
+          ],
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "jpip::tests::derive_precinct_map_matches_standard_geometry_contract",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 1.068,
+          "log": "1b6ab2a4ad1f14f5081e6afd.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "e1f075d7b5416d4f472c0f9a",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "validation/run_metadata_contract_suite.py",
+            "build"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.254,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "9c7d6b44332022f336f2ca0d",
+          "findings": [
+            "F16"
+          ],
+          "argv": [
+            "python3",
+            "validation/run_metadata_contract_suite.py",
+            "stream_equivalent_uses_equivalent_box_identity"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "9c7d6b44332022f336f2ca0d.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "afef8cd7d6537e8a08814419",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "validation/build_placeholder_contract_tests.py"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.603,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "9105d99750798402cec08c7f",
+          "findings": [
+            "F18"
+          ],
+          "argv": [
+            "target/placeholder-contract-tests",
+            "jpip::tests::placeholder_contract_stream_identifiers_and_counts",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.009,
+          "log": "9105d99750798402cec08c7f.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "32cc62dbf63c6da1321051c0",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "validation/tile_transition_suite.py",
+            "build"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.656,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "294dc3cab57bd4b0e4d6345f",
+          "findings": [
+            "F19"
+          ],
+          "argv": [
+            "python3",
+            "validation/tile_transition_suite.py",
+            "run",
+            "contract_transition_psot_lengths"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "294dc3cab57bd4b0e4d6345f.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "7b34b23231926ec82a67e1e9",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "coc_clause_harness.py",
+            "build"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.96,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "13da61704101aa4758fec233",
+          "findings": [
+            "F20"
+          ],
+          "argv": [
+            "python3",
+            "coc_clause_harness.py",
+            "run",
+            "admission"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.867,
+          "log": "13da61704101aa4758fec233.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "9970988c331d1d0c2b443c1d",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--forward",
+            "-p1",
+            "-i",
+            "validation/metadata-cardinality-registration.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "from pathlib import Path; s=Path('src/jp2.rs').read_text(); assert s.count('    include!(\"jp2_metadata_cardinality_test.rs\");') == 1; assert 'fn retains_general_layer_cdef_and_nested_metadata()' in s; t=Path('src/jp2_metadata_cardinality_test.rs').read_text(); assert 'fn association_requires_two_immediate_children()' in t; assert 'failures.is_empty()' in t"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "build-1.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--no-run"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.655,
+          "log": "build-2.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "31f9c6f9ee4357015c058216",
+          "findings": [
+            "F21"
+          ],
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "jp2::tests::association_requires_two_immediate_children",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "31f9c6f9ee4357015c058216.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "bb705c76759f74c8112ad3a5",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--forward",
+            "-p1",
+            "-i",
+            "layer_reference_tests.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "from pathlib import Path; s=Path('src/jp2.rs').read_text(); t=Path('src/jp2_layer_reference_tests.rs').read_text(); assert 'mod layer_reference_contract {\\n        include!(\"jp2_layer_reference_tests.rs\");\\n    }' in s; assert 'fn no_registration_uses_ordinal_bounds()' in t; assert 'fn registration_presence_is_file_wide_and_references_exist()' in t; assert 'accepted_mixed.is_empty()' in t"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "build-1.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--locked",
+            "--no-run"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.853,
+          "log": "build-2.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "e62d0f8ba0be84c76f97c921",
+          "findings": [
+            "F22"
+          ],
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--locked",
+            "jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.115,
+          "log": "e62d0f8ba0be84c76f97c921.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "b22776d76bcd039a5c524749",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--fuzz=0",
+            "-p1",
+            "-i",
+            "validation/palette-contract-tests.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "from pathlib import Path; s=Path('src/jp2.rs').read_text(); t=Path('src/jp2_palette_contract_tests.rs').read_text(); assert s.count('include!(\"jp2_palette_contract_tests.rs\");') == 1; assert 'fn validates_palette_mapping_relationships()' in s; assert 'fn retains_signed_palette_and_channel_definition_records()' in s; assert 'fn palette_contract_wire_order_precision_and_signedness()' in t; assert 'fn palette_contract_t800_entry_count_domain_and_complete_table()' in t; print('Verified test-only registration and both clause assertions in replay source')"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "build-1.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--locked",
+            "--no-run"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.505,
+          "log": "build-2.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "85c71c4469785571f2d66fe3",
+          "findings": [
+            "F23"
+          ],
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--locked",
+            "jp2::tests::palette_contract_t800_entry_count_domain_and_complete_table",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 1.117,
+          "log": "85c71c4469785571f2d66fe3.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "111437184a2d565c3ed13b32",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--forward",
+            "-p1",
+            "-i",
+            "deepspec_codestream.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "import hashlib; from pathlib import Path; assert hashlib.sha256(Path('src/jp2.rs').read_bytes()).hexdigest() == '85817f58973870ac765c4ba110650fffcd4b43a5e20c9a5c04a92bb15dfb5750', 'replay source must contain the entire additive assertion extension'"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "build-1.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "--no-run"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.148,
+          "log": "build-2.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "09f93dd85547f3089d8c40f4",
+          "findings": [
+            "F24"
+          ],
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "jp2::tests::retains_and_inspects_explicit_jpx_codestreams_and_headers",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.115,
+          "log": "09f93dd85547f3089d8c40f4.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "0825d2151cc175fbae2c4912",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--forward",
+            "-p1",
+            "-i",
+            "validation/jpip-transcode-registration.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "python3",
+            "validation/jpip-transcode-suite.py",
+            "build"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.355,
+          "log": "build-1.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "46e0d3178e7a407a7247f7b8",
+          "findings": [
+            "F26"
+          ],
+          "argv": [
+            "python3",
+            "validation/jpip-transcode-suite.py",
+            "run",
+            "explicit_profile_rejects_all_non_lrcp_and_attached_sources"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "46e0d3178e7a407a7247f7b8.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    },
+    {
+      "suite": "12db5111ad29d4dc5a0ff9bb",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "selected_contract_setup.py"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "--no-run"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.139,
+          "log": "build-1.log"
+        },
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "import glob,os,shutil,subprocess; p=[p for p in glob.glob('target/debug/deps/jpeg2000_rs-*') if os.path.isfile(p) and os.access(p,os.X_OK)]; assert len(p)==1,p; names=subprocess.check_output([p[0],'--list'],text=True); assert names.count('decode::tests::selected_contract_')==5,names; shutil.copy2(p[0],'target/selected-contract-suite')"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.115,
+          "log": "build-2.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "817c898abc85ba6ef483648d",
+          "findings": [
+            "F27"
+          ],
+          "argv": [
+            "target/selected-contract-suite",
+            "decode::tests::selected_contract_geometry_and_native_samples",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.115,
+          "log": "817c898abc85ba6ef483648d.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    }
+  ],
+  "toolchain": "1.93.1",
+  "python_version": "3.12.12 (main, Oct 10 2025, 08:52:57) [GCC 11.4.0]",
+  "runner_sha256": "3405f0678772fb64b70ebac355130bc9a7c033ffd3eb072238ed80c66ce30eb2",
+  "manifest_sha256": "1c0d85d290f4007020f4fbc7469209a1e1a70c2fbb7b7526bac36954cd470f89",
+  "qualification": "Expected original failures, not successful conformance tests.",
+  "status": "reproduced",
+  "executed_cases": 27,
+  "finished_at": "2026-11-02T19:14:42.546986+00:00"
+}
