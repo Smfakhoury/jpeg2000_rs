@@ -1667,6 +1667,53 @@ not independent human/normative approval; no publication is authorized.
           "after": "93adbc2e5f1b1ec5c125908f16103c750081a1a7"
         }
       }
+    },
+    {
+      "id": "proposal-208-main-component-finalization",
+      "profile": "main-component-finalization",
+      "source_pr": 208,
+      "source_head": "adeaaa3b0129c4f5030222384c210cf25c22f950",
+      "ci_run": 41362592419,
+      "verus_run": 41362592321,
+      "rationale": "Complete actual main component coding-style and quantization finalizers with raw owner lookup, ordered partial updates, full Result and parser frames. Accepted window and other model meanings, controller policy, pins and caps unchanged. Eligibility only, not source integration, lifetime, normative or publication approval.",
+      "paths": {
+        "src/codestream/layout.rs": {
+          "before": "3b6c15fdfb3530656d8c31d3380f4e90545f45c4",
+          "after": "601e2f4aa4ea4535b6ea99f89955f9751b1c6276"
+        },
+        "src/codestream/coding_style.rs": {
+          "before": "d937e2e20ac3bb15b06ea5c031d436cf20e53d90",
+          "after": "fccfe422fe1e8b67f19158e85466591b2c724857"
+        },
+        "src/codestream/quantization.rs": {
+          "before": "b2ed1bd063706a17623b64a5352cc7362423cbf5",
+          "after": "aacf491e8622863ef6c946b284ee465a6d7b3f6e"
+        },
+        "src/codestream/proof_support.rs": {
+          "before": "e1a38ee2d1a8293798e259d9886afe52157106e4",
+          "after": "ec6aea6c4654c9270f6ccd95c7a5e13779ef479c"
+        },
+        "src/codestream/tests.rs": {
+          "before": "51fe581f07aca7d2096b1c0186e71486c8dbbdfc",
+          "after": "523ab6a1c5ab8aa8a3ade68f9821da367c803502"
+        },
+        "specs/mod.rs": {
+          "before": "8ae9fac97ff55d537da1a4c765dc0721a619f93e",
+          "after": "5a927ed5abd33f663c4e1f41921e54b3caf9fffc"
+        },
+        "validation/framework.py": {
+          "before": "528b8af4b7640c81ad7a86b84cf018ca54eb4635",
+          "after": "e695a610abf9cc967f9de63c9a5ac1104742cb81"
+        },
+        "validation/normative-coverage.json": {
+          "before": "d89f0ca3362e4f6c521b6788d2b9ec4ccdd5b531",
+          "after": "bcacd075ee0e1c91eb18bd508c0b35fac3a4fc7a"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "93adbc2e5f1b1ec5c125908f16103c750081a1a7",
+          "after": "d0b1c2c78e27e4f62bc9fc10fa76f238cd2354ce"
+        }
+      }
     }
   ]
 }
