@@ -875,6 +875,55 @@
       ]
     },
     {
+      "id": "part1-complete-native-main-component-finalization",
+      "topic": "Source-derived total Results for the sole actual main component style/quantization factories and finalizers. Factory geometry checks precede lazy payload access; all64 physical style slots versus logical-length quantization Vec fill preserve every raw default field. Positional COC overrides precede actual DFS/ADS resolution; QCC uses the resolved per-slot style and precedes per-slot compatibility. Raw logical counts, absent/empty/malformed unused slots, duplicate encoded indexes, stale offsets, unused tails and first errors remain distinct. Shared immutable parser, borrowed segment, style and extension references frame all native state; owned internal owners are consumed on finalizer errors, not synthetically returned. Existing exact raw reader/SIZ/COD/COC/QCD/QCC/decomposition contracts are reused, not assumed prepared results. Associated static factories are thin facades over one executable body due to pinned frontend resolution failure. Local dependent boundary only; no whole-root, source-admission, public decoder, standard conformance or publication claim.",
+      "implementation_refs": [
+        {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
+        {"path": "src/codestream/coding_style.rs", "symbol": "ComponentCodingStyles::new"},
+        {"path": "src/codestream/coding_style.rs", "symbol": "Parser::finish_main_component_styles"},
+        {"path": "src/codestream/quantization.rs", "symbol": "ComponentQuantizations::new"},
+        {"path": "src/codestream/quantization.rs", "symbol": "Parser::finish_main_component_quantizations"}
+      ],
+      "spec_refs": [
+        {"path": "specs/mod.rs", "symbol": "part1_component_styles_new"},
+        {"path": "specs/mod.rs", "symbol": "part1_component_quantizations_new"},
+        {"path": "specs/mod.rs", "symbol": "part1_set_component_quantization"},
+        {"path": "specs/mod.rs", "symbol": "part1_quantization_compatible"},
+        {"path": "specs/mod.rs", "symbol": "part1_style_owner_lookup"},
+        {"path": "specs/mod.rs", "symbol": "part1_quantization_owner_lookup"},
+        {"path": "specs/mod.rs", "symbol": "part1_main_styles_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_finish_main_styles"},
+        {"path": "specs/mod.rs", "symbol": "part1_main_quantizations_from"},
+        {"path": "specs/mod.rs", "symbol": "part1_finish_main_quantizations"}
+      ],
+      "contract_refs": [
+        {"path": "src/codestream/coding_style.rs", "symbol": "new_component_coding_styles"},
+        {"path": "src/codestream/quantization.rs", "symbol": "new_component_quantizations"},
+        {"path": "src/codestream/quantization.rs", "symbol": "ComponentQuantizations::set"},
+        {"path": "src/codestream/quantization.rs", "symbol": "Quantization::is_compatible_with"},
+        {"path": "src/codestream/coding_style.rs", "symbol": "Parser::finish_main_component_styles"},
+        {"path": "src/codestream/quantization.rs", "symbol": "Parser::finish_main_component_quantizations"}
+      ],
+      "proof_refs": [
+        {"path": "src/codestream/proof_support.rs", "symbol": "component_style_owner_view"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "parsed_style_owner_outcome"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "parsed_quantization_owner_view"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "parsed_quantization_owner_outcome"},
+        {"path": "src/codestream/proof_support.rs", "symbol": "segment_slots_view"},
+        {"path": "src/codestream/coding_style.rs", "symbol": "ComponentCodingStyles::style"},
+        {"path": "src/codestream/quantization.rs", "symbol": "ComponentQuantizations::quantization"}
+      ],
+      "test_refs": [
+        {"path": "src/codestream/tests.rs", "symbol": "actual_main_component_finalizers_preserve_specific_raw_order_and_unused_payloads"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_main_component_factories_preserve_all_counts_defaults_and_storage"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_main_component_quantization_access_preserves_raw_owner_and_error_tails"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_main_component_compatibility_preserves_raw_fields_and_truncated_directions"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_main_component_styles_preserve_lazy_slots_defaults_resolution_and_first_errors"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_main_component_quantizations_preserve_resolved_styles_slots_compatibility_and_first_errors"},
+        {"path": "src/codestream/tests.rs", "symbol": "actual_main_component_finalizers_consume_real_header_reader_and_decomposition_producers"}
+      ]
+    },
+    {
       "id": "part2-complete-native-raw-decomposition-resolution",
       "topic": "Source-derived complete actual DFS/ADS first-match borrowed payload lookups, full component setter and raw style/owner resolution Results. Retains earlier membership guarantees, DFS precedence, missing versus empty structures, last-direction repetition, ADS depth-only validation, all u8 levels versus physical direction capacity, local success before commit, earlier component commits on later error, logical u16 count versus all64 physical slots and untouched tails. Shared parser and extension references frame reader, limits, work and all extension fields. Real segment reader and DFS/ADS parser producers feed actual lookups and resolver; actual layout invokes this resolver after COD/COC production. No normalized registry, metadata/result bank, format admission or normative certification; other parser/layout/file/layer and publication joins remain separate.",
       "implementation_refs": [

@@ -86,6 +86,48 @@ independent source review, guarded merge and fresh actual-main acceptance.
 This does not establish complete outer parsing, public image composition,
 Verus lifetime analysis, standards correspondence or publication readiness.
 
+## Actual main component style/quantization finalization
+
+The main-header callsite executes the sole style and quantization finalizers in
+their owning modules. Total Result contracts start from raw defaults, counts and
+borrowed segment slots, not normalized owners or supplied parse outcomes. Style
+factory geometry checks precede COC payload access, all physical style slots are
+filled, positional overrides precede actual DFS/ADS resolution, and QCC uses the
+resolved per-component style before each compatibility check. Quantization
+storage retains its original logical Vec length and original factory bounds.
+Every field and unused tail is retained; internal owners are consumed on errors.
+Shared references without interior mutability frame parser/limits/work, segment
+bytes and extension/style owners. Existing exact getters and producer contracts
+are reused without widening their opaque visibility.
+
+The pinned `verus_spec` frontend cannot resolve associated static constructors
+(`cannot find function new`). Thin existing factory facades therefore call one
+shared executable free-function factory each; no alternate algorithm exists.
+The setter's explicit length check and indexed assignment preserve its former
+`get_mut` error and update order while exposing the complete frame to the solver.
+Native differential tests include raw factory/owner states, lazy payloads,
+precise first errors and real reader/SIZ/COD/COC/QCD/QCC/DFS/ADS joins.
+
+This additive LOCAL refresh retains the previously qualified finalizers on
+accepted actual-main source, including its SOT and DFS/ADS producers. Main QCD
+parsing remains before style/decomposition finalization; tile QCD ordering is
+unchanged. Earlier components may be committed internally before an error;
+the complete error is returned and that internal owner is consumed, not staged
+or exposed as an alternate result. Raw counts, physical holes, positional
+indices and unused tails are not normalized.
+
+Earlier inventory requirement objects are retained exactly. Their named caller
+check may follow one owning-type finalizer stage only when both actual call
+edges and that stage's exact, premise-free total-Result contract are present.
+Removing either edge or weakening the intermediate contract fails closed.
+
+Fresh matched-parent/root/archive and focused proof evidence belongs in the
+local qualification receipt, not inferred from definition counts or earlier
+runs. Verification retains the pinned `--no-lifetime` boundary. This is a
+technical candidate only: parent-owned record, review, CI, guarded integration
+and actual-main acceptance remain separate. No complete parsing, pixels,
+lifetime verification, normative conformance or publication claim follows.
+
 ## Actual DFS/ADS decomposition resolution
 
 The decomposition resolver in `src/codestream/decomposition.rs` has a total
