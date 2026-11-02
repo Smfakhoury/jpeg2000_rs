@@ -1018,6 +1018,35 @@ class FrameworkTests(WorkingFiles):
             ("parser_view(final(self))", "parser_view(old(self))"),
         ])
 
+    def test_inventory_binds_actual_layout_prologue_raw_result_reader_frame_and_caller(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-layout-prologue"},
+            framework._LAYOUT_PROLOGUE_CONTRACTS, 1,
+        )
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        siz = next(
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-complete-native-raw-siz-geometry"
+        )
+        self.assertIn(
+            {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
+            siz["implementation_refs"],
+        )
+        self.assertIn(
+            {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout_prologue"},
+            siz["implementation_refs"],
+        )
+        coverage["requirements"] = [
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-complete-native-layout-prologue"
+        ]
+        self._assert_contract_text_mutations(coverage, (
+            ("layout_prologue_outcome(result)", "layout_prologue_outcome(unrelated)"),
+            ("layout_prologue_outcome(result)", "unlisted_outcome(result)"),
+            ("layout_prologue_outcome(result)", "result.is_ok()"),
+            ("parser_view(final(self))", "parser_view(old(self))"),
+        ))
+
     def test_inventory_binds_actual_raw_cod_bytes_to_complete_style_and_precinct_defaults(self):
         self._assert_complete_packet_contract_bindings(
             {"part1-complete-native-raw-coding-style"},

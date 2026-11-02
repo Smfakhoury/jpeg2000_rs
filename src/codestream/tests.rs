@@ -3,6 +3,264 @@ use super::reader::{is_allowed_main_header, is_allowed_tile_header, is_known_seg
 use super::*;
 use crate::tier1::SubbandOrientation;
 
+fn assert_layout_prologue_case(
+    input: &[u8],
+    limits: &ResourceLimits,
+    state: PacketAdmissionState,
+) -> Result<(ImageSize, u16, usize), DecodeError> {
+    let raw = || Parser {
+        input,
+        limits,
+        position: state.position,
+        work_units: state.work,
+        packet_length_bytes: state.header_bytes,
+        packet_lengths: state.packet_count,
+    };
+    let mut reference = raw();
+    // Replay the pre-extraction prologue with the separately tested reader/SIZ leaves.
+    let expected = (|| {
+        reference.expect_standalone(SOC)?;
+        let siz = reference.read_segment()?;
+        if siz.marker != SIZ {
+            return Err(DecodeError::MalformedInput {
+                offset: siz.offset as u64,
+                kind: MalformedKind::InvalidMarkerOrder,
+            });
+        }
+        let (size, r_siz) = reference.parse_siz(siz)?;
+        Ok((size, r_siz, reference.position))
+    })();
+    let mut actual = raw();
+    assert_eq!(actual.parse_layout_prologue(), expected);
+    assert_packet_admission_state(
+        &actual,
+        PacketAdmissionState {
+            position: reference.position,
+            work: reference.work_units,
+            header_bytes: state.header_bytes,
+            packet_count: state.packet_count,
+        },
+        input,
+        limits,
+    );
+    expected
+}
+
+#[test]
+fn actual_layout_prologue_preserves_all_marker_and_length_contexts() {
+    let base = ResourceLimits::HARDENED;
+    let limits = [
+        base.with_maximum_work_units(0).unwrap(),
+        base.with_maximum_work_units(1).unwrap(),
+        base.with_maximum_work_units(2).unwrap(),
+        base,
+    ];
+    let mut input = SOC.to_be_bytes().to_vec();
+    input.extend(siz());
+    input.extend([0xff, 0x52, 0, 2]);
+    let mut cases = 0;
+    for limits in &limits {
+        for field in [0, 2, 4] {
+            let original = [input[field], input[field + 1]];
+            for value in 0..=u16::MAX {
+                input[field..field + 2].copy_from_slice(&value.to_be_bytes());
+                let _ = assert_layout_prologue_case(
+                    &input,
+                    limits,
+                    PacketAdmissionState {
+                        position: 0,
+                        work: 0,
+                        header_bytes: u64::MAX,
+                        packet_count: 17,
+                    },
+                );
+                cases += 1;
+            }
+            input[field..field + 2].copy_from_slice(&original);
+        }
+    }
+    assert_eq!(cases, 786_432);
+}
+
+#[test]
+fn actual_layout_prologue_preserves_arbitrary_states_prefixes_and_error_commits() {
+    let base = ResourceLimits::HARDENED;
+    let limits = [
+        base,
+        base.with_maximum_work_units(0).unwrap(),
+        base.with_maximum_work_units(1).unwrap(),
+        base.with_maximum_work_units(2).unwrap(),
+        base.with_maximum_input_bytes(0).unwrap(),
+    ];
+    let mut input = vec![0x31, 0x41, 0x59];
+    input.extend(SOC.to_be_bytes());
+    input.extend(siz());
+    input.extend([0xff, 0, 0xff]);
+    let mut cases = 0;
+    for limits in &limits {
+        for end in 0..=input.len() {
+            for position in [0, 1, 3, 5, end, end + 1, usize::MAX - 1, usize::MAX] {
+                for work in [0, 1, 2, base.maximum_work_units(), u64::MAX - 1, u64::MAX] {
+                    for (header_bytes, packet_count) in [(0, 0), (17, u64::MAX), (u64::MAX, 19)] {
+                        let _ = assert_layout_prologue_case(
+                            &input[..end],
+                            limits,
+                            PacketAdmissionState {
+                                position,
+                                work,
+                                header_bytes,
+                                packet_count,
+                            },
+                        );
+                        cases += 1;
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(cases, 37_440);
+
+    let input = [0xff, 0x4f, 0xff, 0x52, 0, 2];
+    let mut parser = Parser {
+        input: &input,
+        limits: &limits[1],
+        position: 0,
+        work_units: 0,
+        packet_length_bytes: 19,
+        packet_lengths: u64::MAX,
+    };
+    assert_eq!(
+        parser.parse_layout_prologue(),
+        Err(DecodeError::LimitExceeded {
+            resource: Resource::WorkUnits,
+            limit: 0,
+            actual: 1,
+        })
+    );
+    assert_eq!((parser.position, parser.work_units), (2, 1));
+    parser.limits = &limits[2];
+    parser.position = 0;
+    parser.work_units = 0;
+    assert_eq!(
+        parser.parse_layout_prologue(),
+        Err(DecodeError::LimitExceeded {
+            resource: Resource::WorkUnits,
+            limit: 1,
+            actual: 2,
+        })
+    );
+    assert_eq!((parser.position, parser.work_units), (2, 2));
+    parser.limits = &base;
+    parser.position = 0;
+    parser.work_units = 0;
+    assert_eq!(
+        parser.parse_layout_prologue(),
+        Err(DecodeError::MalformedInput {
+            offset: 2,
+            kind: MalformedKind::InvalidMarkerOrder,
+        })
+    );
+    assert_eq!((parser.position, parser.work_units), (6, 2));
+    assert_eq!(
+        (parser.packet_length_bytes, parser.packet_lengths),
+        (19, u64::MAX)
+    );
+}
+
+#[test]
+fn actual_layout_prologue_derives_complete_image_and_stops_before_main_header() {
+    let limits = ResourceLimits::HARDENED;
+    for components in [1_u16, 2, 64] {
+        for r_siz in [0_u16, 1, 0x4000, u16::MAX] {
+            let mut raw = siz_with_components(components);
+            raw[4..6].copy_from_slice(&r_siz.to_be_bytes());
+            for (index, word) in [97_u32, 83, 3, 5, 16, 24, 1, 2].into_iter().enumerate() {
+                raw[6 + index * 4..10 + index * 4].copy_from_slice(&word.to_be_bytes());
+            }
+            let mut infos = [ComponentInfo::default(); MAX_COMPONENTS];
+            for (index, info) in infos.iter_mut().take(usize::from(components)).enumerate() {
+                let index = u8::try_from(index).unwrap();
+                *info = ComponentInfo {
+                    precision: 1 + index % 38,
+                    signed: index % 2 == 1,
+                    x_subsampling: 1 + index,
+                    y_subsampling: u8::MAX - index,
+                    x_registration: 0,
+                    y_registration: 0,
+                };
+                raw[40 + usize::from(index) * 3..43 + usize::from(index) * 3].copy_from_slice(&[
+                    info.precision - 1 + if info.signed { 128 } else { 0 },
+                    info.x_subsampling,
+                    info.y_subsampling,
+                ]);
+            }
+            let mut input = vec![0x27, 0x18, 0xff, 0x4f];
+            input.extend(&raw);
+            let start = input.len();
+            input.extend([0xff, 0, 0xff, 0xff, 0x90]);
+            let expected = ImageSize {
+                width: 94,
+                height: 78,
+                x_origin: 3,
+                y_origin: 5,
+                components,
+                uniform_bit_depth: if components == 1 { Some(1) } else { None },
+                uniform_signed: if components == 1 { Some(false) } else { None },
+                tile_width: 16,
+                tile_height: 24,
+                tile_x_origin: 1,
+                tile_y_origin: 2,
+                tiles_across: 6,
+                tiles_down: 4,
+                component_info: infos,
+            };
+            assert_eq!(
+                assert_layout_prologue_case(
+                    &input,
+                    &limits,
+                    PacketAdmissionState {
+                        position: 2,
+                        work: 17,
+                        header_bytes: 31,
+                        packet_count: u64::MAX,
+                    },
+                ),
+                Ok((expected, r_siz, start)),
+            );
+            for limit in [
+                limits.with_geometry_limits_for_test(0, 0, 0, 0, 0),
+                limits.with_geometry_limits_for_test(64, 93, 0, 0, 0),
+                limits.with_geometry_limits_for_test(64, 94, 77, 0, 0),
+                limits.with_geometry_limits_for_test(64, 94, 78, 7331, 0),
+                limits.with_geometry_limits_for_test(64, 94, 78, 7332, 23),
+            ] {
+                assert!(
+                    assert_layout_prologue_case(
+                        &input,
+                        &limit,
+                        PacketAdmissionState {
+                            position: 2,
+                            work: 0,
+                            header_bytes: 0,
+                            packet_count: 0,
+                        },
+                    )
+                    .is_err()
+                );
+            }
+        }
+    }
+    let input = codestream_with_headers(1, &baseline_headers(), &[], &[]);
+    let layout = parse_layout(&input, &limits).unwrap();
+    let mut parser = new_parser(&input, &limits).unwrap();
+    let (size, r_siz, start) = parser.parse_layout_prologue().unwrap();
+    assert_eq!(layout.info.image_size, size);
+    assert_eq!(r_siz, 0);
+    assert_eq!(start, 2 + siz().len());
+    assert_eq!(parser.peek_marker(), Ok(COD));
+    assert_eq!((parser.position, parser.work_units), (start, 2));
+}
+
 fn reference_main_styles(
     parser: &Parser<'_>,
     components: u16,

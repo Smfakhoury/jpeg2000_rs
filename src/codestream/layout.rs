@@ -7,11 +7,13 @@ use super::profile::classify_codestream_profile;
 use super::reader::{is_allowed_main_header, is_known_segment_marker, new_parser};
 use super::{
     ADS, ATK, CAP, CBD, COC, COD, CPF, CRG, CodestreamInfo, CodestreamLayout,
-    ComponentQuantizations, DFS, DecodeError, EOC, MAX_COMPONENTS, MCC, MCO, MCT, MalformedKind,
-    MctParameters, NLT, PLM, POC, PPM, PRF, PackedPacketHeaderSource, PackedPacketHeaders,
-    PacketLengths, Parser, Part2Extensions, ProgressionChanges, QCC, QCD, RGN, Resource,
-    ResourceLimits, RoiShifts, SIZ, SOC, SOT, TLM, TilePartPayload,
+    ComponentQuantizations, DFS, DecodeError, EOC, ImageSize, MAX_COMPONENTS, MCC, MCO, MCT,
+    MalformedKind, MctParameters, NLT, PLM, POC, PPM, PRF, PackedPacketHeaderSource,
+    PackedPacketHeaders, PacketLengths, Parser, Part2Extensions, ProgressionChanges, QCC, QCD, RGN,
+    Resource, ResourceLimits, RoiShifts, SIZ, SOC, SOT, TLM, TilePartPayload,
 };
+#[cfg(verus_keep_ghost)]
+use super::{layout_prologue_outcome, parser_view};
 #[cfg(verus_keep_ghost)]
 use vstd::prelude::*;
 
@@ -25,18 +27,33 @@ pub fn parse_layout<'a>(
     new_parser(input, limits)?.parse_layout()
 }
 impl<'a> Parser<'a> {
-    fn parse_layout(self) -> Result<CodestreamLayout<'a>, DecodeError> {
-        let mut parser = self;
-        parser.expect_standalone(SOC)?;
-        let siz = parser.read_segment()?;
+    #[cfg_attr(verus_keep_ghost, verus_spec(result =>
+        ensures (layout_prologue_outcome(result), parser_view(final(self)))
+            == crate::specs::part1_parse_layout_prologue(parser_view(old(self))),
+    ))]
+    pub(super) fn parse_layout_prologue(&mut self) -> Result<(ImageSize, u16, usize), DecodeError> {
+        #[cfg(verus_keep_ghost)]
+        proof! {
+            reveal(crate::specs::part1_parse_layout_prologue);
+            reveal(parser_view);
+            reveal(layout_prologue_outcome);
+        }
+        self.expect_standalone(SOC)?;
+        let siz = self.read_segment()?;
         if siz.marker != SIZ {
             return Err(DecodeError::malformed(
-                parser.offset(siz.offset),
+                self.offset(siz.offset),
                 MalformedKind::InvalidMarkerOrder,
             ));
         }
-        let (mut image_size, r_siz) = parser.parse_siz(siz)?;
-        let main_header_start = parser.position;
+        let (image_size, r_siz) = self.parse_siz(siz)?;
+        let main_header_start = self.position;
+        Ok((image_size, r_siz, main_header_start))
+    }
+
+    fn parse_layout(self) -> Result<CodestreamLayout<'a>, DecodeError> {
+        let mut parser = self;
+        let (mut image_size, r_siz, main_header_start) = parser.parse_layout_prologue()?;
         let mut main_header_segments = 1_u64;
         let mut coding_style = None;
         let mut qcd_segment = None;

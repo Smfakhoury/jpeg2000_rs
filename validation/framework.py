@@ -1421,6 +1421,14 @@ _CODING_STYLE_BYTES_CONTRACTS = {
     ),
 }
 
+_LAYOUT_PROLOGUE_CONTRACTS = {
+    ("src/codestream/layout.rs", "Parser::parse_layout_prologue"): (
+        "part1_parse_layout_prologue", _coverage_call("layout_prologue_outcome", r"\1"),
+        _coverage_call("parser_view", _coverage_call("final", "self")),
+        _coverage_call("parser_view", _coverage_call("old", "self")),
+    ),
+}
+
 _SIZ_GEOMETRY_CONTRACTS = {
     ("src/codestream/image_header.rs", "Parser::parse_siz"): (
         "part1_parse_siz", _coverage_call("parsed_siz_outcome", r"\1"), None,
@@ -2747,6 +2755,7 @@ def validate_normative_coverage(
                 or _SOT_READER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _TILE_DATA_WINDOW_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SIZ_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _LAYOUT_PROLOGUE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _CODING_STYLE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_STYLE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _QUANTIZATION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))

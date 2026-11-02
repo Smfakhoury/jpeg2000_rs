@@ -723,6 +723,15 @@ verus! {
         match result { Err(error) => Err(error), Ok((size, r_siz)) => Ok((parsed_image_size_view(&size), r_siz)) }
     }
 
+    closed spec fn layout_prologue_outcome(result: Result<(ImageSize, u16, usize), DecodeError>)
+        -> Result<(crate::specs::Part1ParsedImageSize, u16, usize), DecodeError>
+    {
+        match result {
+            Err(error) => Err(error),
+            Ok((size, r_siz, start)) => Ok((parsed_image_size_view(&size), r_siz, start)),
+        }
+    }
+
     closed spec fn siz_components_view(
         infos: Seq<ComponentInfo>, offset: usize, component: u16, first_precision: u8, first_signed: bool, uniform: bool,
     ) -> crate::specs::Part1SizComponents {
