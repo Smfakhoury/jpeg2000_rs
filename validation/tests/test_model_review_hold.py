@@ -1207,6 +1207,13 @@ class ModelReviewHoldTests(unittest.TestCase):
 
     def input_producer_profiles(self):
         return {
+            "publication-workflow-hardening": {
+                ".github/dependabot.yml", ".github/workflows/ci.yml",
+                ".github/workflows/copilot-setup-steps.yml",
+                ".github/workflows/model-review-hold.yml", ".github/workflows/release.yml",
+                ".github/workflows/verus.yml",
+                "validation/requirements.in", "validation/requirements.txt",
+            },
             "tile-data-window": {
                 "src/codestream/tiles.rs", "src/codestream/proof_support.rs",
                 "src/codestream/tests.rs", "specs/packet_input.rs", "validation/framework.py",
@@ -1223,11 +1230,19 @@ class ModelReviewHoldTests(unittest.TestCase):
     def input_producer_fixture(self, profile):
         paths = self.input_producer_profiles()[profile]
         self.assertEqual(model_review_hold.AMENDMENT_PROFILES[profile], paths)
+        new_paths = {
+            "publication-workflow-hardening": {
+                ".github/dependabot.yml", ".github/workflows/release.yml",
+                "validation/requirements.in",
+            },
+            "tile-data-window": set(),
+            "layout-prologue": {"specs/layout_input.rs"},
+        }[profile]
         originals = {path: f"original {path}\n" for path in paths
-                     if path != "specs/layout_input.rs"}
+                     if path not in new_paths}
         return self.layout_fixture(
             originals, {path: f"producer result {path}\n" for path in paths},
-            profile, "Exact source-derived tile window or layout prologue contracts.",
+            profile, "Exact source-derived input contracts or publication workflow scope.",
         )
 
     def test_input_producer_profiles_require_exact_trusted_adoption(self):
@@ -1236,6 +1251,13 @@ class ModelReviewHoldTests(unittest.TestCase):
                 base, head, entry = self.input_producer_fixture(profile)
                 if profile == "layout-prologue":
                     self.assertIsNone(entry["paths"]["specs/layout_input.rs"]["before"])
+                if profile == "publication-workflow-hardening":
+                    self.assertEqual(
+                        {path for path, blobs in entry["paths"].items()
+                         if blobs["before"] is None},
+                        {".github/dependabot.yml", ".github/workflows/release.yml",
+                         "validation/requirements.in"},
+                    )
                 with patch.object(model_review_hold, "REGISTRY", self.registry([])):
                     self.assertEqual(set(model_review_hold.held_changes(
                         self.repository, base, head)), set(entry["paths"]))
@@ -1262,7 +1284,8 @@ class ModelReviewHoldTests(unittest.TestCase):
             "src/codestream/extensions.rs", "specs/mod.rs", "specs/packet_input.rs",
             "specs/layout_input.rs", "specs/new.rs", "proofs/new.rs",
             "validation/resource_benchmarks.py", "validation/generate-proof-coverage.py",
-            "validation/check-model-review-hold.py", "Cargo.toml", "Cargo.lock",
+            "validation/check-model-review-hold.py", "validation/tests/test_model_review_hold.py",
+            ".github/workflows/unrelated.yml", "Cargo.toml", "Cargo.lock",
             "rust-toolchain.toml", ".github/workflows/verus.yml",
         )
         for profile in self.input_producer_profiles():
@@ -1289,7 +1312,7 @@ class ModelReviewHoldTests(unittest.TestCase):
             for path in ("src/error.rs", "specs/new.rs", "validation/check-model-review-hold.py"):
                 with self.subTest(profile=profile, expanded=path):
                     entry = copy.deepcopy(original)
-                    entry["paths"][path] = copy.deepcopy(entry["paths"]["validation/framework.py"])
+                    entry["paths"][path] = copy.deepcopy(next(iter(entry["paths"].values())))
                     with self.assertRaises(ValueError):
                         model_review_hold.read_reviewed_amendments(self.registry([entry]))
 

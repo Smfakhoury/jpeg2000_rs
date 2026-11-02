@@ -10,6 +10,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "validation/reviewed-amendments.md"
 AMENDMENT_PROFILES = {
+    "publication-workflow-hardening": frozenset({
+        ".github/dependabot.yml", ".github/workflows/ci.yml",
+        ".github/workflows/copilot-setup-steps.yml",
+        ".github/workflows/model-review-hold.yml", ".github/workflows/release.yml",
+        ".github/workflows/verus.yml",
+        "validation/requirements.in", "validation/requirements.txt",
+    }),
     "tile-data-window": frozenset({
         "src/codestream/tiles.rs", "src/codestream/proof_support.rs",
         "src/codestream/tests.rs", "specs/packet_input.rs", "validation/framework.py",
