@@ -15,6 +15,21 @@ contracts and models. Exact run counts and source/tool hashes belong in fresh
 CI artifacts, not committed result snapshots. Independent model-to-standard
 review and official conformance testing remain separate.
 
+## Conditional main-header admission profile decision
+
+The [exact profile decision](validation/main-header-admission-profile-decision.md)
+defines a proposed one-use, two-file operation for adding only the eight-path
+`main-header-admission` review profile. This documentation branch does not
+deploy it or provide the explicit owner authorization required by #213.
+All seventeen current profiles and seventeen source records remain unchanged.
+
+An adopted documentation decision is only one prerequisite. Exact owner
+authorization, a newly constructed sole-parent result, complete preflight and
+fresh actual-main acceptance remain required before the controller change.
+Source #212 then still needs its separate exact record and normal source
+review/integration pipeline. No source, lifetime, normative or publication
+approval follows from this documentation.
+
 ## Proposed exact SOC/SIZ prologue record
 
 The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
