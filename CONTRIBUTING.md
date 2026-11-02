@@ -13,10 +13,25 @@ has its own pinned Python requirements.
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -r validation/requirements.txt
+python -m pip install --require-hashes --only-binary=:all: -r validation/requirements.txt
 cargo test --all-targets --locked
 cargo test --doc --locked
 ```
+
+The requirements file locks transitive dependencies and their distribution
+hashes. To change the direct dependency, edit `validation/requirements.in`
+and regenerate the lock in a separate tooling environment:
+
+```sh
+python3 -m venv target/requirements-tools
+target/requirements-tools/bin/python -m pip install pip==25.3 pip-tools==7.5.2
+target/requirements-tools/bin/python -m piptools compile --generate-hashes \
+  --strip-extras --no-emit-index-url --no-emit-trusted-host validation/requirements.in
+```
+
+Review version changes and rerun validation before adopting an updated lock.
+Dependency-update PRs remain subject to the proof/model review hold; they do
+not authorize a verifier or `vstd` pin change by themselves.
 
 ## Required local checks
 

@@ -6,12 +6,12 @@ restricted, or standards-derived vectors.
 
 ## Running the checks
 
-Use Python with the pinned `jsonschema` dependency in `requirements.txt`.
+Use Python with the hash-locked dependencies in `requirements.txt`.
 For example, from the repository root (installation is needed only once):
 
 ```sh
 python3 -m venv .venv
-.venv/bin/python -m pip install -r validation/requirements.txt
+.venv/bin/python -m pip install --require-hashes --only-binary=:all: -r validation/requirements.txt
 PYTHONPATH=validation .venv/bin/python -m unittest discover -s validation/tests -v
 .venv/bin/python validation/run-validation.py generate --check
 .venv/bin/python validation/run-validation.py verify

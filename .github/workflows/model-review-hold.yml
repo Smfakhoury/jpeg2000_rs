@@ -2,7 +2,7 @@ name: Model review hold
 
 on:
   pull_request_target:
-    branches: [main]
+    branches: [main, release/0.1]
     types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions:
@@ -13,7 +13,7 @@ jobs:
     name: Model-review hold
     runs-on: ubuntu-latest
     steps:
-      - name: Check out the trusted default-branch controller
+      - name: Check out the trusted target-branch controller
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09
         with:
           ref: ${{ github.sha }}

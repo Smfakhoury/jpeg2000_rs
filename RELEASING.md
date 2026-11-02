@@ -9,6 +9,47 @@ The intended registry package is `jpeg2000-decoder`, imported in Rust as
 Check registry name availability again for the actual release; an earlier
 not-found response does not reserve a name or authorize publication.
 
+## 0.1 release branch and repository controls
+
+Cut `release/0.1` from accepted `main`, not a local proof-development branch.
+Keep the development toolchain pin and the experimental, non-certified claims
+unchanged unless a separately reviewed change qualifies them.
+
+Protect `main` with required PRs, an independent approval of the latest changes,
+resolved review conversations, and the complete CI, Verus, CLA and model-review
+checks. Do not add a bypass actor to make a pending change mergeable.
+Keep a newly cut release branch frozen during bootstrap. Transition it only
+through a reviewed exact-source operation after the release-branch CI, Verus
+and trusted target-branch model hold have been integrated. Then require those
+same checks and independent reviews for release PRs. Default-branch adoption
+does not automatically update an existing release branch.
+
+Protect version tags against updates and deletion. An authorized `v0.1.x` tag
+must identify the reviewed release commit on `release/0.1`; a mutable branch
+name is not the final release identity. Dependency-update PRs must pass the
+same review controls and do not independently authorize verification-pin
+changes.
+
+### No-upload publication preflight
+
+After an authorized release change enables `publish = ["crates-io"]`, dispatch
+the [release preflight](.github/workflows/release.yml) from `release/0.1`.
+It rejects other refs, checks the package identity and inventory, runs
+`cargo publish --dry-run --locked`, and retains the actual archive, checksum,
+source commit and command log. It has no upload step or registry credential.
+
+This packaging preflight does not replace the candidate checks, separate
+packaged-source Verus replay, numerical/resource gates or instrumented fuzz
+campaigns below. Bind every required result to the same final candidate and
+archive; an older successful dry-run is not a release attestation.
+
+The [crates.io trusted-publishing prerequisites](https://crates.io/docs/trusted-publishing)
+currently require an already published crate. The initial upload therefore
+needs separately authorized API-token authentication. Configure trusted
+publishing for subsequent releases using a pinned authentication action,
+job-local OIDC permission and a protected environment. Never commit a token or
+treat a dry-run, branch creation or successful workflow as upload authority.
+
 ## Source publication
 
 - Confirm the approved source license and preserve required third-party notices.
@@ -44,8 +85,8 @@ boundary before proposing any destructive operation.
 
 Source-publication approval does not by itself choose a history strategy or
 authorize ref deletion, force-pushing, or repository replacement/renaming.
-Keep the repository private until the actual retained content and any proposed
-operations have the required owner approval.
+Obtain owner approval for the actual retained content and proposed operations
+before any future visibility or history change.
 
 ### Unsafe-code review
 
