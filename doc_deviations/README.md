@@ -1,13 +1,5 @@
 # Standards-tested deviations
 
-Source: `jpeg2000-doc-deviations-20261102@1393e11520fa`.
-
-**Read across a row:** requirement → test input → observed deviation → implementation → test. Click its **ID** to reach the expandable reproduction instructions below. You do not need to browse `support/`.
-
-53 reproduced clause-level findings joined to standards mappings (not necessarily distinct defects). A mapping is not by itself a conformance proof.
-
-Requirement/input cells show the opening recorded sentence; the complete text and failure output are preserved in each expandable section.
-
 | ID | Class | Standard | Required behavior | Test input / assertion | Observed deviation (why) | Production code | Test source |
 |---|---|---|---|---|---|---|---|
 | [DEV-0A9BF676EF](#reproduce-dev-0a9bf676ef) | Code deviation | t800-201906.txt § A.4.2 | Produce the documented single-tile-part quality-prefix transcode using reframed headers rather than retaining stale original packet-length declarations. | Safe JpipPrecinctCodestreamPlan::new, JpipPrecinctPacket::new, DatabinId::new, JpipFragment::new and DatabinCache::insert establish an admissible public unit-contract entry. | Explicit precinct transcode publishes non-LRCP effective tile coding styles | [`jpip::DatabinCache::transcode_precinct_codestream`](../src/jpip.rs#L3088) | [`explicit_profile_rejects_all_non_lrcp_and_attached_sources`](support/tests/DEV-0A9BF676EF/files/src/jpip/transcode_contract_tests.rs#L609) |
@@ -66,7 +58,7 @@ Requirement/input cells show the opening recorded sentence; the complete text an
 
 ## Reproduce a finding
 
-Run commands from the repository root with its native build dependencies and a Python environment with DeepSpec Core installed (`deepspec_core.rfcmap.replay` must be importable).
+Run commands from the repository root with Python 3.10+ and the repository's native build dependencies. The included runner uses only the Python standard library; no DeepSpec installation is needed.
 
 Each command selects one recipe and builds in a temporary copy; it does not modify your checkout. **Reproduced means the test failed in the recorded way**, not that the underlying test passed. The runner reports `reproduced` and exits 0. Output directories must be new; choose another `--output` path when repeating a run.
 
