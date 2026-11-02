@@ -21,6 +21,12 @@ AMENDMENT_PROFILES = {
         "validation/framework.py", "validation/normative-coverage.json",
         "validation/tests/test_framework.py", "validation/expected-package-files.txt",
     }),
+    "main-header-admission": frozenset({
+        "src/codestream/layout.rs", "src/codestream/reader.rs",
+        "src/codestream/proof_support.rs", "src/codestream/tests.rs",
+        "specs/layout_input.rs", "validation/framework.py",
+        "validation/normative-coverage.json", "validation/tests/test_framework.py",
+    }),
     "main-component-finalization": frozenset({
         "src/codestream/layout.rs", "src/codestream/coding_style.rs",
         "src/codestream/quantization.rs", "src/codestream/proof_support.rs",

@@ -1218,16 +1218,22 @@ class ModelReviewHoldTests(unittest.TestCase):
                 "validation/framework.py", "validation/normative-coverage.json",
                 "validation/tests/test_framework.py", "validation/expected-package-files.txt",
             },
+            "main-header-admission": {
+                "src/codestream/layout.rs", "src/codestream/reader.rs",
+                "src/codestream/proof_support.rs", "src/codestream/tests.rs",
+                "specs/layout_input.rs", "validation/framework.py",
+                "validation/normative-coverage.json", "validation/tests/test_framework.py",
+            },
         }
 
     def input_producer_fixture(self, profile):
         paths = self.input_producer_profiles()[profile]
         self.assertEqual(model_review_hold.AMENDMENT_PROFILES[profile], paths)
         originals = {path: f"original {path}\n" for path in paths
-                     if path != "specs/layout_input.rs"}
+                     if profile != "layout-prologue" or path != "specs/layout_input.rs"}
         return self.layout_fixture(
             originals, {path: f"producer result {path}\n" for path in paths},
-            profile, "Exact source-derived tile window or layout prologue contracts.",
+            profile, "Exact source-derived window, prologue or header-admission contracts.",
         )
 
     def test_input_producer_profiles_require_exact_trusted_adoption(self):
@@ -1236,6 +1242,8 @@ class ModelReviewHoldTests(unittest.TestCase):
                 base, head, entry = self.input_producer_fixture(profile)
                 if profile == "layout-prologue":
                     self.assertIsNone(entry["paths"]["specs/layout_input.rs"]["before"])
+                if profile == "main-header-admission":
+                    self.assertIsNotNone(entry["paths"]["specs/layout_input.rs"]["before"])
                 with patch.object(model_review_hold, "REGISTRY", self.registry([])):
                     self.assertEqual(set(model_review_hold.held_changes(
                         self.repository, base, head)), set(entry["paths"]))
@@ -1317,6 +1325,14 @@ class ModelReviewHoldTests(unittest.TestCase):
                     self.assertEqual(len(model_review_hold.read_reviewed_amendments(registry)), 2)
                     with patch.object(model_review_hold, "REGISTRY", registry):
                         self.assertTrue(model_review_hold.held_changes(self.repository, base, head))
+
+    def test_candidate_header_admission_record_cannot_authorize_itself(self):
+        base, _, entry = self.input_producer_fixture("main-header-admission")
+        self.write("validation/reviewed-amendments.md", self.registry([entry]).read_text())
+        head = self.commit()
+        with patch.object(model_review_hold, "REGISTRY", self.registry([])):
+            self.assertEqual(set(model_review_hold.held_changes(
+                self.repository, base, head)), set(entry["paths"]))
 
     def test_invalid_trusted_registry_causes_explicit_cli_failure(self):
         self.write("src/lib.rs", "pub fn changed() {}\n")
