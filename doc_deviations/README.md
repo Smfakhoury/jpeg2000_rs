@@ -6,7 +6,7 @@
 | Evidence | Native Rust tests; production code unchanged |
 | Included | 30 test-backed standards findings |
 | Excluded | Project-profile findings F26-F27; non-mandatory recommendation F28; qualified observation U1 |
-| Edition qualification | Tests cite T.800 (2019), T.801 (2021), T.808 (2022), and T.814 (2019). The repository selects T.800 (2024), T.801 (2023), T.808 (2026), and T.814 (2019); newer-edition reconciliation is incomplete. |
+| Edition Evaluated | Tests cite T.800 (2019), T.801 (2021), T.808 (2022), and T.814 (2019). The repository selects T.800 (2024), T.801 (2023), T.808 (2026), and T.814 (2019); newer-edition reconciliation is incomplete. |
 
 | ID | Class | Standard requirement | Observed deviation | Production code | Test evidence |
 |---|---|---|---|---|---|
