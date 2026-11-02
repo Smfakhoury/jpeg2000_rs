@@ -1714,6 +1714,53 @@ not independent human/normative approval; no publication is authorized.
           "after": "d0b1c2c78e27e4f62bc9fc10fa76f238cd2354ce"
         }
       }
+    },
+    {
+      "id": "proposal-210-layout-prologue",
+      "profile": "layout-prologue",
+      "source_pr": 210,
+      "source_head": "91df2b0537d024d91f4fffd6d35458b41b9bb2d0",
+      "ci_run": 41370207229,
+      "verus_run": 41370207276,
+      "rationale": "Complete actual raw SOC/segment/SIZ prologue Result, image fields, header start and reader frame through the real layout caller. Existing finalizers, window, model meanings and requirement reference unions, controller policy, pins and caps unchanged. Eligibility only, not source integration, lifetime, normative or publication approval.",
+      "paths": {
+        "src/codestream/layout.rs": {
+          "before": "601e2f4aa4ea4535b6ea99f89955f9751b1c6276",
+          "after": "3cf79541364cf877e803f9b1a6b0db0b64bfdb47"
+        },
+        "src/codestream/proof_support.rs": {
+          "before": "ec6aea6c4654c9270f6ccd95c7a5e13779ef479c",
+          "after": "52424a594d8eed1af903f82e77918b741ed779f8"
+        },
+        "src/codestream/tests.rs": {
+          "before": "523ab6a1c5ab8aa8a3ade68f9821da367c803502",
+          "after": "176bbabf80bc807eb4299f6e2fde7ecd91d9f99c"
+        },
+        "specs/layout_input.rs": {
+          "before": null,
+          "after": "dc8e5eae0ad7827077d704027b356e9883df9a89"
+        },
+        "specs/mod.rs": {
+          "before": "5a927ed5abd33f663c4e1f41921e54b3caf9fffc",
+          "after": "89aa88cf4bddeb555f71a4acb614f973b18b5369"
+        },
+        "validation/framework.py": {
+          "before": "e695a610abf9cc967f9de63c9a5ac1104742cb81",
+          "after": "7f98828e2ec8a185551d71aab93b310b74c34de1"
+        },
+        "validation/normative-coverage.json": {
+          "before": "bcacd075ee0e1c91eb18bd508c0b35fac3a4fc7a",
+          "after": "f88050a00d57d3964f3f184692cbffceb3ac70b8"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "d0b1c2c78e27e4f62bc9fc10fa76f238cd2354ce",
+          "after": "e1c0f76af75fa7e576111f8c0caacfe51d893ff1"
+        },
+        "validation/expected-package-files.txt": {
+          "before": "75b8ae8a0f0edf530ec711a73ba26fb45d291a64",
+          "after": "b71fac7e12e563eb3ca44808853b5cd81fc51a6e"
+        }
+      }
     }
   ]
 }
