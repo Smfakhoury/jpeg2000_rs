@@ -1,8 +1,0 @@
-$ ["patch", "--batch", "--forward", "-p1", "-i", "jp2-spec-registration.patch"]
-patching file src/jp2.rs
-
-
-$ ["python3", "validation/jp2_spec_runner.py", "build"]
-   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/ea8d9c3e31baf68e430c41aa-replay-3ae62341340d4a399df2222ffd519ace)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.82s
-

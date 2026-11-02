@@ -1,3 +1,0 @@
-   Compiling jpeg2000_rs v0.1.0 (/home/sfakhoury/.copilot/session-state/3616dccb-c271-4597-9bee-9739f2e96b70/files/jpeg2000-independent-review-20261102/jpeg2000-review-package-20261029/.work/12db5111ad29d4dc5a0ff9bb-k9x9krc5/source)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.11s
-  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)

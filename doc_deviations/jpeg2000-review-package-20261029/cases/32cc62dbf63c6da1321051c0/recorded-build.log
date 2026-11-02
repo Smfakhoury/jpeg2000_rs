@@ -1,6 +1,0 @@
-$ ["python3", "validation/tile_transition_suite.py", "build"]
-patching file src/jpip.rs
-Hunk #2 succeeded at 5803 (offset 2 lines).
-   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/32cc62dbf63c6da1321051c0-replay-5)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.52s
-

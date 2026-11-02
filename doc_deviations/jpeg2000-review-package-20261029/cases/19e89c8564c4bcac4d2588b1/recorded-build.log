@@ -1,4 +1,0 @@
-$ ["python3", "-c", "import json, shutil, subprocess, sys\np = subprocess.run(['cargo', 'test', '--lib', '--no-run', '--message-format=json'], stdout=subprocess.PIPE, text=True)\nif p.returncode:\n    print(p.stdout)\n    sys.exit(p.returncode)\nartifacts = [json.loads(line) for line in p.stdout.splitlines() if line.startswith('{')]\n[executable] = [a['executable'] for a in artifacts if a.get('reason') == 'compiler-artifact' and a.get('executable') and a['target']['name'] == 'jpeg2000_rs' and a['profile']['test']]\nshutil.copy2(executable, 'target/typed-layout-contract')"]
-   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/19e89c8564c4bcac4d2588b1-replay-2)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.91s
-

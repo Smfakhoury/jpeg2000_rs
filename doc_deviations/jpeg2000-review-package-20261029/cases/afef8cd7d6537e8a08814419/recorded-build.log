@@ -1,5 +1,0 @@
-$ ["python3", "validation/build_placeholder_contract_tests.py"]
-   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/afef8cd7d6537e8a08814419-replay-cda7b76d15a04d3cb584d31c5062f799)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.41s
-Built target/placeholder-contract-tests; all three contract cases and original regression registered.
-

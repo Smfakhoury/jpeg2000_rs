@@ -1,4 +1,0 @@
-$ ["python3", "validation/run_metadata_contract_suite.py", "build"]
-   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/e1f075d7b5416d4f472c0f9a-replay-47c486cbeff34b958ac71e2bf678fad2)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.57s
-

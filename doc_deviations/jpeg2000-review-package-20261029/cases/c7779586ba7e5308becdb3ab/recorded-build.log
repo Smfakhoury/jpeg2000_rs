@@ -1,6 +1,0 @@
-$ ["bash", "-c", "set -e; patch --batch --fuzz=0 -p1 < validation/plm-standard-tests.patch; cargo test --locked --lib --no-run; for binary in target/debug/deps/jpeg2000_rs-*; do if [ -f \"$binary\" ] && [ -x \"$binary\" ]; then cp \"$binary\" target/plm-standard-tests; exit 0; fi; done; exit 127"]
-patching file src/codestream/tests.rs
-   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/c7779586ba7e5308becdb3ab-replay-4)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.09s
-  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
-

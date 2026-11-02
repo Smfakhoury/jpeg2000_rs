@@ -1,4 +1,0 @@
-$ ["python3", "validation/read-tile-part-contract.py", "build"]
-   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/9a82786057472396f5b9ef42-replay-3)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.99s
-

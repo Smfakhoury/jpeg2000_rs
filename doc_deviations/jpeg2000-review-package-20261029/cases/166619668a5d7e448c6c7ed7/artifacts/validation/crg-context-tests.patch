@@ -1,8 +1,0 @@
-diff --git a/src/decode.rs b/src/decode.rs
---- a/src/decode.rs
-+++ b/src/decode.rs
-@@ -6999,2 +6999,4 @@
- mod tests {
-+    include!("decode_crg_tests.rs");
-+
-     use super::*;

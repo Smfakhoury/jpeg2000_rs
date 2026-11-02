@@ -1,3 +1,0 @@
-   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-review-package-20261029/verification/.work/5419dc777157dc2a298419c7-69oa30td/source)
-    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.52s
-  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
