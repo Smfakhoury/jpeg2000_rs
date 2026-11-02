@@ -1024,6 +1024,18 @@ class FrameworkTests(WorkingFiles):
             framework._LAYOUT_PROLOGUE_CONTRACTS, 1,
         )
         coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        siz = next(
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-complete-native-raw-siz-geometry"
+        )
+        self.assertIn(
+            {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
+            siz["implementation_refs"],
+        )
+        self.assertIn(
+            {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout_prologue"},
+            siz["implementation_refs"],
+        )
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part1-complete-native-layout-prologue"

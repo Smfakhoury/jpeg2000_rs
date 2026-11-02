@@ -1223,6 +1223,7 @@
       "id": "part1-complete-native-raw-siz-geometry",
       "topic": "Complete actual Parser::parse_siz Result/every ImageSize field, entire private component array including unused zeros and raw r_siz from actual raw Segment payload/offset and real limits. Preserve header-length then first-tile overflow before combined geometry/expected-length, component cap before ordered descriptors, precision/subsampling before capacity, sticky paired uniform flags, then width/height/pixel/ceil/tile limits in native order. Marker identity remains intentionally unvalidated in this helper; the actual parser checks SIZ before calling. All array/loop/arithmetic bounds and byte/word values derive internally without normalized headers/images, supplied geometry/result banks or successful-admission premises. Shared exact malformed-offset/word/ceiling helpers and cap observers are proved, no policy/trust/pin/budget change. Remaining coding/quantization/Part2/tile/layout parser-to-output/file/F2/F4/final F8 and delivery stay separate.",
       "implementation_refs": [
+        {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
         {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout_prologue"},
         {"path": "src/codestream/image_header.rs", "symbol": "Parser::parse_siz"},
         {"path": "src/codestream/reader.rs", "symbol": "Parser::malformed_here"}
