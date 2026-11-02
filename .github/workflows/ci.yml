@@ -98,6 +98,8 @@ jobs:
       - name: Install pinned validation dependencies
         run: |
           ${{ matrix.python }} -m venv .venv
+          ${{ matrix.venv }} --version
+          ${{ matrix.venv }} -m pip --version
           ${{ matrix.venv }} -m pip install --require-hashes --only-binary=:all: -r validation/requirements.txt
       - name: Build pinned independent reference tools
         run: |

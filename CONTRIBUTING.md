@@ -24,10 +24,15 @@ and regenerate the lock in a separate tooling environment:
 
 ```sh
 python3 -m venv target/requirements-tools
-target/requirements-tools/bin/python -m pip install pip==25.3 pip-tools==7.5.2
-target/requirements-tools/bin/python -m piptools compile --generate-hashes \
-  --strip-extras --no-emit-index-url --no-emit-trusted-host validation/requirements.in
+target/requirements-tools/bin/python -m pip install uv==0.13.6
+target/requirements-tools/bin/uv pip compile --universal --python-version 3.10 \
+  --generate-hashes --no-build --output-file validation/requirements.txt \
+  validation/requirements.in
 ```
+
+Universal resolution preserves the Python 3.10 dependency branch while selecting
+compatible binary wheels for newer interpreters. Do not remove the markers or
+allow source builds to hide a missing wheel on a supported CI interpreter.
 
 Review version changes and rerun validation before adopting an updated lock.
 Dependency-update PRs remain subject to the proof/model review hold; they do
