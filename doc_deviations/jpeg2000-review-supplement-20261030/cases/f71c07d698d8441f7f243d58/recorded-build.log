@@ -1,0 +1,7 @@
+$ ["python3", "validation/build-progression-contract.py"]
+patching file src/packet.rs
+Hunk #1 succeeded at 6642 with fuzz 2.
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/f71c07d698d8441f7f243d58-replay-0d29c061413548e9ae023d69ed24f097)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.14s
+Built one native suite; all four clause cases and reused regressions are registered.
+

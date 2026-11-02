@@ -1,0 +1,31 @@
+{
+  "suite": "9a82786057472396f5b9ef42",
+  "case": "db69a93bf86d084071e11986",
+  "deviation": "d376ea8284e282622433a04e",
+  "diagnosis": "8f0f36bcb9b54d7e08dddd9a",
+  "spec": "d6220bf1a69f68a0f1f19555",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "Tile-header parser rejects consistent combined PLM and PLT metadata permitted by T.800 A.7.3",
+  "entry": "src/codestream.rs:9830:codestream::Parser::read_tile_part",
+  "kind": "unit_contract",
+  "satisfies": [
+    "Real prefix/SOT reader state, one 1x1 component, 1..255 layers, constructed valid inherited tables; standard PLM Zplm and 8-bit Nplm framing independently asserted; selected PLM descriptor contains actual encoded group bytes and exact count/size; optional consistent PLT and matching inline empty-packet payload."
+  ],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "python3",
+      "validation/read-tile-part-contract.py",
+      "run",
+      "plm_plt"
+    ],
+    "duration_s": 0.033,
+    "exit_code": 101,
+    "output_tail": "\nrunning 1 test\ntest codestream::tests::read_tile_part_contract_plm_plt ... read_tile_part unit: T.800 A.7.2/A.7.3 count=1 sources=1\nread_tile_part unit: T.800 A.7.2/A.7.3 count=1 sources=2\nread_tile_part unit: T.800 A.7.2/A.7.3 count=1 sources=3\nread_tile_part unit: T.800 A.7.2/A.7.3 count=2 sources=1\nread_tile_part unit: T.800 A.7.2/A.7.3 count=2 sources=2\nread_tile_part unit: T.800 A.7.2/A.7.3 count=2 sources=3\nread_tile_part unit: T.800 A.7.2/A.7.3 count=127 sources=1\nread_tile_part unit: T.800 A.7.2/A.7.3 count=127 sources=2\nread_tile_part unit: T.800 A.7.2/A.7.3 count=127 sources=3\nread_tile_part unit: T.800 A.7.2/A.7.3 count=128 sources=1\nread_tile_part unit: T.800 A.7.2/A.7.3 count=128 sources=2\nread_tile_part unit: T.800 A.7.2/A.7.3 count=128 sources=3\nread_tile_part unit: T.800 A.7.2/A.7.3 count=255 sources=1\nread_tile_part unit: T.800 A.7.2/A.7.3 count=255 sources=2\nread_tile_part unit: T.800 A.7.2/A.7.3 count=255 sources=3\n\nthread 'codestream::tests::read_tile_part_contract_plm_plt' (660396) panicked at src/codestream/read_tile_part_contract.rs:350:5:\nconsistent PLM/PLT must work separately AND together: [\"count=1 sources=3: MalformedInput { offset: 84, kind: InvalidMarkerOrder }\", \"count=2 sources=3: MalformedInput { offset: 85, kind: InvalidMarkerOrder }\", \"count=127 sources=3: MalformedInput { offset: 210, kind: InvalidMarkerOrder }\", \"count=128 sources=3: MalformedInput { offset: 211, kind: InvalidMarkerOrder }\", \"count=255 sources=3: MalformedInput { offset: 338, kind: InvalidMarkerOrder }\"]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    codestream::tests::read_tile_part_contract_plm_plt\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 667 filtered out; finished in 0.00s\n\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Small tile-part fixtures; both descriptions are consistent."
+}

@@ -1,0 +1,12 @@
+$ ["patch", "--batch", "--forward", "-p1", "-i", "layer_reference_tests.patch"]
+patching file src/jp2.rs
+
+
+$ ["python3", "-c", "from pathlib import Path; s=Path('src/jp2.rs').read_text(); t=Path('src/jp2_layer_reference_tests.rs').read_text(); assert 'mod layer_reference_contract {\\n        include!(\"jp2_layer_reference_tests.rs\");\\n    }' in s; assert 'fn no_registration_uses_ordinal_bounds()' in t; assert 'fn registration_presence_is_file_wide_and_references_exist()' in t; assert 'accepted_mixed.is_empty()' in t"]
+
+
+$ ["cargo", "test", "--lib", "--locked", "--no-run"]
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/bb705c76759f74c8112ad3a5-replay-e35d47ea388f4e7c80648a5480f75520)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.40s
+  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
+

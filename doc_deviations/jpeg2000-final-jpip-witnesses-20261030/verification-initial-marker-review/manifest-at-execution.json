@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "repository": "https://github.com/microsoft/jpeg2000_rs",
+  "findings": [
+    {
+      "id": "F11",
+      "group": "additional-evidence-existing-finding",
+      "title": "Initial inherited-header defaults also fail through response ingestion",
+      "code": [
+        "src/jpip.rs",
+        236,
+        290
+      ],
+      "citation": "T.808 (12/2022), A.2.1, printed pp.12-13",
+      "new_root_cause": false,
+      "scope": "Annex A message/cache ingestion, not universal transport permission to omit first headers."
+    },
+    {
+      "id": "F31",
+      "group": "standards-behavior",
+      "title": "Valid leading-zero VBAS integer encodings are rejected",
+      "code": [
+        "src/jpip.rs",
+        361,
+        407
+      ],
+      "citation": "T.808 (12/2022), A.2.1, Figures A.2-A.3, printed pp.12-13",
+      "new_root_cause": true,
+      "scope": "Small in-range ordinary fields in actual Annex A messages; no arbitrary-size or full-image conformance claim."
+    }
+  ],
+  "documents": [
+    {
+      "standard": "T.808",
+      "acquired_edition": "2022-12",
+      "selected_edition": "2026-06",
+      "source": "https://www.itu.int/rec/dologin_pub.asp?lang=e&id=T-REC-T.808-202212-S!!PDF-E&type=items",
+      "pdf_sha256": "238e446ae25df03c8459d8ef52d1a55f1fa3c74a5cfe3f4c5bd50fe5b72b3a1b",
+      "text_sha256": "0eabe7584ed48bce280a391dfa1bdd217038adc3917920194afd104f4e75d8cc"
+    }
+  ],
+  "suites": [
+    {
+      "id": "55730ec94ef7342e41f0ebc5",
+      "artifacts": {
+        "validation/install-jpip-vbas-contract.py": "7c3275f68fb6227fbc881dc5ede594f3568b00ee1fe7058021efce7976f7f44a",
+        "validation/jpip_vbas_contract.rs": "bc655a866095318cd94570525383dadfd42c28862af9f8c521a1505c7602e23a"
+      },
+      "build": [
+        [
+          "python3",
+          "validation/install-jpip-vbas-contract.py"
+        ],
+        [
+          "cargo",
+          "test",
+          "--lib",
+          "--locked",
+          "--no-run"
+        ]
+      ],
+      "tests": [
+        {
+          "id": "a47255338004ddac419b357f",
+          "finding_ids": [
+            "F31"
+          ],
+          "command": [
+            "cargo",
+            "test",
+            "--lib",
+            "--locked",
+            "jpip::tests::bounded_standard_vbas_contract",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "expected_exit": 101,
+          "markers": [
+            "independent metadata header [60, 80, 08, 00, 00, 01, ab, 5a]: expected value-preserving Data, got Err(MalformedInput { offset: 1, kind: InvalidJpipVbas })",
+            "independent metadata header [60, 08, 00, 00, 80, 01, ab, 5a]: expected value-preserving Data, got Err(MalformedInput { offset: 4, kind: InvalidJpipVbas })",
+            "test jpip::tests::bounded_standard_vbas_contract ... FAILED",
+            "test result: FAILED. 0 passed; 1 failed; 0 ignored"
+          ],
+          "recorded_output": "cases/55730ec94ef7342e41f0ebc5/recorded-test.log"
+        }
+      ]
+    },
+    {
+      "id": "66aff522bc300198b9d75ec3",
+      "artifacts": {
+        "validation/jpip-ingest-contract.patch": "0a9bdf2a01936a8761a5d3afb087605b3f5dbd325d2bf32c62ccd11c069c4f7b",
+        "src/jpip_ingest_contract_tests.rs": "145a11c1299deea06e5bb43a688a08065bd83fca9974e1e9c995c01bb8f2947b"
+      },
+      "build": [
+        [
+          "patch",
+          "--batch",
+          "--forward",
+          "-p1",
+          "-i",
+          "validation/jpip-ingest-contract.patch"
+        ],
+        [
+          "python3",
+          "-c",
+          "from pathlib import Path; p=Path('src/jpip.rs').read_text(); t=Path('src/jpip_ingest_contract_tests.rs').read_text(); assert p.count('include!(\"jpip_ingest_contract_tests.rs\");') == 1; assert 'fn ingests_response_with_inherited_context()' in p; assert 'fn contract_ingest_payload_reassembly()' in t; assert 'fn contract_ingest_header_forms_response_local()' in t"
+        ],
+        [
+          "cargo",
+          "test",
+          "--locked",
+          "--lib",
+          "--no-run"
+        ]
+      ],
+      "tests": [
+        {
+          "id": "1efdfed94ecf6fa7e50d4390",
+          "finding_ids": [
+            "F11"
+          ],
+          "command": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "jpip::tests::contract_ingest_header_forms_response_local",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "expected_exit": 101,
+          "markers": [
+            "input=[30, 00, 01, 00], result=Err(MalformedInput { offset: 0, kind: InvalidJpipHeader })",
+            "test jpip::tests::contract_ingest_header_forms_response_local ... FAILED",
+            "test result: FAILED. 0 passed; 1 failed; 0 ignored"
+          ],
+          "recorded_output": "cases/66aff522bc300198b9d75ec3/recorded-test.log"
+        }
+      ]
+    }
+  ],
+  "test_count": 2,
+  "qualification": "One new review finding plus another native wrapper for published F11. Preserve model/standard distinction and unresolved newer-edition differences. Unselected tests in original modules are not additional registered reproductions."
+}

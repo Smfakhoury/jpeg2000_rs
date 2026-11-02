@@ -1,0 +1,159 @@
+
+running 1 test
+test jp2::tests::spec_header_ignores_later_colour_semantics ... unit parse_jp2_header: contiguous colr method=0, extra=0, base=0
+unit parse_jp2_header: contiguous colr method=0, extra=1, base=0
+unit parse_jp2_header: contiguous colr method=0, extra=7, base=0
+unit parse_jp2_header: contiguous colr method=0, extra=31, base=0
+unit parse_jp2_header: contiguous colr method=4, extra=0, base=0
+unit parse_jp2_header: contiguous colr method=4, extra=1, base=0
+unit parse_jp2_header: contiguous colr method=4, extra=7, base=0
+unit parse_jp2_header: contiguous colr method=4, extra=31, base=0
+unit parse_jp2_header: contiguous colr method=5, extra=0, base=0
+unit parse_jp2_header: contiguous colr method=5, extra=1, base=0
+unit parse_jp2_header: contiguous colr method=5, extra=7, base=0
+unit parse_jp2_header: contiguous colr method=5, extra=31, base=0
+unit parse_jp2_header: contiguous colr method=127, extra=0, base=0
+unit parse_jp2_header: contiguous colr method=127, extra=1, base=0
+unit parse_jp2_header: contiguous colr method=127, extra=7, base=0
+unit parse_jp2_header: contiguous colr method=127, extra=31, base=0
+unit parse_jp2_header: contiguous colr method=254, extra=0, base=0
+unit parse_jp2_header: contiguous colr method=254, extra=1, base=0
+unit parse_jp2_header: contiguous colr method=254, extra=7, base=0
+unit parse_jp2_header: contiguous colr method=254, extra=31, base=0
+unit parse_jp2_header: contiguous colr method=255, extra=0, base=0
+unit parse_jp2_header: contiguous colr method=255, extra=1, base=0
+unit parse_jp2_header: contiguous colr method=255, extra=7, base=0
+unit parse_jp2_header: contiguous colr method=255, extra=31, base=0
+unit parse_jp2_header: contiguous colr method=0, extra=0, base=40
+unit parse_jp2_header: contiguous colr method=0, extra=1, base=40
+unit parse_jp2_header: contiguous colr method=0, extra=7, base=40
+unit parse_jp2_header: contiguous colr method=0, extra=31, base=40
+unit parse_jp2_header: contiguous colr method=4, extra=0, base=40
+unit parse_jp2_header: contiguous colr method=4, extra=1, base=40
+unit parse_jp2_header: contiguous colr method=4, extra=7, base=40
+unit parse_jp2_header: contiguous colr method=4, extra=31, base=40
+unit parse_jp2_header: contiguous colr method=5, extra=0, base=40
+unit parse_jp2_header: contiguous colr method=5, extra=1, base=40
+unit parse_jp2_header: contiguous colr method=5, extra=7, base=40
+unit parse_jp2_header: contiguous colr method=5, extra=31, base=40
+unit parse_jp2_header: contiguous colr method=127, extra=0, base=40
+unit parse_jp2_header: contiguous colr method=127, extra=1, base=40
+unit parse_jp2_header: contiguous colr method=127, extra=7, base=40
+unit parse_jp2_header: contiguous colr method=127, extra=31, base=40
+unit parse_jp2_header: contiguous colr method=254, extra=0, base=40
+unit parse_jp2_header: contiguous colr method=254, extra=1, base=40
+unit parse_jp2_header: contiguous colr method=254, extra=7, base=40
+unit parse_jp2_header: contiguous colr method=254, extra=31, base=40
+unit parse_jp2_header: contiguous colr method=255, extra=0, base=40
+unit parse_jp2_header: contiguous colr method=255, extra=1, base=40
+unit parse_jp2_header: contiguous colr method=255, extra=7, base=40
+unit parse_jp2_header: contiguous colr method=255, extra=31, base=40
+unit parse_jp2_header: contiguous colr method=0, extra=0, base=4294967296
+unit parse_jp2_header: contiguous colr method=0, extra=1, base=4294967296
+unit parse_jp2_header: contiguous colr method=0, extra=7, base=4294967296
+unit parse_jp2_header: contiguous colr method=0, extra=31, base=4294967296
+unit parse_jp2_header: contiguous colr method=4, extra=0, base=4294967296
+unit parse_jp2_header: contiguous colr method=4, extra=1, base=4294967296
+unit parse_jp2_header: contiguous colr method=4, extra=7, base=4294967296
+unit parse_jp2_header: contiguous colr method=4, extra=31, base=4294967296
+unit parse_jp2_header: contiguous colr method=5, extra=0, base=4294967296
+unit parse_jp2_header: contiguous colr method=5, extra=1, base=4294967296
+unit parse_jp2_header: contiguous colr method=5, extra=7, base=4294967296
+unit parse_jp2_header: contiguous colr method=5, extra=31, base=4294967296
+unit parse_jp2_header: contiguous colr method=127, extra=0, base=4294967296
+unit parse_jp2_header: contiguous colr method=127, extra=1, base=4294967296
+unit parse_jp2_header: contiguous colr method=127, extra=7, base=4294967296
+unit parse_jp2_header: contiguous colr method=127, extra=31, base=4294967296
+unit parse_jp2_header: contiguous colr method=254, extra=0, base=4294967296
+unit parse_jp2_header: contiguous colr method=254, extra=1, base=4294967296
+unit parse_jp2_header: contiguous colr method=254, extra=7, base=4294967296
+unit parse_jp2_header: contiguous colr method=254, extra=31, base=4294967296
+unit parse_jp2_header: contiguous colr method=255, extra=0, base=4294967296
+unit parse_jp2_header: contiguous colr method=255, extra=1, base=4294967296
+unit parse_jp2_header: contiguous colr method=255, extra=7, base=4294967296
+unit parse_jp2_header: contiguous colr method=255, extra=31, base=4294967296
+
+thread 'jp2::tests::spec_header_ignores_later_colour_semantics' (3293659) panicked at src/jp2_header_spec_tests.rs:162:5:
+JP2 reader ignore predicate violated:
+method=0 extra=0 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=0 extra=1 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=0 extra=7 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=0 extra=31 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=4 extra=0 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=4 extra=1 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=4 extra=7 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=4 extra=31 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=5 extra=0 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=5 extra=1 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=5 extra=7 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=5 extra=31 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=127 extra=0 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=127 extra=1 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=127 extra=7 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=127 extra=31 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=254 extra=0 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=254 extra=1 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=254 extra=7 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=254 extra=31 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=255 extra=0 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=255 extra=1 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=255 extra=7 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=255 extra=31 base=0: expected ignored colr, got MalformedInput { offset: 37, kind: InvalidColorSpecification }
+method=0 extra=0 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=0 extra=1 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=0 extra=7 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=0 extra=31 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=4 extra=0 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=4 extra=1 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=4 extra=7 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=4 extra=31 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=5 extra=0 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=5 extra=1 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=5 extra=7 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=5 extra=31 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=127 extra=0 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=127 extra=1 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=127 extra=7 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=127 extra=31 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=254 extra=0 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=254 extra=1 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=254 extra=7 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=254 extra=31 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=255 extra=0 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=255 extra=1 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=255 extra=7 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=255 extra=31 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }
+method=0 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=0 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=0 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=0 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=4 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=4 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=4 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=4 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=5 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=5 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=5 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=5 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=127 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=127 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=127 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=127 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=254 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=254 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=254 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=254 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=255 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=255 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=255 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+method=255 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    jp2::tests::spec_header_ignores_later_colour_semantics
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 662 filtered out; finished in 0.00s
+

@@ -1,0 +1,29 @@
+kets=0, expected=None, selection=None, SOP=false, EPH=true
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=true, EPH=true
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=true, EPH=true
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=false, EPH=false
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=true, EPH=false
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=true, EPH=false
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=false, EPH=true
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=true, EPH=true
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=true, EPH=true
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=true, EPH=false
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=true, EPH=false
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=true, EPH=false
+decode_progression_precinct_packet: coord=PacketCoordinate { layer: 0, resolution: 0, component: 0, precinct: 0 }, tile=0, packed=0, packets=0, expected=None, selection=None, SOP=true, EPH=false
+
+thread 'packet::tests::progression_contract_sop_policy_and_optional_marker' (274665) panicked at src/packet_progression_contract_tests.rs:522:5:
+T.800 A.8.1 permits absent SOP with Scod bit 1 set: packed=false, flags=2, actual=Err(MalformedInput { offset: 0, kind: Truncated }), expected=Ok((PacketBodyDecode { present: false, code_blocks: 1, contributions: 0, segments: 0, passes: 0, header_bytes: 1, body_bytes: 0, bytes_consumed: 1 }, 1, 0))
+T.800 A.8.1 permits absent SOP with Scod bit 1 set: packed=false, flags=6, actual=Err(MalformedInput { offset: 0, kind: Truncated }), expected=Ok((PacketBodyDecode { present: false, code_blocks: 1, contributions: 0, segments: 0, passes: 0, header_bytes: 1, body_bytes: 0, bytes_consumed: 3 }, 3, 0))
+T.800 A.8.1 permits absent SOP with Scod bit 1 set: packed=true, flags=2, actual=Err(MalformedInput { offset: 0, kind: Truncated }), expected=Ok((PacketBodyDecode { present: false, code_blocks: 1, contributions: 0, segments: 0, passes: 0, header_bytes: 1, body_bytes: 0, bytes_consumed: 1 }, 0, 1))
+T.800 A.8.1 permits absent SOP with Scod bit 1 set: packed=true, flags=6, actual=Err(MalformedInput { offset: 0, kind: Truncated }), expected=Ok((PacketBodyDecode { present: false, code_blocks: 1, contributions: 0, segments: 0, passes: 0, header_bytes: 1, body_bytes: 0, bytes_consumed: 3 }, 0, 3))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test packet::tests::progression_contract_sop_policy_and_optional_marker ... FAILED
+
+failures:
+
+failures:
+    packet::tests::progression_contract_sop_policy_and_optional_marker
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 663 filtered out; finished in 0.00s
+

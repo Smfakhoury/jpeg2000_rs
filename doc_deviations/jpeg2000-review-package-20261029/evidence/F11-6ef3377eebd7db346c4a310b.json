@@ -1,0 +1,32 @@
+{
+  "suite": "5419dc777157dc2a298419c7",
+  "case": "a17a60fedfd5f588b3c6f6a3",
+  "deviation": "6ef3377eebd7db346c4a310b",
+  "diagnosis": "792f0af7a11cdc9651c24af8",
+  "spec": "c4f741cfbb88dfa62062114b",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "Fresh JPIP history rejects the standard initial inherited header instead of selecting class 0 and codestream 0",
+  "entry": "src/jpip.rs:109:jpip::JpipHeaderContext::new",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "jpip::tests::fresh_header_context_preserves_absence_and_independent_standard_history",
+      "--",
+      "--exact"
+    ],
+    "duration_s": 0.059,
+    "exit_code": 101,
+    "output_tail": "stream=62, bin=0, bytes=[40, 08, 00, 00]\nnew -> parse_jpip_message: form=1, expected class=8, codestream=62, bin=0, bytes=[20, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=2, codestream=62, bin=0, bytes=[60, 02, 3e, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=8, codestream=63, bin=0, bytes=[60, 08, 3f, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=8, codestream=62, bin=0, bytes=[40, 08, 00, 00]\nnew -> parse_jpip_message: form=1, expected class=8, codestream=62, bin=0, bytes=[20, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=6, codestream=62, bin=0, bytes=[60, 06, 3e, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=8, codestream=63, bin=0, bytes=[60, 08, 3f, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=8, codestream=62, bin=0, bytes=[40, 08, 00, 00]\nnew -> parse_jpip_message: form=1, expected class=8, codestream=62, bin=0, bytes=[20, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=8, codestream=62, bin=0, bytes=[60, 08, 3e, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=8, codestream=63, bin=0, bytes=[60, 08, 3f, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=8, codestream=62, bin=0, bytes=[40, 08, 00, 00]\nnew -> parse_jpip_message: form=1, expected class=8, codestream=62, bin=0, bytes=[20, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=0, codestream=63, bin=0, bytes=[60, 00, 3f, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=8, codestream=0, bin=0, bytes=[60, 08, 00, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=8, codestream=63, bin=0, bytes=[40, 08, 00, 00]\nnew -> parse_jpip_message: form=1, expected class=8, codestream=63, bin=0, bytes=[20, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=2, codestream=63, bin=0, bytes=[60, 02, 3f, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=8, codestream=0, bin=0, bytes=[60, 08, 00, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=8, codestream=63, bin=0, bytes=[40, 08, 00, 00]\nnew -> parse_jpip_message: form=1, expected class=8, codestream=63, bin=0, bytes=[20, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=6, codestream=63, bin=0, bytes=[60, 06, 3f, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=8, codestream=0, bin=0, bytes=[60, 08, 00, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=8, codestream=63, bin=0, bytes=[40, 08, 00, 00]\nnew -> parse_jpip_message: form=1, expected class=8, codestream=63, bin=0, bytes=[20, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=8, codestream=63, bin=0, bytes=[60, 08, 3f, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=8, codestream=0, bin=0, bytes=[60, 08, 00, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=8, codestream=63, bin=0, bytes=[40, 08, 00, 00]\nnew -> parse_jpip_message: form=1, expected class=8, codestream=63, bin=0, bytes=[20, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=0, codestream=0, bin=0, bytes=[40, 00, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=2, codestream=0, bin=0, bytes=[40, 02, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=6, codestream=0, bin=0, bytes=[40, 06, 00, 00]\nnew -> parse_jpip_message: form=2, expected class=8, codestream=0, bin=0, bytes=[40, 08, 00, 00]\nnew -> parse_jpip_message: form=3, expected class=0, codestream=0, bin=0, bytes=[60, 00, 00, 00, 00]\nnew -> parse_jpip_message: form=1, expected class=0, codestream=0, bin=0, bytes=[20, 00, 00]\n\nthread 'jpip::tests::fresh_header_context_preserves_absence_and_independent_standard_history' (2462725) panicked at src/jpip_header_context_contract_tests.rs:90:10:\nfresh inherited header must select standard initial identity (0,0): MalformedInput { offset: 0, kind: InvalidJpipHeader }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\n\n\nfailures:\n    jpip::tests::fresh_header_context_preserves_absence_and_independent_standard_history\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 660 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Fresh header-parser context; opaque/empty body, not decoded packet semantics."
+}

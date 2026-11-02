@@ -1,0 +1,33 @@
+{
+  "suite": "944e3d6310a427b8a34ed222",
+  "case": "75d55d0e82420b19700d15de",
+  "deviation": "6d98cc079e1e848463d4205f",
+  "diagnosis": "94a6de03724208389bf67f1c",
+  "spec": "153c097eaf82d53210996129",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "Automatic tile-header normalization rejects complete JPP bins without optional SOD",
+  "entry": "src/jpip.rs:4269:jpip::normalize_automatic_tile_headers",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "cargo",
+      "test",
+      "--lib",
+      "--quiet",
+      "--",
+      "jpip::tests::automatic_normalization_accepts_optional_wire_sod_contract",
+      "--exact",
+      "--nocapture"
+    ],
+    "duration_s": 0.064,
+    "exit_code": 101,
+    "output_tail": "\nrunning 1 test\n\nthread 'jpip::tests::automatic_normalization_accepts_optional_wire_sod_contract' (3079811) panicked at src/jpip_normalization_contract_tests.rs:74:5:\n176 contract failures; first examples:\ntile=0 retained=0 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 0, kind: MissingRequiredStructure }\ntile=0 retained=7 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 7, kind: MissingRequiredStructure }\ntile=0 retained=8 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 8, kind: MissingRequiredStructure }\ntile=0 retained=23 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 23, kind: MissingRequiredStructure }\ntile=0 retained=133 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 133, kind: MissingRequiredStructure }\ntile=0 retained=261 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 261, kind: MissingRequiredStructure }\ntile=0 retained=1030 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 1030, kind: MissingRequiredStructure }\ntile=0 retained=14 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 14, kind: MissingRequiredStructure }\ntile=1 retained=0 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 0, kind: MissingRequiredStructure }\ntile=1 retained=7 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 7, kind: MissingRequiredStructure }\ntile=1 retained=8 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 8, kind: MissingRequiredStructure }\ntile=1 retained=23 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 23, kind: MissingRequiredStructure }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\njpip::tests::automatic_normalization_accepts_optional_wire_sod_contract --- FAILED\n\nfailures:\n\nfailures:\n    jpip::tests::automatic_normalization_accepts_optional_wire_sod_contract\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.00s\n\nerror: test failed, to rerun pass `--lib`\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Smallest witness is complete empty tile0; direct normalization, not a complete image decode."
+}

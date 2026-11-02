@@ -1,0 +1,13 @@
+$ ["patch", "--batch", "--fuzz=0", "-p1", "-i", "validation/palette-contract-tests.patch"]
+patching file src/jp2.rs
+
+
+$ ["python3", "-c", "from pathlib import Path; s=Path('src/jp2.rs').read_text(); t=Path('src/jp2_palette_contract_tests.rs').read_text(); assert s.count('include!(\"jp2_palette_contract_tests.rs\");') == 1; assert 'fn validates_palette_mapping_relationships()' in s; assert 'fn retains_signed_palette_and_channel_definition_records()' in s; assert 'fn palette_contract_wire_order_precision_and_signedness()' in t; assert 'fn palette_contract_t800_entry_count_domain_and_complete_table()' in t; print('Verified test-only registration and both clause assertions in replay source')"]
+Verified test-only registration and both clause assertions in replay source
+
+
+$ ["cargo", "test", "--lib", "--locked", "--no-run"]
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/b22776d76bcd039a5c524749-replay-9679b4855a4345c597f99ed5e03599ab)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.76s
+  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
+

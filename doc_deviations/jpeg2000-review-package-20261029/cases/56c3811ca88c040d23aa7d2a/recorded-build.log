@@ -1,0 +1,4 @@
+$ ["python3", "validation/build-jp2-header-spec-tests.py"]
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/56c3811ca88c040d23aa7d2a-replay-28c9aa2839a8461da0e0f8189cada605)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.43s
+

@@ -1,0 +1,29 @@
+{
+  "suite": "c7779586ba7e5308becdb3ab",
+  "case": "b062a512e7267bca1f14bad8",
+  "deviation": "8bbaee85a2f30c8fd352e207",
+  "diagnosis": "4d2efb633516032365fb8816",
+  "spec": "c8b504049e1d05d2b877050b",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "PLM parser rejects standard one-octet Nplm framing as InvalidMarkerLength",
+  "entry": "src/codestream.rs:9168:codestream::Parser::parse_plm",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "target/plm-standard-tests",
+      "codestream::tests::standard_plm::standard_plm_octet_counts_and_wire_order",
+      "--exact",
+      "--nocapture"
+    ],
+    "duration_s": 0.019,
+    "exit_code": 101,
+    "output_tail": "et: 0, kind: InvalidMarkerLength }\ncase 1: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 2: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 3: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 4: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 5: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 6: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 7: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 8: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 9: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 10: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 11: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 12: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 13: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 14: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 15: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 16: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 17: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 18: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 19: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 20: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 21: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 22: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 23: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 24: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 25: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 26: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 27: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 28: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 29: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 30: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 31: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 32: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 33: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 34: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 35: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 36: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\ncase 37: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest codestream::tests::standard_plm::standard_plm_octet_counts_and_wire_order ... FAILED\n\nfailures:\n\nfailures:\n    codestream::tests::standard_plm::standard_plm_octet_counts_and_wire_order\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.02s\n\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Direct marker-parser test; distinguishes PLM from PPM's different framing."
+}

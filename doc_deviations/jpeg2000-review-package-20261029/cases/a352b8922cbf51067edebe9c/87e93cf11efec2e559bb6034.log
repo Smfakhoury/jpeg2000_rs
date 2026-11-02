@@ -1,0 +1,38 @@
+alse: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=5, offsets=false, coefficients=25: expected InvalidTransform for length != 30, got Ok(Some(25))
+direct resolve_mct_collection: J.3.1.1.3 N=5, integer coefficients=30, offsets=true: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=5, offsets=true, coefficients=25: expected InvalidTransform for length != 30, got Ok(Some(25))
+direct resolve_mct_collection: J.3.1.1.3 N=6, integer coefficients=42, offsets=false: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=6, offsets=false, coefficients=36: expected InvalidTransform for length != 42, got Ok(Some(36))
+direct resolve_mct_collection: J.3.1.1.3 N=6, integer coefficients=42, offsets=true: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=6, offsets=true, coefficients=36: expected InvalidTransform for length != 42, got Ok(Some(36))
+direct resolve_mct_collection: J.3.1.1.3 N=7, integer coefficients=56, offsets=false: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=7, offsets=false, coefficients=49: expected InvalidTransform for length != 56, got Ok(Some(49))
+direct resolve_mct_collection: J.3.1.1.3 N=7, integer coefficients=56, offsets=true: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=7, offsets=true, coefficients=49: expected InvalidTransform for length != 56, got Ok(Some(49))
+direct resolve_mct_collection: J.3.1.1.3 N=8, integer coefficients=72, offsets=false: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=8, offsets=false, coefficients=64: expected InvalidTransform for length != 72, got Ok(Some(64))
+direct resolve_mct_collection: J.3.1.1.3 N=8, integer coefficients=72, offsets=true: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=8, offsets=true, coefficients=64: expected InvalidTransform for length != 72, got Ok(Some(64))
+direct resolve_mct_collection: J.3.1.1.3 N=16, integer coefficients=272, offsets=false: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=16, offsets=false, coefficients=256: expected InvalidTransform for length != 272, got Ok(Some(256))
+direct resolve_mct_collection: J.3.1.1.3 N=16, integer coefficients=272, offsets=true: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=16, offsets=true, coefficients=256: expected InvalidTransform for length != 272, got Ok(Some(256))
+direct resolve_mct_collection: J.3.1.1.3 N=31, integer coefficients=992, offsets=false: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=31, offsets=false, coefficients=961: expected InvalidTransform for length != 992, got Ok(Some(961))
+direct resolve_mct_collection: J.3.1.1.3 N=31, integer coefficients=992, offsets=true: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=31, offsets=true, coefficients=961: expected InvalidTransform for length != 992, got Ok(Some(961))
+direct resolve_mct_collection: J.3.1.1.3 N=63, integer coefficients=4032, offsets=false: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=63, offsets=false, coefficients=3969: expected InvalidTransform for length != 4032, got Ok(Some(3969))
+direct resolve_mct_collection: J.3.1.1.3 N=63, integer coefficients=4032, offsets=true: expected full collection, got Err(MalformedInput { offset: 0, kind: InvalidTransform })
+N=63, offsets=true, coefficients=3969: expected InvalidTransform for length != 4032, got Ok(Some(3969))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test codestream::tests::resolve_mct_collection_clause_7ca4daea ... FAILED
+
+failures:
+
+failures:
+    codestream::tests::resolve_mct_collection_clause_7ca4daea
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 660 filtered out; finished in 0.09s
+

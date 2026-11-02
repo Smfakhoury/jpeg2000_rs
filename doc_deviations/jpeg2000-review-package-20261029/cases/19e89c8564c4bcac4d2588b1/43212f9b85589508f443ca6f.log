@@ -1,0 +1,22 @@
+on=[3, 1, 35, 9] subsampling=1 fraction_bits=0 inverse_rct=false active=true component=0: actual=[255, 239, 223, 207, 191, 175, 159, 143, 128, 112, 96, 80, 64, 48, 32, 16] expected=[255, 238, 221, 204, 187, 170, 153, 136, 119, 102, 85, 68, 51, 34, 17, 0]
+typed_layout source_signed=true target_signed=false region=[3, 1, 35, 9] subsampling=1 fraction_bits=16 inverse_rct=false active=true component=0: actual=[255, 239, 223, 207, 191, 175, 159, 143, 128, 112, 96, 80, 64, 48, 32, 16] expected=[255, 238, 221, 204, 187, 170, 153, 136, 119, 102, 85, 68, 51, 34, 17, 0]
+typed_layout source_signed=true target_signed=false region=[3, 1, 35, 9] subsampling=1 fraction_bits=0 inverse_rct=true active=true component=0: actual=[255, 239, 223, 207, 191, 175, 159, 143, 128, 112, 96, 80, 64, 48, 32, 16] expected=[255, 238, 221, 204, 187, 170, 153, 136, 119, 102, 85, 68, 51, 34, 17, 0]
+typed_layout source_signed=true target_signed=false region=[5, 2, 35, 5] subsampling=2 fraction_bits=0 inverse_rct=false active=true component=0: actual=[255, 239, 223, 207, 191, 175, 159, 143, 128, 112, 96, 80, 64, 48, 32, 16] expected=[255, 238, 221, 204, 187, 170, 153, 136, 119, 102, 85, 68, 51, 34, 17, 0]
+typed_layout source_signed=true target_signed=false region=[5, 2, 35, 5] subsampling=2 fraction_bits=16 inverse_rct=false active=true component=0: actual=[255, 239, 223, 207, 191, 175, 159, 143, 128, 112, 96, 80, 64, 48, 32, 16] expected=[255, 238, 221, 204, 187, 170, 153, 136, 119, 102, 85, 68, 51, 34, 17, 0]
+typed_layout source_signed=true target_signed=false region=[5, 2, 35, 5] subsampling=2 fraction_bits=0 inverse_rct=true active=true component=0: actual=[255, 239, 223, 207, 191, 175, 159, 143, 128, 112, 96, 80, 64, 48, 32, 16] expected=[255, 238, 221, 204, 187, 170, 153, 136, 119, 102, 85, 68, 51, 34, 17, 0]
+typed_layout source_signed=true target_signed=true region=[3, 1, 35, 9] subsampling=1 fraction_bits=0 inverse_rct=false active=true component=0: actual=[127, 111, 95, 79, 63, 47, 31, 15, 0, -16, -32, -48, -64, -80, -96, -112] expected=[127, 110, 93, 76, 59, 42, 25, 8, -9, -26, -43, -60, -77, -94, -111, -128]
+typed_layout source_signed=true target_signed=true region=[3, 1, 35, 9] subsampling=1 fraction_bits=16 inverse_rct=false active=true component=0: actual=[127, 111, 95, 79, 63, 47, 31, 15, 0, -16, -32, -48, -64, -80, -96, -112] expected=[127, 110, 93, 76, 59, 42, 25, 8, -9, -26, -43, -60, -77, -94, -111, -128]
+typed_layout source_signed=true target_signed=true region=[3, 1, 35, 9] subsampling=1 fraction_bits=0 inverse_rct=true active=true component=0: actual=[127, 111, 95, 79, 63, 47, 31, 15, 0, -16, -32, -48, -64, -80, -96, -112] expected=[127, 110, 93, 76, 59, 42, 25, 8, -9, -26, -43, -60, -77, -94, -111, -128]
+typed_layout source_signed=true target_signed=true region=[5, 2, 35, 5] subsampling=2 fraction_bits=0 inverse_rct=false active=true component=0: actual=[127, 111, 95, 79, 63, 47, 31, 15, 0, -16, -32, -48, -64, -80, -96, -112] expected=[127, 110, 93, 76, 59, 42, 25, 8, -9, -26, -43, -60, -77, -94, -111, -128]
+typed_layout source_signed=true target_signed=true region=[5, 2, 35, 5] subsampling=2 fraction_bits=16 inverse_rct=false active=true component=0: actual=[127, 111, 95, 79, 63, 47, 31, 15, 0, -16, -32, -48, -64, -80, -96, -112] expected=[127, 110, 93, 76, 59, 42, 25, 8, -9, -26, -43, -60, -77, -94, -111, -128]
+typed_layout source_signed=true target_signed=true region=[5, 2, 35, 5] subsampling=2 fraction_bits=0 inverse_rct=true active=true component=0: actual=[127, 111, 95, 79, 63, 47, 31, 15, 0, -16, -32, -48, -64, -80, -96, -112] expected=[127, 110, 93, 76, 59, 42, 25, 8, -9, -26, -43, -60, -77, -94, -111, -128]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test decode::typed_layout_contract_tests::typed_layout_inverse_nlt_after_reconstruction_preserves_geometry ... FAILED
+
+failures:
+
+failures:
+    decode::typed_layout_contract_tests::typed_layout_inverse_nlt_after_reconstruction_preserves_geometry
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.02s
+

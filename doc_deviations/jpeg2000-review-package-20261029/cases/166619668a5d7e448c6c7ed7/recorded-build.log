@@ -1,0 +1,9 @@
+$ ["patch", "--batch", "--forward", "-p1", "-i", "validation/crg-context-tests.patch"]
+patching file src/decode.rs
+
+
+$ ["cargo", "test", "--locked", "--lib", "--no-run", "--target-dir", "target/deepspec-crg"]
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/166619668a5d7e448c6c7ed7-replay-3)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.76s
+  Executable unittests src/lib.rs (target/deepspec-crg/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
+

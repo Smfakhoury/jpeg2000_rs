@@ -1,0 +1,20 @@
+--- src/jpx.rs
++++ src/jpx.rs
+@@ -4283,6 +4283,8 @@
+         compose_planar_pixel, gather_composition_pixel, scatter_composition_pixel,
+         source_over_alpha_numerator, source_over_color_numerator, source_over_rounded_ratio,
+     };
++
++    include!("jpx_frame_semantics_tests.rs");
+ 
+     fn independent_chroma_normalization(
+         values: &[u8],
+@@ -7370,7 +7372,8 @@
+         assert_eq!(frames[0].instructions()[0].next_reuse(), 1);
+         assert_eq!(frames[1].instructions()[0].layer_index(), 0);
+         assert_eq!(frames[1].instructions()[0].target_x(), 2);
++        assert_frame_closing_semantics();
+     }
+ 
+     #[test]
+     fn composed_normalized_frames_match_independent_indexed_supply_and_rational_model() {

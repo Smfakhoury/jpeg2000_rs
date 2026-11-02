@@ -1,0 +1,109 @@
+{
+  "at": "2026-10-30T12:09:58.222998+00:00",
+  "state": "terminal_execution_and_bounded_evidence_verified",
+  "automated_snapshot": "20261030T120734Z.json",
+  "compared_snapshot": "20261030T114712Z.json",
+  "spec_count": 4947,
+  "model_or_verus_mentions": 2342,
+  "intents": {
+    "documented": 2783,
+    "implementation": 883,
+    "hypothesis": 1281
+  },
+  "unchanged_projected_specs": 4947,
+  "heuristic_flagged_specs": 270,
+  "review_marked_items": 534,
+  "new_review_items": [
+    "1530730be26896d9851d2a13",
+    "3ded227b6fc49b40f22edc74",
+    "66aff522bc300198b9d75ec3"
+  ],
+  "semantic_review": "Both final failure harnesses, native branches, mapping parents and exact A.2.1/A.2.2 rules reviewed. Host visually checked original VBAS figuresA.2/A.3 and verified EOR TableD.2 reason255. Canonical ghost/native agreement is not independent standards authority. Corrected one overbroad F11 overlap phrase in the immutable diagnosis through a separate host note, not a history rewrite.",
+  "failure_review": "../test-waves/20261030T114622Z/diagnosis-host-review.json",
+  "work_states": [
+    [
+      "diagnose",
+      "accepted",
+      104
+    ],
+    [
+      "infer",
+      "accepted",
+      1703
+    ],
+    [
+      "init",
+      "accepted",
+      1
+    ],
+    [
+      "rfc_map",
+      "accepted",
+      222
+    ],
+    [
+      "test",
+      "accepted",
+      2783
+    ],
+    [
+      "test",
+      "exhausted",
+      1
+    ]
+  ],
+  "source_scope": "All1703 source-mapped default Cargo library subjects; not every configuration or generated/unmapped body.",
+  "current_inferred_snapshot_exactly_unchanged": true,
+  "current_mapping_batches": 221,
+  "historical_mapping_batches": 222,
+  "inferred_clauses_covered_exactly_once": 3537,
+  "documents_per_batch": 5,
+  "document_hashes_verified": 10,
+  "current_registered_cases": 4947,
+  "unique_exercised_retained_clauses": 4945,
+  "registered_verdicts": {
+    "observed_pass": 4855,
+    "observed_fail": 92
+  },
+  "explicit_unexecuted_clauses": [
+    {
+      "spec": "26a5fcebe11048293e786908",
+      "subject": "src/packet.rs:5035:packet::packet_arithmetic_overflow",
+      "intent": "documented",
+      "assigned": [
+        {
+          "item": "5a95f2c686dfa0885408a571",
+          "state": "exhausted"
+        }
+      ],
+      "reason": "Provider-blocked; exhausted at two attempts with no result. Never retry or substitute."
+    },
+    {
+      "spec": "4fc54d6646487096c7134da6",
+      "subject": "src/codestream.rs:3981:codestream::<TilePartPayload as Clone>::clone",
+      "intent": "implementation",
+      "assigned": [
+        {
+          "item": "38eee57156ae6d19ae7206e6",
+          "state": "accepted"
+        }
+      ],
+      "reason": "Explicit panic-unwind coverage gap in an otherwise accepted partial suite. No ordinary deterministic valid-input trigger was established; allocator abort is not unwind and a panicking GlobalAlloc is invalid. No fabricated passing test or production panic injection is claimed."
+    }
+  ],
+  "historical_registered_clause_executions": 5006,
+  "archive_hashes_verified": {
+    "jpeg2000-review-package-20261029": "82699bdcf73436ce711b61dc7d309c9e880d370a280c2bdf73a01824edc3f3ac",
+    "jpeg2000-review-supplement-20261030": "b6553db1e0262265c38659e1900a561ae5f33e7d9dc7bb442bdcb68d3cbd5294",
+    "jpeg2000-transform-witnesses-20261030": "564e795646daac9dda2a52fb914e1d3caff18b1e25a34ed8280b98cf18e942f0",
+    "jpeg2000-u-extension-witness-20261030": "47f75362318c29461d57ff039293211b06c8bf8b4487c853d279d2507ec67565",
+    "jpeg2000-final-jpip-witnesses-20261030": "5a3c1ad255a4ab9915ba6325b6cf7a95c8f56d82782e67100522ca44eb40a80a"
+  },
+  "packaged_file_hashes_verified": 322,
+  "canonical_revision_verified": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "canonical_tracked_worktree_clean": true,
+  "original_wave90_rows_preserved": true,
+  "provider_retried": false,
+  "further_mapping_required": false,
+  "qualification": "Execution and bounded finding evidence complete with explicit gaps. Full transitive-oracle review, edition reconciliation, official conformance assets and completed Verus proofs are not claimed."
+}

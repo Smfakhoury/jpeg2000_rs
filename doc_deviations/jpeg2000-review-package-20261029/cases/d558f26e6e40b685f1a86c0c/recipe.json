@@ -1,0 +1,42 @@
+{
+  "id": "d558f26e6e40b685f1a86c0c",
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "cdef-spec-tests.patch"
+    ],
+    [
+      "sh",
+      "-eu",
+      "-c",
+      "grep -Fq 'fn spec_cdef_retains_every_admitted_description()' src/jp2.rs; grep -Fq 'fn spec_cdef_separates_channel_and_colour_domains()' src/jp2.rs; grep -Fq 'failures.join(\"\\n\")' src/jp2.rs; cargo test --lib --locked --no-run --target-dir target/deepspec-cdef; set -- $(find target/deepspec-cdef/debug/deps -maxdepth 1 -type f -name 'jpeg2000_rs-*' -executable); test \"$#\" -eq 1; cp \"$1\" target/deepspec-cdef/cdef-tests; target/deepspec-cdef/cdef-tests --list | grep -Fx 'jp2::tests::spec_cdef_retains_every_admitted_description: test'; target/deepspec-cdef/cdef-tests --list | grep -Fx 'jp2::tests::spec_cdef_separates_channel_and_colour_domains: test'"
+    ]
+  ],
+  "artifacts": {
+    "cdef-spec-tests.patch": "c8a2bffd6e9b91df14d4649e91368a58972923e7043c355066dea207ea0ee99f"
+  },
+  "tests": [
+    {
+      "id": "93c8c78793c85a4f283ead83",
+      "spec_id": "8d7860edcf7d914425decbe8",
+      "command": [
+        "target/deepspec-cdef/cdef-tests",
+        "--exact",
+        "jp2::tests::spec_cdef_separates_channel_and_colour_domains",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "channels=1: RGB colour indices 1,2,3 must be retained independently of channel count: Err(MalformedInput { offset: 110, kind: InvalidBoxContents })"
+      ],
+      "finding_ids": [
+        "F09"
+      ],
+      "recorded_output": "cases/d558f26e6e40b685f1a86c0c/93c8c78793c85a4f283ead83.log"
+    }
+  ]
+}

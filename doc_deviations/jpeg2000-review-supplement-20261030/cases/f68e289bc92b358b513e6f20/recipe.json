@@ -1,0 +1,56 @@
+{
+  "id": "f68e289bc92b358b513e6f20",
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "jpip_contract_registration.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/packet.rs').read_text(); t=Path('src/packet_jpip_contract_tests.rs').read_text(); assert s.count('include!(\"packet_jpip_contract_tests.rs\");')==1; assert t.count('#[test]')==7; assert 'let header = [0xc0, 0xbe, 0xff, 0];' in t; assert 'Ok(4 + 255)' in t; assert 'Ok(4 + 2 + 255)' in t; assert 'fn jpip_assert_parser_accounting(' in t; assert 'assert_eq!(physical, logical,' in t; assert 'actual_jpip_outer_restores_all_raw_fields_and_clone_preserves_unused_tree_words();' in t; assert 'full_progression_uses_real_ppt_reassembly_and_plt_iteration_without_tile_body_bytes();' in t"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run",
+      "--target-dir",
+      "target/deepspec_jpip_contract"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; import os,shutil,subprocess; d=Path('target/deepspec_jpip_contract'); a=[p for p in (d/'debug/deps').glob('jpeg2000_rs-*') if p.is_file() and os.access(p,os.X_OK)]; assert len(a)==1,a; r=d/'runner'; shutil.copy2(a[0],r); names=subprocess.check_output([str(r),'--list'],text=True); assert names.count('packet::tests::jpip_contract_')==7,names"
+    ]
+  ],
+  "artifacts": {
+    "jpip_contract_registration.patch": "afe91b001fddc0e4a81d98c0c245d86a1ca37067d5ee9a4902513c4dc3c4dcfd",
+    "src/packet_jpip_contract_tests.rs": "b7e2124098d65535f5968485715b58cb460f02fb94a74d16b7414bacce5570da"
+  },
+  "tests": [
+    {
+      "id": "23cf463d2324619732b2286f",
+      "spec_id": "62986c33c311dfc825987719",
+      "command": [
+        "target/deepspec_jpip_contract/runner",
+        "--exact",
+        "packet::tests::jpip_contract_eph_policy_errors_and_prefix",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "assertion `left == right` failed: inline inspection result/error/prefix\n  left: Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })\n right: Ok(261)"
+      ],
+      "finding_ids": [
+        "F30"
+      ],
+      "recorded_output": "cases/f68e289bc92b358b513e6f20/23cf463d2324619732b2286f.log"
+    }
+  ]
+}

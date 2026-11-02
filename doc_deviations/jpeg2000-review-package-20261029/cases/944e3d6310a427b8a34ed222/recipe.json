@@ -1,0 +1,44 @@
+{
+  "id": "944e3d6310a427b8a34ed222",
+  "build": [
+    [
+      "python3",
+      "register_normalization_contract_tests.py"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--no-run",
+      "--quiet"
+    ]
+  ],
+  "artifacts": {
+    "register_normalization_contract_tests.py": "9007514b525174c77e257cfb372fab53f47bfffb9f99029855b4ababcc0ee5c4",
+    "src/jpip_normalization_contract_tests.rs": "760f32cdd20d06dde81b4c689c56915bade09cc742b68ddb9276d3d630486ca8"
+  },
+  "tests": [
+    {
+      "id": "75d55d0e82420b19700d15de",
+      "spec_id": "153c097eaf82d53210996129",
+      "command": [
+        "cargo",
+        "test",
+        "--lib",
+        "--quiet",
+        "--",
+        "jpip::tests::automatic_normalization_accepts_optional_wire_sod_contract",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "tile=0 retained=0 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 0, kind: MissingRequiredStructure }"
+      ],
+      "finding_ids": [
+        "F12"
+      ],
+      "recorded_output": "cases/944e3d6310a427b8a34ed222/75d55d0e82420b19700d15de.log"
+    }
+  ]
+}

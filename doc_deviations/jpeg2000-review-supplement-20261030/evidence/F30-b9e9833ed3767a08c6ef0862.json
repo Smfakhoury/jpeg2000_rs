@@ -1,0 +1,29 @@
+{
+  "suite": "f68e289bc92b358b513e6f20",
+  "case": "23cf463d2324619732b2286f",
+  "deviation": "b9e9833ed3767a08c6ef0862",
+  "diagnosis": "d5ef27add15f0dca9206fbfe",
+  "spec": "62986c33c311dfc825987719",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "Inline EPH inspection rejects a valid header with terminal FF stuffing",
+  "entry": "src/packet.rs:972:packet::decode_jpip_precinct_packet_inner",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "target/deepspec_jpip_contract/runner",
+      "--exact",
+      "packet::tests::jpip_contract_eph_policy_errors_and_prefix",
+      "--nocapture"
+    ],
+    "duration_s": 0.006,
+    "exit_code": 101,
+    "output_tail": "precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, ff, 93, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, 00, 92, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, ff, 00, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, 92, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, ff, 5a, a5] SOP=true EPH=false sequence=17 layer=0 expected=Ok(8)\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, ff, 92, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Ok(10)\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: Truncated })\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, ff] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: Truncated })\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, ff, 93, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, 00, 92, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, ff, 00, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })\nroute=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, 92, ff, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })\nroute=packet::decode_jpip_precinct_packet_inner bytes=[c0, be, ff, 00, ff, 92, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff] SOP=false EPH=true sequence=0 layer=0 expected=Ok(261)\n\nthread 'packet::tests::jpip_contract_eph_policy_errors_and_prefix' (575858) panicked at src/packet_jpip_contract_tests.rs:50:5:\nassertion `left == right` failed: inline inspection result/error/prefix\n  left: Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })\n right: Ok(261)\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest packet::tests::jpip_contract_eph_policy_errors_and_prefix ... FAILED\n\nfailures:\n\nfailures:\n    packet::tests::jpip_contract_eph_policy_errors_and_prefix\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 666 filtered out; finished in 0.00s\n\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Direct inspection unit with one constructor-backed 1x1 decoder, 255 declared opaque body bytes and EPH enabled; Tier-1 body decoding is deliberately disabled. Root boundary operation is also src/packet.rs:164-166. Normative mapping-parent authority supports the observed rejection, not completed verification of the internal model. The separate no-EPH length assertion has narrower-clause test_error attribution and is not counted as another reproduced case."
+}

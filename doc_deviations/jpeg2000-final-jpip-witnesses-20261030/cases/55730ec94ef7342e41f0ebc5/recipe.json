@@ -1,0 +1,46 @@
+{
+  "id": "55730ec94ef7342e41f0ebc5",
+  "artifacts": {
+    "validation/install-jpip-vbas-contract.py": "7c3275f68fb6227fbc881dc5ede594f3568b00ee1fe7058021efce7976f7f44a",
+    "validation/jpip_vbas_contract.rs": "bc655a866095318cd94570525383dadfd42c28862af9f8c521a1505c7602e23a"
+  },
+  "build": [
+    [
+      "python3",
+      "validation/install-jpip-vbas-contract.py"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--locked",
+      "--no-run"
+    ]
+  ],
+  "tests": [
+    {
+      "id": "a47255338004ddac419b357f",
+      "finding_ids": [
+        "F31"
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "--lib",
+        "--locked",
+        "jpip::tests::bounded_standard_vbas_contract",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "independent metadata header [60, 80, 08, 00, 00, 01, ab, 5a]: expected value-preserving Data, got Err(MalformedInput { offset: 1, kind: InvalidJpipVbas })",
+        "independent metadata header [60, 08, 00, 00, 80, 01, ab, 5a]: expected value-preserving Data, got Err(MalformedInput { offset: 4, kind: InvalidJpipVbas })",
+        "thread 'jpip::tests::bounded_standard_vbas_contract'",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored"
+      ],
+      "recorded_output": "cases/55730ec94ef7342e41f0ebc5/recorded-test.log"
+    }
+  ]
+}

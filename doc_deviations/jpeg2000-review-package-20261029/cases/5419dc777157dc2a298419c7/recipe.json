@@ -1,0 +1,52 @@
+{
+  "id": "5419dc777157dc2a298419c7",
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "tests/jpip-context-registration.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/jpip.rs').read_text(); t=Path('src/jpip_header_context_contract_tests.rs').read_text(); assert s.count('include!(\"jpip_header_context_contract_tests.rs\");') == 1; assert 'fn fresh_header_context_preserves_absence_and_independent_standard_history()' in t; assert 'fn parses_all_three_standard_header_forms_and_auxiliary()' in s; assert 'fn rejects_malformed_prefixes_and_vbas()' in s"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "artifacts": {
+    "tests/jpip-context-registration.patch": "0fd806f4c0ebd77b8709fb7bf88a6e87ada3911084ae09e71810f721c35dd0f5",
+    "src/jpip_header_context_contract_tests.rs": "3a111eb14f1e28794b3da1b5cd512eb7509d7da4c85cc429db39a3092e5337e2"
+  },
+  "tests": [
+    {
+      "id": "a17a60fedfd5f588b3c6f6a3",
+      "spec_id": "c4f741cfbb88dfa62062114b",
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--lib",
+        "jpip::tests::fresh_header_context_preserves_absence_and_independent_standard_history",
+        "--",
+        "--exact"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "fresh inherited header must select standard initial identity (0,0): MalformedInput { offset: 0, kind: InvalidJpipHeader }"
+      ],
+      "finding_ids": [
+        "F11"
+      ],
+      "recorded_output": "cases/5419dc777157dc2a298419c7/a17a60fedfd5f588b3c6f6a3.log"
+    }
+  ]
+}

@@ -1,0 +1,890 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
+
+running 1 test
+test jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist ... unit validate_layer_references: count=1, layers=1, bad_layer=0, last_reference=1
+unit validate_layer_references: count=1, layers=1, bad_layer=0, last_reference=1
+unit validate_layer_references: count=1, layers=1, bad_layer=0, last_reference=1
+unit validate_layer_references: count=1, layers=1, bad_layer=0, last_reference=2
+unit validate_layer_references: count=1, layers=1, bad_layer=0, last_reference=2
+unit validate_layer_references: count=1, layers=1, bad_layer=0, last_reference=2
+unit validate_layer_references: count=1, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=1, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=1, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=1, layers=2, bad_layer=0, last_reference=1
+unit validate_layer_references: count=1, layers=2, bad_layer=1, last_reference=1
+unit validate_layer_references: count=1, layers=2, bad_layer=1, last_reference=1
+unit validate_layer_references: count=1, layers=2, bad_layer=0, last_reference=2
+unit validate_layer_references: count=1, layers=2, bad_layer=1, last_reference=2
+unit validate_layer_references: count=1, layers=2, bad_layer=1, last_reference=2
+unit validate_layer_references: count=1, layers=2, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=1, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=1, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=1, layers=3, bad_layer=0, last_reference=1
+unit validate_layer_references: count=1, layers=3, bad_layer=1, last_reference=1
+unit validate_layer_references: count=1, layers=3, bad_layer=2, last_reference=1
+unit validate_layer_references: count=1, layers=3, bad_layer=0, last_reference=2
+unit validate_layer_references: count=1, layers=3, bad_layer=1, last_reference=2
+unit validate_layer_references: count=1, layers=3, bad_layer=2, last_reference=2
+unit validate_layer_references: count=1, layers=3, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=1, layers=3, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=1, layers=3, bad_layer=2, last_reference=65535
+unit validate_layer_references: count=1, layers=7, bad_layer=0, last_reference=1
+unit validate_layer_references: count=1, layers=7, bad_layer=3, last_reference=1
+unit validate_layer_references: count=1, layers=7, bad_layer=6, last_reference=1
+unit validate_layer_references: count=1, layers=7, bad_layer=0, last_reference=2
+unit validate_layer_references: count=1, layers=7, bad_layer=3, last_reference=2
+unit validate_layer_references: count=1, layers=7, bad_layer=6, last_reference=2
+unit validate_layer_references: count=1, layers=7, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=1, layers=7, bad_layer=3, last_reference=65535
+unit validate_layer_references: count=1, layers=7, bad_layer=6, last_reference=65535
+unit validate_layer_references: count=1, layers=64, bad_layer=0, last_reference=1
+unit validate_layer_references: count=1, layers=64, bad_layer=32, last_reference=1
+unit validate_layer_references: count=1, layers=64, bad_layer=63, last_reference=1
+unit validate_layer_references: count=1, layers=64, bad_layer=0, last_reference=2
+unit validate_layer_references: count=1, layers=64, bad_layer=32, last_reference=2
+unit validate_layer_references: count=1, layers=64, bad_layer=63, last_reference=2
+unit validate_layer_references: count=1, layers=64, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=1, layers=64, bad_layer=32, last_reference=65535
+unit validate_layer_references: count=1, layers=64, bad_layer=63, last_reference=65535
+unit validate_layer_references: count=1, layers=256, bad_layer=0, last_reference=1
+unit validate_layer_references: count=1, layers=256, bad_layer=128, last_reference=1
+unit validate_layer_references: count=1, layers=256, bad_layer=255, last_reference=1
+unit validate_layer_references: count=1, layers=256, bad_layer=0, last_reference=2
+unit validate_layer_references: count=1, layers=256, bad_layer=128, last_reference=2
+unit validate_layer_references: count=1, layers=256, bad_layer=255, last_reference=2
+unit validate_layer_references: count=1, layers=256, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=1, layers=256, bad_layer=128, last_reference=65535
+unit validate_layer_references: count=1, layers=256, bad_layer=255, last_reference=65535
+unit validate_layer_references: count=2, layers=1, bad_layer=0, last_reference=2
+unit validate_layer_references: count=2, layers=1, bad_layer=0, last_reference=2
+unit validate_layer_references: count=2, layers=1, bad_layer=0, last_reference=2
+unit validate_layer_references: count=2, layers=1, bad_layer=0, last_reference=3
+unit validate_layer_references: count=2, layers=1, bad_layer=0, last_reference=3
+unit validate_layer_references: count=2, layers=1, bad_layer=0, last_reference=3
+unit validate_layer_references: count=2, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=2, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=2, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=2, layers=2, bad_layer=0, last_reference=2
+unit validate_layer_references: count=2, layers=2, bad_layer=1, last_reference=2
+unit validate_layer_references: count=2, layers=2, bad_layer=1, last_reference=2
+unit validate_layer_references: count=2, layers=2, bad_layer=0, last_reference=3
+unit validate_layer_references: count=2, layers=2, bad_layer=1, last_reference=3
+unit validate_layer_references: count=2, layers=2, bad_layer=1, last_reference=3
+unit validate_layer_references: count=2, layers=2, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=2, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=2, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=2, layers=3, bad_layer=0, last_reference=2
+unit validate_layer_references: count=2, layers=3, bad_layer=1, last_reference=2
+unit validate_layer_references: count=2, layers=3, bad_layer=2, last_reference=2
+unit validate_layer_references: count=2, layers=3, bad_layer=0, last_reference=3
+unit validate_layer_references: count=2, layers=3, bad_layer=1, last_reference=3
+unit validate_layer_references: count=2, layers=3, bad_layer=2, last_reference=3
+unit validate_layer_references: count=2, layers=3, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=2, layers=3, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=2, layers=3, bad_layer=2, last_reference=65535
+unit validate_layer_references: count=2, layers=7, bad_layer=0, last_reference=2
+unit validate_layer_references: count=2, layers=7, bad_layer=3, last_reference=2
+unit validate_layer_references: count=2, layers=7, bad_layer=6, last_reference=2
+unit validate_layer_references: count=2, layers=7, bad_layer=0, last_reference=3
+unit validate_layer_references: count=2, layers=7, bad_layer=3, last_reference=3
+unit validate_layer_references: count=2, layers=7, bad_layer=6, last_reference=3
+unit validate_layer_references: count=2, layers=7, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=2, layers=7, bad_layer=3, last_reference=65535
+unit validate_layer_references: count=2, layers=7, bad_layer=6, last_reference=65535
+unit validate_layer_references: count=2, layers=64, bad_layer=0, last_reference=2
+unit validate_layer_references: count=2, layers=64, bad_layer=32, last_reference=2
+unit validate_layer_references: count=2, layers=64, bad_layer=63, last_reference=2
+unit validate_layer_references: count=2, layers=64, bad_layer=0, last_reference=3
+unit validate_layer_references: count=2, layers=64, bad_layer=32, last_reference=3
+unit validate_layer_references: count=2, layers=64, bad_layer=63, last_reference=3
+unit validate_layer_references: count=2, layers=64, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=2, layers=64, bad_layer=32, last_reference=65535
+unit validate_layer_references: count=2, layers=64, bad_layer=63, last_reference=65535
+unit validate_layer_references: count=2, layers=256, bad_layer=0, last_reference=2
+unit validate_layer_references: count=2, layers=256, bad_layer=128, last_reference=2
+unit validate_layer_references: count=2, layers=256, bad_layer=255, last_reference=2
+unit validate_layer_references: count=2, layers=256, bad_layer=0, last_reference=3
+unit validate_layer_references: count=2, layers=256, bad_layer=128, last_reference=3
+unit validate_layer_references: count=2, layers=256, bad_layer=255, last_reference=3
+unit validate_layer_references: count=2, layers=256, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=2, layers=256, bad_layer=128, last_reference=65535
+unit validate_layer_references: count=2, layers=256, bad_layer=255, last_reference=65535
+unit validate_layer_references: count=3, layers=1, bad_layer=0, last_reference=3
+unit validate_layer_references: count=3, layers=1, bad_layer=0, last_reference=3
+unit validate_layer_references: count=3, layers=1, bad_layer=0, last_reference=3
+unit validate_layer_references: count=3, layers=1, bad_layer=0, last_reference=4
+unit validate_layer_references: count=3, layers=1, bad_layer=0, last_reference=4
+unit validate_layer_references: count=3, layers=1, bad_layer=0, last_reference=4
+unit validate_layer_references: count=3, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=3, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=3, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=3, layers=2, bad_layer=0, last_reference=3
+unit validate_layer_references: count=3, layers=2, bad_layer=1, last_reference=3
+unit validate_layer_references: count=3, layers=2, bad_layer=1, last_reference=3
+unit validate_layer_references: count=3, layers=2, bad_layer=0, last_reference=4
+unit validate_layer_references: count=3, layers=2, bad_layer=1, last_reference=4
+unit validate_layer_references: count=3, layers=2, bad_layer=1, last_reference=4
+unit validate_layer_references: count=3, layers=2, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=3, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=3, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=3, layers=3, bad_layer=0, last_reference=3
+unit validate_layer_references: count=3, layers=3, bad_layer=1, last_reference=3
+unit validate_layer_references: count=3, layers=3, bad_layer=2, last_reference=3
+unit validate_layer_references: count=3, layers=3, bad_layer=0, last_reference=4
+unit validate_layer_references: count=3, layers=3, bad_layer=1, last_reference=4
+unit validate_layer_references: count=3, layers=3, bad_layer=2, last_reference=4
+unit validate_layer_references: count=3, layers=3, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=3, layers=3, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=3, layers=3, bad_layer=2, last_reference=65535
+unit validate_layer_references: count=3, layers=7, bad_layer=0, last_reference=3
+unit validate_layer_references: count=3, layers=7, bad_layer=3, last_reference=3
+unit validate_layer_references: count=3, layers=7, bad_layer=6, last_reference=3
+unit validate_layer_references: count=3, layers=7, bad_layer=0, last_reference=4
+unit validate_layer_references: count=3, layers=7, bad_layer=3, last_reference=4
+unit validate_layer_references: count=3, layers=7, bad_layer=6, last_reference=4
+unit validate_layer_references: count=3, layers=7, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=3, layers=7, bad_layer=3, last_reference=65535
+unit validate_layer_references: count=3, layers=7, bad_layer=6, last_reference=65535
+unit validate_layer_references: count=3, layers=64, bad_layer=0, last_reference=3
+unit validate_layer_references: count=3, layers=64, bad_layer=32, last_reference=3
+unit validate_layer_references: count=3, layers=64, bad_layer=63, last_reference=3
+unit validate_layer_references: count=3, layers=64, bad_layer=0, last_reference=4
+unit validate_layer_references: count=3, layers=64, bad_layer=32, last_reference=4
+unit validate_layer_references: count=3, layers=64, bad_layer=63, last_reference=4
+unit validate_layer_references: count=3, layers=64, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=3, layers=64, bad_layer=32, last_reference=65535
+unit validate_layer_references: count=3, layers=64, bad_layer=63, last_reference=65535
+unit validate_layer_references: count=3, layers=256, bad_layer=0, last_reference=3
+unit validate_layer_references: count=3, layers=256, bad_layer=128, last_reference=3
+unit validate_layer_references: count=3, layers=256, bad_layer=255, last_reference=3
+unit validate_layer_references: count=3, layers=256, bad_layer=0, last_reference=4
+unit validate_layer_references: count=3, layers=256, bad_layer=128, last_reference=4
+unit validate_layer_references: count=3, layers=256, bad_layer=255, last_reference=4
+unit validate_layer_references: count=3, layers=256, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=3, layers=256, bad_layer=128, last_reference=65535
+unit validate_layer_references: count=3, layers=256, bad_layer=255, last_reference=65535
+unit validate_layer_references: count=7, layers=1, bad_layer=0, last_reference=7
+unit validate_layer_references: count=7, layers=1, bad_layer=0, last_reference=7
+unit validate_layer_references: count=7, layers=1, bad_layer=0, last_reference=7
+unit validate_layer_references: count=7, layers=1, bad_layer=0, last_reference=8
+unit validate_layer_references: count=7, layers=1, bad_layer=0, last_reference=8
+unit validate_layer_references: count=7, layers=1, bad_layer=0, last_reference=8
+unit validate_layer_references: count=7, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=7, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=7, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=7, layers=2, bad_layer=0, last_reference=7
+unit validate_layer_references: count=7, layers=2, bad_layer=1, last_reference=7
+unit validate_layer_references: count=7, layers=2, bad_layer=1, last_reference=7
+unit validate_layer_references: count=7, layers=2, bad_layer=0, last_reference=8
+unit validate_layer_references: count=7, layers=2, bad_layer=1, last_reference=8
+unit validate_layer_references: count=7, layers=2, bad_layer=1, last_reference=8
+unit validate_layer_references: count=7, layers=2, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=7, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=7, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=7, layers=3, bad_layer=0, last_reference=7
+unit validate_layer_references: count=7, layers=3, bad_layer=1, last_reference=7
+unit validate_layer_references: count=7, layers=3, bad_layer=2, last_reference=7
+unit validate_layer_references: count=7, layers=3, bad_layer=0, last_reference=8
+unit validate_layer_references: count=7, layers=3, bad_layer=1, last_reference=8
+unit validate_layer_references: count=7, layers=3, bad_layer=2, last_reference=8
+unit validate_layer_references: count=7, layers=3, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=7, layers=3, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=7, layers=3, bad_layer=2, last_reference=65535
+unit validate_layer_references: count=7, layers=7, bad_layer=0, last_reference=7
+unit validate_layer_references: count=7, layers=7, bad_layer=3, last_reference=7
+unit validate_layer_references: count=7, layers=7, bad_layer=6, last_reference=7
+unit validate_layer_references: count=7, layers=7, bad_layer=0, last_reference=8
+unit validate_layer_references: count=7, layers=7, bad_layer=3, last_reference=8
+unit validate_layer_references: count=7, layers=7, bad_layer=6, last_reference=8
+unit validate_layer_references: count=7, layers=7, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=7, layers=7, bad_layer=3, last_reference=65535
+unit validate_layer_references: count=7, layers=7, bad_layer=6, last_reference=65535
+unit validate_layer_references: count=7, layers=64, bad_layer=0, last_reference=7
+unit validate_layer_references: count=7, layers=64, bad_layer=32, last_reference=7
+unit validate_layer_references: count=7, layers=64, bad_layer=63, last_reference=7
+unit validate_layer_references: count=7, layers=64, bad_layer=0, last_reference=8
+unit validate_layer_references: count=7, layers=64, bad_layer=32, last_reference=8
+unit validate_layer_references: count=7, layers=64, bad_layer=63, last_reference=8
+unit validate_layer_references: count=7, layers=64, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=7, layers=64, bad_layer=32, last_reference=65535
+unit validate_layer_references: count=7, layers=64, bad_layer=63, last_reference=65535
+unit validate_layer_references: count=7, layers=256, bad_layer=0, last_reference=7
+unit validate_layer_references: count=7, layers=256, bad_layer=128, last_reference=7
+unit validate_layer_references: count=7, layers=256, bad_layer=255, last_reference=7
+unit validate_layer_references: count=7, layers=256, bad_layer=0, last_reference=8
+unit validate_layer_references: count=7, layers=256, bad_layer=128, last_reference=8
+unit validate_layer_references: count=7, layers=256, bad_layer=255, last_reference=8
+unit validate_layer_references: count=7, layers=256, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=7, layers=256, bad_layer=128, last_reference=65535
+unit validate_layer_references: count=7, layers=256, bad_layer=255, last_reference=65535
+unit validate_layer_references: count=31, layers=1, bad_layer=0, last_reference=31
+unit validate_layer_references: count=31, layers=1, bad_layer=0, last_reference=31
+unit validate_layer_references: count=31, layers=1, bad_layer=0, last_reference=31
+unit validate_layer_references: count=31, layers=1, bad_layer=0, last_reference=32
+unit validate_layer_references: count=31, layers=1, bad_layer=0, last_reference=32
+unit validate_layer_references: count=31, layers=1, bad_layer=0, last_reference=32
+unit validate_layer_references: count=31, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=31, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=31, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=31, layers=2, bad_layer=0, last_reference=31
+unit validate_layer_references: count=31, layers=2, bad_layer=1, last_reference=31
+unit validate_layer_references: count=31, layers=2, bad_layer=1, last_reference=31
+unit validate_layer_references: count=31, layers=2, bad_layer=0, last_reference=32
+unit validate_layer_references: count=31, layers=2, bad_layer=1, last_reference=32
+unit validate_layer_references: count=31, layers=2, bad_layer=1, last_reference=32
+unit validate_layer_references: count=31, layers=2, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=31, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=31, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=31, layers=3, bad_layer=0, last_reference=31
+unit validate_layer_references: count=31, layers=3, bad_layer=1, last_reference=31
+unit validate_layer_references: count=31, layers=3, bad_layer=2, last_reference=31
+unit validate_layer_references: count=31, layers=3, bad_layer=0, last_reference=32
+unit validate_layer_references: count=31, layers=3, bad_layer=1, last_reference=32
+unit validate_layer_references: count=31, layers=3, bad_layer=2, last_reference=32
+unit validate_layer_references: count=31, layers=3, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=31, layers=3, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=31, layers=3, bad_layer=2, last_reference=65535
+unit validate_layer_references: count=31, layers=7, bad_layer=0, last_reference=31
+unit validate_layer_references: count=31, layers=7, bad_layer=3, last_reference=31
+unit validate_layer_references: count=31, layers=7, bad_layer=6, last_reference=31
+unit validate_layer_references: count=31, layers=7, bad_layer=0, last_reference=32
+unit validate_layer_references: count=31, layers=7, bad_layer=3, last_reference=32
+unit validate_layer_references: count=31, layers=7, bad_layer=6, last_reference=32
+unit validate_layer_references: count=31, layers=7, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=31, layers=7, bad_layer=3, last_reference=65535
+unit validate_layer_references: count=31, layers=7, bad_layer=6, last_reference=65535
+unit validate_layer_references: count=31, layers=64, bad_layer=0, last_reference=31
+unit validate_layer_references: count=31, layers=64, bad_layer=32, last_reference=31
+unit validate_layer_references: count=31, layers=64, bad_layer=63, last_reference=31
+unit validate_layer_references: count=31, layers=64, bad_layer=0, last_reference=32
+unit validate_layer_references: count=31, layers=64, bad_layer=32, last_reference=32
+unit validate_layer_references: count=31, layers=64, bad_layer=63, last_reference=32
+unit validate_layer_references: count=31, layers=64, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=31, layers=64, bad_layer=32, last_reference=65535
+unit validate_layer_references: count=31, layers=64, bad_layer=63, last_reference=65535
+unit validate_layer_references: count=31, layers=256, bad_layer=0, last_reference=31
+unit validate_layer_references: count=31, layers=256, bad_layer=128, last_reference=31
+unit validate_layer_references: count=31, layers=256, bad_layer=255, last_reference=31
+unit validate_layer_references: count=31, layers=256, bad_layer=0, last_reference=32
+unit validate_layer_references: count=31, layers=256, bad_layer=128, last_reference=32
+unit validate_layer_references: count=31, layers=256, bad_layer=255, last_reference=32
+unit validate_layer_references: count=31, layers=256, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=31, layers=256, bad_layer=128, last_reference=65535
+unit validate_layer_references: count=31, layers=256, bad_layer=255, last_reference=65535
+unit validate_layer_references: count=63, layers=1, bad_layer=0, last_reference=63
+unit validate_layer_references: count=63, layers=1, bad_layer=0, last_reference=63
+unit validate_layer_references: count=63, layers=1, bad_layer=0, last_reference=63
+unit validate_layer_references: count=63, layers=1, bad_layer=0, last_reference=64
+unit validate_layer_references: count=63, layers=1, bad_layer=0, last_reference=64
+unit validate_layer_references: count=63, layers=1, bad_layer=0, last_reference=64
+unit validate_layer_references: count=63, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=63, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=63, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=63, layers=2, bad_layer=0, last_reference=63
+unit validate_layer_references: count=63, layers=2, bad_layer=1, last_reference=63
+unit validate_layer_references: count=63, layers=2, bad_layer=1, last_reference=63
+unit validate_layer_references: count=63, layers=2, bad_layer=0, last_reference=64
+unit validate_layer_references: count=63, layers=2, bad_layer=1, last_reference=64
+unit validate_layer_references: count=63, layers=2, bad_layer=1, last_reference=64
+unit validate_layer_references: count=63, layers=2, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=63, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=63, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=63, layers=3, bad_layer=0, last_reference=63
+unit validate_layer_references: count=63, layers=3, bad_layer=1, last_reference=63
+unit validate_layer_references: count=63, layers=3, bad_layer=2, last_reference=63
+unit validate_layer_references: count=63, layers=3, bad_layer=0, last_reference=64
+unit validate_layer_references: count=63, layers=3, bad_layer=1, last_reference=64
+unit validate_layer_references: count=63, layers=3, bad_layer=2, last_reference=64
+unit validate_layer_references: count=63, layers=3, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=63, layers=3, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=63, layers=3, bad_layer=2, last_reference=65535
+unit validate_layer_references: count=63, layers=7, bad_layer=0, last_reference=63
+unit validate_layer_references: count=63, layers=7, bad_layer=3, last_reference=63
+unit validate_layer_references: count=63, layers=7, bad_layer=6, last_reference=63
+unit validate_layer_references: count=63, layers=7, bad_layer=0, last_reference=64
+unit validate_layer_references: count=63, layers=7, bad_layer=3, last_reference=64
+unit validate_layer_references: count=63, layers=7, bad_layer=6, last_reference=64
+unit validate_layer_references: count=63, layers=7, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=63, layers=7, bad_layer=3, last_reference=65535
+unit validate_layer_references: count=63, layers=7, bad_layer=6, last_reference=65535
+unit validate_layer_references: count=63, layers=64, bad_layer=0, last_reference=63
+unit validate_layer_references: count=63, layers=64, bad_layer=32, last_reference=63
+unit validate_layer_references: count=63, layers=64, bad_layer=63, last_reference=63
+unit validate_layer_references: count=63, layers=64, bad_layer=0, last_reference=64
+unit validate_layer_references: count=63, layers=64, bad_layer=32, last_reference=64
+unit validate_layer_references: count=63, layers=64, bad_layer=63, last_reference=64
+unit validate_layer_references: count=63, layers=64, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=63, layers=64, bad_layer=32, last_reference=65535
+unit validate_layer_references: count=63, layers=64, bad_layer=63, last_reference=65535
+unit validate_layer_references: count=63, layers=256, bad_layer=0, last_reference=63
+unit validate_layer_references: count=63, layers=256, bad_layer=128, last_reference=63
+unit validate_layer_references: count=63, layers=256, bad_layer=255, last_reference=63
+unit validate_layer_references: count=63, layers=256, bad_layer=0, last_reference=64
+unit validate_layer_references: count=63, layers=256, bad_layer=128, last_reference=64
+unit validate_layer_references: count=63, layers=256, bad_layer=255, last_reference=64
+unit validate_layer_references: count=63, layers=256, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=63, layers=256, bad_layer=128, last_reference=65535
+unit validate_layer_references: count=63, layers=256, bad_layer=255, last_reference=65535
+unit validate_layer_references: count=64, layers=1, bad_layer=0, last_reference=64
+unit validate_layer_references: count=64, layers=1, bad_layer=0, last_reference=64
+unit validate_layer_references: count=64, layers=1, bad_layer=0, last_reference=64
+unit validate_layer_references: count=64, layers=1, bad_layer=0, last_reference=65
+unit validate_layer_references: count=64, layers=1, bad_layer=0, last_reference=65
+unit validate_layer_references: count=64, layers=1, bad_layer=0, last_reference=65
+unit validate_layer_references: count=64, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=64, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=64, layers=1, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=64, layers=2, bad_layer=0, last_reference=64
+unit validate_layer_references: count=64, layers=2, bad_layer=1, last_reference=64
+unit validate_layer_references: count=64, layers=2, bad_layer=1, last_reference=64
+unit validate_layer_references: count=64, layers=2, bad_layer=0, last_reference=65
+unit validate_layer_references: count=64, layers=2, bad_layer=1, last_reference=65
+unit validate_layer_references: count=64, layers=2, bad_layer=1, last_reference=65
+unit validate_layer_references: count=64, layers=2, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=64, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=64, layers=2, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=64, layers=3, bad_layer=0, last_reference=64
+unit validate_layer_references: count=64, layers=3, bad_layer=1, last_reference=64
+unit validate_layer_references: count=64, layers=3, bad_layer=2, last_reference=64
+unit validate_layer_references: count=64, layers=3, bad_layer=0, last_reference=65
+unit validate_layer_references: count=64, layers=3, bad_layer=1, last_reference=65
+unit validate_layer_references: count=64, layers=3, bad_layer=2, last_reference=65
+unit validate_layer_references: count=64, layers=3, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=64, layers=3, bad_layer=1, last_reference=65535
+unit validate_layer_references: count=64, layers=3, bad_layer=2, last_reference=65535
+unit validate_layer_references: count=64, layers=7, bad_layer=0, last_reference=64
+unit validate_layer_references: count=64, layers=7, bad_layer=3, last_reference=64
+unit validate_layer_references: count=64, layers=7, bad_layer=6, last_reference=64
+unit validate_layer_references: count=64, layers=7, bad_layer=0, last_reference=65
+unit validate_layer_references: count=64, layers=7, bad_layer=3, last_reference=65
+unit validate_layer_references: count=64, layers=7, bad_layer=6, last_reference=65
+unit validate_layer_references: count=64, layers=7, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=64, layers=7, bad_layer=3, last_reference=65535
+unit validate_layer_references: count=64, layers=7, bad_layer=6, last_reference=65535
+unit validate_layer_references: count=64, layers=64, bad_layer=0, last_reference=64
+unit validate_layer_references: count=64, layers=64, bad_layer=32, last_reference=64
+unit validate_layer_references: count=64, layers=64, bad_layer=63, last_reference=64
+unit validate_layer_references: count=64, layers=64, bad_layer=0, last_reference=65
+unit validate_layer_references: count=64, layers=64, bad_layer=32, last_reference=65
+unit validate_layer_references: count=64, layers=64, bad_layer=63, last_reference=65
+unit validate_layer_references: count=64, layers=64, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=64, layers=64, bad_layer=32, last_reference=65535
+unit validate_layer_references: count=64, layers=64, bad_layer=63, last_reference=65535
+unit validate_layer_references: count=64, layers=256, bad_layer=0, last_reference=64
+unit validate_layer_references: count=64, layers=256, bad_layer=128, last_reference=64
+unit validate_layer_references: count=64, layers=256, bad_layer=255, last_reference=64
+unit validate_layer_references: count=64, layers=256, bad_layer=0, last_reference=65
+unit validate_layer_references: count=64, layers=256, bad_layer=128, last_reference=65
+unit validate_layer_references: count=64, layers=256, bad_layer=255, last_reference=65
+unit validate_layer_references: count=64, layers=256, bad_layer=0, last_reference=65535
+unit validate_layer_references: count=64, layers=256, bad_layer=128, last_reference=65535
+unit validate_layer_references: count=64, layers=256, bad_layer=255, last_reference=65535
+FAIL unit validate_layer_references: all-or-none violated; count=2, layers=2, creg_presence=0x1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=2, layers=2, creg_presence=0x2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=3, layers=3, creg_presence=0x1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=3, layers=3, creg_presence=0x2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=3, layers=3, creg_presence=0x3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=3, layers=3, creg_presence=0x4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=3, layers=3, creg_presence=0x5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=3, layers=3, creg_presence=0x6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0x1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0x2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0x3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0x4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0x5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0x6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0x7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0x8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0x9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0xa; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0xb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0xc; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0xd; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=4, layers=4, creg_presence=0xe; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0xa; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0xb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0xc; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0xd; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0xe; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0xf; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x10; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x11; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x12; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x13; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x14; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x15; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x16; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x17; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x18; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x19; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x1a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x1b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x1c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x1d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=5, layers=5, creg_presence=0x1e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0xa; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0xb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0xc; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0xd; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0xe; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0xf; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x10; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x11; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x12; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x13; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x14; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x15; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x16; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x17; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x18; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x19; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x1a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x1b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x1c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x1d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x1e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x1f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x20; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x21; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x22; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x23; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x24; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x25; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x26; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x27; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x28; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x29; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x2a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x2b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x2c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x2d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x2e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x2f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x30; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x31; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x32; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x33; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x34; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x35; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x36; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x37; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x38; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x39; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x3a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x3b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x3c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x3d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=6, layers=6, creg_presence=0x3e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0xa; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0xb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0xc; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0xd; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0xe; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0xf; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x10; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x11; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x12; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x13; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x14; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x15; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x16; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x17; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x18; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x19; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x1a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x1b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x1c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x1d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x1e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x1f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x20; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x21; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x22; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x23; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x24; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x25; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x26; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x27; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x28; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x29; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x2a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x2b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x2c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x2d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x2e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x2f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x30; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x31; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x32; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x33; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x34; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x35; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x36; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x37; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x38; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x39; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x3a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x3b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x3c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x3d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x3e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x3f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x40; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x41; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x42; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x43; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x44; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x45; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x46; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x47; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x48; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x49; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x4a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x4b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x4c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x4d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x4e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x4f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x50; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x51; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x52; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x53; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x54; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x55; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x56; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x57; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x58; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x59; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x5a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x5b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x5c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x5d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x5e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x5f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x60; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x61; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x62; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x63; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x64; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x65; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x66; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x67; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x68; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x69; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x6a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x6b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x6c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x6d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x6e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x6f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x70; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x71; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x72; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x73; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x74; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x75; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x76; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x77; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x78; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x79; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x7a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x7b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x7c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x7d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=7, layers=7, creg_presence=0x7e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x10; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x11; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x12; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x13; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x14; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x15; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x16; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x17; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x18; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x19; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x1a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x1b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x1c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x1d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x1e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x1f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x20; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x21; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x22; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x23; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x24; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x25; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x26; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x27; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x28; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x29; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x2a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x2b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x2c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x2d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x2e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x2f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x30; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x31; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x32; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x33; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x34; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x35; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x36; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x37; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x38; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x39; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x3a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x3b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x3c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x3d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x3e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x3f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x40; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x41; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x42; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x43; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x44; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x45; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x46; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x47; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x48; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x49; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x4a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x4b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x4c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x4d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x4e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x4f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x50; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x51; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x52; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x53; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x54; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x55; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x56; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x57; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x58; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x59; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x5a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x5b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x5c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x5d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x5e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x5f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x60; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x61; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x62; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x63; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x64; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x65; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x66; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x67; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x68; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x69; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x6a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x6b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x6c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x6d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x6e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x6f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x70; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x71; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x72; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x73; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x74; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x75; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x76; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x77; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x78; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x79; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x7a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x7b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x7c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x7d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x7e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x7f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x80; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x81; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x82; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x83; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x84; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x85; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x86; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x87; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x88; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x89; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x8a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x8b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x8c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x8d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x8e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x8f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x90; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x91; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x92; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x93; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x94; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x95; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x96; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x97; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x98; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x99; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x9a; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x9b; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x9c; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x9d; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x9e; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0x9f; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa0; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xa9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xaa; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xab; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xac; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xad; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xae; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xaf; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb0; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xb9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xba; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xbb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xbc; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xbd; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xbe; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xbf; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc0; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xc9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xca; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xcb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xcc; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xcd; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xce; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xcf; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd0; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xd9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xda; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xdb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xdc; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xdd; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xde; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xdf; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe0; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xea; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xeb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xec; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xed; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xee; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xef; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf0; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfa; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfc; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfd; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfe; all explicit references and implicit ordinals exist
+
+thread 'jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist' (3303618) panicked at src/jp2_layer_reference_tests.rs:169:5:
+M.11.7.7 all-or-none presence: accepted 494 mixed patterns; first=Some((2, 1))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.09s
+
+error: test failed, to rerun pass `--lib`

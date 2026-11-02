@@ -1,0 +1,19 @@
+
+running 1 test
+test jpx::tests::timeline_expands_repetition_reuse_and_timing_deterministically ... frame-closing route: build_timeline -> JpxFrameInfo observers -> render_normalized_frame -> select_frame_instructions; opaque 1x1 grayscale layers at disjoint canvas columns
+zero-LIFE nonpersistent update: observed metadata/pixels/alpha=([(0, 17, false), (17, 5, true)], [1000, 2000, 3000, 0], [65535, 65535, 65535, 0], [0, 0, 0, 4000], [0, 0, 0, 65535])
+
+thread 'jpx::tests::timeline_expands_repetition_reuse_and_timing_deterministically' (1222985) panicked at src/jpx_frame_semantics_tests.rs:215:5:
+assertion `left == right` failed: T.801 M.5.3.2.1: PERSIST=false/LIFE=0 should perform no action; column 1 must remain transparent, not display the skipped thumbnail
+  left: ([(0, 17, false), (17, 5, true)], [1000, 2000, 3000, 0], [65535, 65535, 65535, 0], [0, 0, 0, 4000], [0, 0, 0, 65535])
+ right: ([(0, 17, false), (17, 5, true)], [1000, 0, 3000, 0], [65535, 0, 65535, 0], [0, 0, 0, 4000], [0, 0, 0, 65535])
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    jpx::tests::timeline_expands_repetition_reuse_and_timing_deterministically
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 659 filtered out; finished in 0.01s
+

@@ -1,0 +1,50 @@
+
+running 1 test
+test packet::tests::jpip_contract_eph_policy_errors_and_prefix ... route=packet::decode_jpip_precinct_packet_inner bytes=[00, 5a, a5] SOP=false EPH=false sequence=17 layer=0 expected=Ok(1)
+route=packet::decode_jpip_precinct_packet_inner bytes=[00, ff, 92, 5a, a5] SOP=false EPH=true sequence=17 layer=0 expected=Ok(3)
+route=packet::decode_jpip_precinct_packet_inner bytes=[00] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: Truncated })
+route=packet::decode_jpip_precinct_packet_inner bytes=[00, ff] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: Truncated })
+route=packet::decode_jpip_precinct_packet_inner bytes=[00, ff, 93, 5a, a5] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[00, 00, 92, 5a, a5] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[00, ff, 00, 5a, a5] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[00, 92, ff, 5a, a5] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[e1, ff, 5a, a5] SOP=false EPH=false sequence=17 layer=0 expected=Ok(2)
+route=packet::decode_jpip_precinct_packet_inner bytes=[e1, ff, 92, ff, 5a, a5] SOP=false EPH=true sequence=17 layer=0 expected=Ok(4)
+route=packet::decode_jpip_precinct_packet_inner bytes=[e1] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: Truncated })
+route=packet::decode_jpip_precinct_packet_inner bytes=[e1, ff] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: Truncated })
+route=packet::decode_jpip_precinct_packet_inner bytes=[e1, ff, 93, ff, 5a, a5] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[e1, 00, 92, ff, 5a, a5] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[e1, ff, 00, ff, 5a, a5] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[e1, 92, ff, ff, 5a, a5] SOP=false EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, 5a, a5] SOP=true EPH=false sequence=17 layer=0 expected=Ok(7)
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, ff, 92, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Ok(9)
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: Truncated })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, ff] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: Truncated })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, ff, 93, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, 00, 92, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, ff, 00, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, 00, 92, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, ff, 5a, a5] SOP=true EPH=false sequence=17 layer=0 expected=Ok(8)
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, ff, 92, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Ok(10)
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: Truncated })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, ff] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: Truncated })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, ff, 93, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, 00, 92, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, ff, 00, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[ff, 91, 00, 04, 00, 11, e1, 92, ff, ff, 5a, a5] SOP=true EPH=true sequence=17 layer=0 expected=Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+route=packet::decode_jpip_precinct_packet_inner bytes=[c0, be, ff, 00, ff, 92, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff, ff] SOP=false EPH=true sequence=0 layer=0 expected=Ok(261)
+
+thread 'packet::tests::jpip_contract_eph_policy_errors_and_prefix' (1223702) panicked at src/packet_jpip_contract_tests.rs:50:5:
+assertion `left == right` failed: inline inspection result/error/prefix
+  left: Err(MalformedInput { offset: 0, kind: InvalidPacketHeader })
+ right: Ok(261)
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    packet::tests::jpip_contract_eph_policy_errors_and_prefix
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 666 filtered out; finished in 0.00s
+

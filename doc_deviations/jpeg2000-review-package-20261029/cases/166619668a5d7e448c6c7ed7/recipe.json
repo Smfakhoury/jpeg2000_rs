@@ -1,0 +1,45 @@
+{
+  "id": "166619668a5d7e448c6c7ed7",
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "validation/crg-context-tests.patch"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run",
+      "--target-dir",
+      "target/deepspec-crg"
+    ]
+  ],
+  "artifacts": {
+    "src/decode_crg_tests.rs": "f7653304211f685b284dd3763e4048b2dfa777b76e4159096e9a408530203a1d",
+    "validation/crg-context-tests.patch": "f959e0964611f0d0f9912632a31e0e59465f7c5914c22063b681a326692c4d05"
+  },
+  "tests": [
+    {
+      "id": "cc6701332d6429318af1632c",
+      "spec_id": "cd4674a2d589a697678c3223",
+      "command": [
+        "python3",
+        "-c",
+        "import os, subprocess; from pathlib import Path; binaries = [p for p in Path('target/deepspec-crg/debug/deps').glob('jpeg2000_rs-*') if p.is_file() and os.access(p, os.X_OK)]; assert len(binaries) == 1, binaries; name = 'decode::tests::selected_color_context_uses_crg_component_separation'; assert name + ': test' in subprocess.check_output([str(binaries[0]), '--list'], text=True).splitlines(); os.execv(str(binaries[0]), [str(binaries[0]), '--exact', name, '--nocapture'])"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "assertion `left == right` failed: parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[4, 4, 32768, 32768]] ROI=[9, 9, 10, 10] context=ImageRegion { x: 5, y: 5, width: 5, height: 5 }; component=0 axis=0 coordinate=9: physical sample 1 missing from coded range 2..3"
+      ],
+      "finding_ids": [
+        "F06"
+      ],
+      "recorded_output": "cases/166619668a5d7e448c6c7ed7/cc6701332d6429318af1632c.log"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "suite": "2bbb4b7f6d9814081dc6d341",
+  "case": "efad0ebad5f0e363d0ab2122",
+  "deviation": "ef3353983851a3fec301a138",
+  "diagnosis": "c2453f58ee79aeeb2efecbd2",
+  "spec": "32aa5ed6bcd40eed56feecfe",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "Inherited main-header component NLT overrides first-tile-header default",
+  "entry": "src/codestream.rs:1801:codestream::Part2Extensions::nonlinear_transform_for",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "target/nonlinear-lookup-contract",
+      "--exact",
+      "codestream::tests::nonlinear_lookup_standard_header_precedence",
+      "--nocapture"
+    ],
+    "duration_s": 0.007,
+    "exit_code": 101,
+    "output_tail": ", 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None })\",\n    \"parse_layout -> first tile extensions -> nonlinear_transform_for: Rsiz=0x8200, main=[(Some(0), 9), (Some(2), 9)], tile=[(Some(2), 11), (None, 10)], component=0, expected=Some(NonlinearPointTransform { component: None, precision: 10, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None }), actual=Some(NonlinearPointTransform { component: Some(0), precision: 9, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None })\",\n    \"parse_layout -> first tile extensions -> nonlinear_transform_for: Rsiz=0x8200, main=[(Some(2), 9), (Some(0), 9), (None, 8)], tile=[(None, 10)], component=0, expected=Some(NonlinearPointTransform { component: None, precision: 10, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None }), actual=Some(NonlinearPointTransform { component: Some(0), precision: 9, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None })\",\n    \"parse_layout -> first tile extensions -> nonlinear_transform_for: Rsiz=0x8200, main=[(Some(2), 9), (Some(0), 9), (None, 8)], tile=[(None, 10)], component=2, expected=Some(NonlinearPointTransform { component: None, precision: 10, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None }), actual=Some(NonlinearPointTransform { component: Some(2), precision: 9, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None })\",\n    \"parse_layout -> first tile extensions -> nonlinear_transform_for: Rsiz=0x8200, main=[(Some(2), 9), (Some(0), 9), (None, 8)], tile=[(Some(0), 11), (None, 10)], component=2, expected=Some(NonlinearPointTransform { component: None, precision: 10, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None }), actual=Some(NonlinearPointTransform { component: Some(2), precision: 9, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None })\",\n    \"parse_layout -> first tile extensions -> nonlinear_transform_for: Rsiz=0x8200, main=[(Some(2), 9), (Some(0), 9), (None, 8)], tile=[(Some(2), 11), (None, 10)], component=0, expected=Some(NonlinearPointTransform { component: None, precision: 10, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None }), actual=Some(NonlinearPointTransform { component: Some(0), precision: 9, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None })\",\n]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest codestream::tests::nonlinear_lookup_standard_header_precedence ... FAILED\n\nfailures:\n\nfailures:\n    codestream::tests::nonlinear_lookup_standard_header_precedence\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.00s\n\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Parser-produced tile extensions; descriptor selection, not a full pixel decode."
+}

@@ -1,0 +1,37 @@
+{
+  "build": [
+    {
+      "argv": [
+        "python3",
+        "-c",
+        "import json,pathlib,shutil,subprocess; p=pathlib.Path('src/tier1.rs'); s=p.read_text(); anchor='        assert_eq!((long.vlc.bits_read, long.work_units), (9, 9));'; added='\\n        include!(\"tier1_noninitial_u_contract.rs\");'; assert s.count(anchor)==1 and 'tier1_noninitial_u_contract.rs' not in s; s=s.replace(anchor,anchor+added); p.write_text(s); assert p.read_text().count(added)==1; h=pathlib.Path('src/tier1_noninitial_u_contract.rs').read_text(); assert 'assert_eq!(count, 1089);' in h and 'pair={pair:?}' in h; r=subprocess.run(['cargo','test','--locked','--lib','--no-run','--message-format=json'],text=True,stdout=subprocess.PIPE); assert r.returncode==0, 'native test build failed'; a=[json.loads(line) for line in r.stdout.splitlines() if line.startswith('{')]; e=[x['executable'] for x in a if x.get('reason')=='compiler-artifact' and x.get('executable') and x.get('profile',{}).get('test')]; assert len(e)==1,e; shutil.copy2(e[0],'target/deepspec-noninitial-u-tests'); t=subprocess.check_output(['target/deepspec-noninitial-u-tests','--list'],text=True); assert 'tier1::tests::ht_uvlc_initial_and_noninitial_modes_have_literal_pair_results: test' in t and 'tier1::tests::ht_uvlc_invalid_modes_are_unchanged_and_byte_conversion_is_checked: test' in t"
+      ],
+      "duration_s": 14.488,
+      "exit_code": 0,
+      "output_tail": "   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/f4c99d87482bdb3bb429c765-replay-1c36db6b40b74190b7e59116b7c0e42d)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.36s\n",
+      "timed_out": false
+    }
+  ],
+  "clause": {
+    "case_id": "fd97f5fc8719a8c3d0554742",
+    "command": {
+      "argv": [
+        "target/deepspec-noninitial-u-tests",
+        "tier1::tests::ht_uvlc_",
+        "--nocapture",
+        "--test-threads=1"
+      ],
+      "duration_s": 0.046,
+      "exit_code": 101,
+      "output_tail": "\nrunning 4 tests\ntest tier1::tests::ht_uvlc_initial_and_noninitial_modes_have_literal_pair_results ... decode_non_initial_u: 1089 extension-free pairs, every bit-budget cutoff, invalid modes, physical exhaustion; now standard extensions\n\nthread 'tier1::tests::ht_uvlc_initial_and_noninitial_modes_have_literal_pair_results' (1220223) panicked at src/tier1_noninitial_u_contract.rs:121:17:\nassertion `left == right` failed: T.814 7.3.4/7.3.6 non-initial pair=[74, 0], mode=1, folded predictor=1, exponent<=75, input=[00, 00, 00, 00, 4d, ae, 88, 00]\n  left: Ok([35, 1])\n right: Ok([75, 1])\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\ntest tier1::tests::ht_uvlc_invalid_modes_are_unchanged_and_byte_conversion_is_checked ... ok\ntest tier1::tests::ht_uvlc_prefixes_and_suffixes_use_exact_physical_bits ... ok\ntest tier1::tests::ht_uvlc_result_width_and_budget_rejections_keep_the_consumed_bit ... ok\n\nfailures:\n\nfailures:\n    tier1::tests::ht_uvlc_initial_and_noninitial_modes_have_literal_pair_results\n\ntest result: FAILED. 3 passed; 1 failed; 0 ignored; 0 measured; 656 filtered out; finished in 0.04s\n\n",
+      "timed_out": false
+    },
+    "entry": "src/tier1.rs:2484:tier1::HtCleanupReaders::decode_non_initial_u",
+    "kind": "unit_contract",
+    "satisfies": [],
+    "spec_id": "9079527f453d5ed0014c2780",
+    "verdict": "observed_fail"
+  },
+  "original_test": "f4c99d87482bdb3bb429c765",
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148"
+}

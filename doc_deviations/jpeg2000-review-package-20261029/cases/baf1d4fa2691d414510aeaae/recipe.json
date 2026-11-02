@@ -1,0 +1,54 @@
+{
+  "id": "baf1d4fa2691d414510aeaae",
+  "build": [
+    [
+      "bash",
+      "-eu",
+      "-c",
+      "patch --batch --forward -p1 < validation/databin-contract-tests.patch; grep -Fq 'include!(\"jpip_databin_contract_tests.rs\");' src/jpip.rs; cargo test --lib --no-run --locked; python3 validation/databin-contract-runner.py"
+    ]
+  ],
+  "artifacts": {
+    "validation/databin-contract-tests.patch": "8b292b9598c38d674d6f3bd04e859aa11bd067a31d84df2392d9697a4d7b7084",
+    "validation/databin-contract-runner.py": "35fdcd688cbe9c6aafbebffefe0bf285ee506601b3ab61936d814af72b1decdd",
+    "src/jpip_databin_contract_tests.rs": "93cb50969993ec0555a6366b92293d0d78cda30534ab1d594e36192938fbc5d5"
+  },
+  "tests": [
+    {
+      "id": "6430a2e679802b9144ea5a4b",
+      "spec_id": "78ac2bcf8f8510fe8f2c9078",
+      "command": [
+        "target/databin-contract-tests",
+        "jpip::tests::metadata_databin_identity_ignores_codestream",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=0, reverse=false: wrong final length/prefix/bytes/intervals for DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 }: None"
+      ],
+      "finding_ids": [
+        "F13"
+      ],
+      "recorded_output": "cases/baf1d4fa2691d414510aeaae/6430a2e679802b9144ea5a4b.log"
+    },
+    {
+      "id": "99fed806685c9122fb266211",
+      "spec_id": "6dd97b323f90d87cebe6dafa",
+      "command": [
+        "target/databin-contract-tests",
+        "jpip::tests::standard_databin_class_assignment",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "264 reserved-class assignments received ordinary standard semantics; first examples: [(3, 0, 0, TileHeader), (7, 0, 0, MainHeader), (3, 0, 1, TileHeader), (7, 0, 1, MainHeader), (3, 0, 15, TileHeader), (7, 0, 15, MainHeader), (3, 0, 16, TileHeader), (7, 0, 16, MainHeader), (3, 0, 127, TileHeader), (7, 0, 127, MainHeader), (3, 0, 128, TileHeader), (7, 0, 128, MainHeader)]"
+      ],
+      "finding_ids": [
+        "F17"
+      ],
+      "recorded_output": "cases/baf1d4fa2691d414510aeaae/99fed806685c9122fb266211.log"
+    }
+  ]
+}

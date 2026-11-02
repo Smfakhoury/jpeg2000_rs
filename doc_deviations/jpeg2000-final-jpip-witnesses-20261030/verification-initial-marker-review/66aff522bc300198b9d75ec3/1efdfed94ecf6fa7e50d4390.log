@@ -1,0 +1,459 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s
+     Running unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
+
+running 1 test
+test jpip::tests::contract_ingest_header_forms_response_local ... route=ingest_jpip_response bytes=0 expected_messages=0
+header forms class=0 stream=0 bin=0
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=0 stream=1 bin=0
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=0 stream=127 bin=0
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=0 stream=128 bin=0
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=16 expected_messages=3
+header forms class=0 stream=16384 bin=0
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=17 expected_messages=3
+header forms class=0 stream=4294967295 bin=0
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=0 stream=0 bin=15
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=0 stream=1 bin=15
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=0 stream=127 bin=15
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=0 stream=128 bin=15
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=16 expected_messages=3
+header forms class=0 stream=16384 bin=15
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=17 expected_messages=3
+header forms class=0 stream=4294967295 bin=15
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=0 stream=0 bin=16
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=1 bin=16
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=127 bin=16
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=128 bin=16
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=0 stream=16384 bin=16
+route=ingest_jpip_response bytes=27 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=0 stream=4294967295 bin=16
+route=ingest_jpip_response bytes=33 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=0 stream=0 bin=127
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=1 bin=127
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=127 bin=127
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=128 bin=127
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=0 stream=16384 bin=127
+route=ingest_jpip_response bytes=27 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=0 stream=4294967295 bin=127
+route=ingest_jpip_response bytes=33 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=0 stream=0 bin=128
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=1 bin=128
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=127 bin=128
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=128 bin=128
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=0 stream=16384 bin=128
+route=ingest_jpip_response bytes=27 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=0 stream=4294967295 bin=128
+route=ingest_jpip_response bytes=33 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=0 stream=0 bin=2047
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=1 bin=2047
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=127 bin=2047
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=0 stream=128 bin=2047
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=0 stream=16384 bin=2047
+route=ingest_jpip_response bytes=27 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=0 stream=4294967295 bin=2047
+route=ingest_jpip_response bytes=33 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=0 stream=0 bin=2048
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=0 stream=1 bin=2048
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=0 stream=127 bin=2048
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=0 stream=128 bin=2048
+route=ingest_jpip_response bytes=27 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=0 stream=16384 bin=2048
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=23 expected_messages=3
+header forms class=0 stream=4294967295 bin=2048
+route=ingest_jpip_response bytes=36 expected_messages=3
+route=ingest_jpip_response bytes=25 expected_messages=3
+header forms class=0 stream=0 bin=4294967295
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=27 expected_messages=3
+header forms class=0 stream=1 bin=4294967295
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=27 expected_messages=3
+header forms class=0 stream=127 bin=4294967295
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=27 expected_messages=3
+header forms class=0 stream=128 bin=4294967295
+route=ingest_jpip_response bytes=33 expected_messages=3
+route=ingest_jpip_response bytes=28 expected_messages=3
+header forms class=0 stream=16384 bin=4294967295
+route=ingest_jpip_response bytes=36 expected_messages=3
+route=ingest_jpip_response bytes=29 expected_messages=3
+header forms class=0 stream=4294967295 bin=4294967295
+route=ingest_jpip_response bytes=42 expected_messages=3
+route=ingest_jpip_response bytes=31 expected_messages=3
+header forms class=1 stream=0 bin=0
+route=ingest_jpip_response bytes=20 expected_messages=3
+route=ingest_jpip_response bytes=17 expected_messages=3
+header forms class=1 stream=1 bin=0
+route=ingest_jpip_response bytes=20 expected_messages=3
+route=ingest_jpip_response bytes=17 expected_messages=3
+header forms class=1 stream=127 bin=0
+route=ingest_jpip_response bytes=20 expected_messages=3
+route=ingest_jpip_response bytes=17 expected_messages=3
+header forms class=1 stream=128 bin=0
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=1 stream=16384 bin=0
+route=ingest_jpip_response bytes=26 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=1 stream=4294967295 bin=0
+route=ingest_jpip_response bytes=32 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=1 stream=0 bin=15
+route=ingest_jpip_response bytes=20 expected_messages=3
+route=ingest_jpip_response bytes=17 expected_messages=3
+header forms class=1 stream=1 bin=15
+route=ingest_jpip_response bytes=20 expected_messages=3
+route=ingest_jpip_response bytes=17 expected_messages=3
+header forms class=1 stream=127 bin=15
+route=ingest_jpip_response bytes=20 expected_messages=3
+route=ingest_jpip_response bytes=17 expected_messages=3
+header forms class=1 stream=128 bin=15
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=1 stream=16384 bin=15
+route=ingest_jpip_response bytes=26 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=1 stream=4294967295 bin=15
+route=ingest_jpip_response bytes=32 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=1 stream=0 bin=16
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=1 bin=16
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=127 bin=16
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=128 bin=16
+route=ingest_jpip_response bytes=26 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=1 stream=16384 bin=16
+route=ingest_jpip_response bytes=29 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=1 stream=4294967295 bin=16
+route=ingest_jpip_response bytes=35 expected_messages=3
+route=ingest_jpip_response bytes=24 expected_messages=3
+header forms class=1 stream=0 bin=127
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=1 bin=127
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=127 bin=127
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=128 bin=127
+route=ingest_jpip_response bytes=26 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=1 stream=16384 bin=127
+route=ingest_jpip_response bytes=29 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=1 stream=4294967295 bin=127
+route=ingest_jpip_response bytes=35 expected_messages=3
+route=ingest_jpip_response bytes=24 expected_messages=3
+header forms class=1 stream=0 bin=128
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=1 bin=128
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=127 bin=128
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=128 bin=128
+route=ingest_jpip_response bytes=26 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=1 stream=16384 bin=128
+route=ingest_jpip_response bytes=29 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=1 stream=4294967295 bin=128
+route=ingest_jpip_response bytes=35 expected_messages=3
+route=ingest_jpip_response bytes=24 expected_messages=3
+header forms class=1 stream=0 bin=2047
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=1 bin=2047
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=127 bin=2047
+route=ingest_jpip_response bytes=23 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=1 stream=128 bin=2047
+route=ingest_jpip_response bytes=26 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=1 stream=16384 bin=2047
+route=ingest_jpip_response bytes=29 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=1 stream=4294967295 bin=2047
+route=ingest_jpip_response bytes=35 expected_messages=3
+route=ingest_jpip_response bytes=24 expected_messages=3
+header forms class=1 stream=0 bin=2048
+route=ingest_jpip_response bytes=26 expected_messages=3
+route=ingest_jpip_response bytes=23 expected_messages=3
+header forms class=1 stream=1 bin=2048
+route=ingest_jpip_response bytes=26 expected_messages=3
+route=ingest_jpip_response bytes=23 expected_messages=3
+header forms class=1 stream=127 bin=2048
+route=ingest_jpip_response bytes=26 expected_messages=3
+route=ingest_jpip_response bytes=23 expected_messages=3
+header forms class=1 stream=128 bin=2048
+route=ingest_jpip_response bytes=29 expected_messages=3
+route=ingest_jpip_response bytes=24 expected_messages=3
+header forms class=1 stream=16384 bin=2048
+route=ingest_jpip_response bytes=32 expected_messages=3
+route=ingest_jpip_response bytes=25 expected_messages=3
+header forms class=1 stream=4294967295 bin=2048
+route=ingest_jpip_response bytes=38 expected_messages=3
+route=ingest_jpip_response bytes=27 expected_messages=3
+header forms class=1 stream=0 bin=4294967295
+route=ingest_jpip_response bytes=32 expected_messages=3
+route=ingest_jpip_response bytes=29 expected_messages=3
+header forms class=1 stream=1 bin=4294967295
+route=ingest_jpip_response bytes=32 expected_messages=3
+route=ingest_jpip_response bytes=29 expected_messages=3
+header forms class=1 stream=127 bin=4294967295
+route=ingest_jpip_response bytes=32 expected_messages=3
+route=ingest_jpip_response bytes=29 expected_messages=3
+header forms class=1 stream=128 bin=4294967295
+route=ingest_jpip_response bytes=35 expected_messages=3
+route=ingest_jpip_response bytes=30 expected_messages=3
+header forms class=1 stream=16384 bin=4294967295
+route=ingest_jpip_response bytes=38 expected_messages=3
+route=ingest_jpip_response bytes=31 expected_messages=3
+header forms class=1 stream=4294967295 bin=4294967295
+route=ingest_jpip_response bytes=44 expected_messages=3
+route=ingest_jpip_response bytes=33 expected_messages=3
+header forms class=8 stream=0 bin=0
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=8 stream=1 bin=0
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=8 stream=127 bin=0
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=8 stream=128 bin=0
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=16 expected_messages=3
+header forms class=8 stream=16384 bin=0
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=17 expected_messages=3
+header forms class=8 stream=4294967295 bin=0
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=8 stream=0 bin=15
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=8 stream=1 bin=15
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=8 stream=127 bin=15
+route=ingest_jpip_response bytes=18 expected_messages=3
+route=ingest_jpip_response bytes=15 expected_messages=3
+header forms class=8 stream=128 bin=15
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=16 expected_messages=3
+header forms class=8 stream=16384 bin=15
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=17 expected_messages=3
+header forms class=8 stream=4294967295 bin=15
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=8 stream=0 bin=16
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=1 bin=16
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=127 bin=16
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=128 bin=16
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=8 stream=16384 bin=16
+route=ingest_jpip_response bytes=27 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=8 stream=4294967295 bin=16
+route=ingest_jpip_response bytes=33 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=8 stream=0 bin=127
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=1 bin=127
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=127 bin=127
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=128 bin=127
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=8 stream=16384 bin=127
+route=ingest_jpip_response bytes=27 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=8 stream=4294967295 bin=127
+route=ingest_jpip_response bytes=33 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=8 stream=0 bin=128
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=1 bin=128
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=127 bin=128
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=128 bin=128
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=8 stream=16384 bin=128
+route=ingest_jpip_response bytes=27 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=8 stream=4294967295 bin=128
+route=ingest_jpip_response bytes=33 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=8 stream=0 bin=2047
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=1 bin=2047
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=127 bin=2047
+route=ingest_jpip_response bytes=21 expected_messages=3
+route=ingest_jpip_response bytes=18 expected_messages=3
+header forms class=8 stream=128 bin=2047
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=19 expected_messages=3
+header forms class=8 stream=16384 bin=2047
+route=ingest_jpip_response bytes=27 expected_messages=3
+route=ingest_jpip_response bytes=20 expected_messages=3
+header forms class=8 stream=4294967295 bin=2047
+route=ingest_jpip_response bytes=33 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=8 stream=0 bin=2048
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=8 stream=1 bin=2048
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=8 stream=127 bin=2048
+route=ingest_jpip_response bytes=24 expected_messages=3
+route=ingest_jpip_response bytes=21 expected_messages=3
+header forms class=8 stream=128 bin=2048
+route=ingest_jpip_response bytes=27 expected_messages=3
+route=ingest_jpip_response bytes=22 expected_messages=3
+header forms class=8 stream=16384 bin=2048
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=23 expected_messages=3
+header forms class=8 stream=4294967295 bin=2048
+route=ingest_jpip_response bytes=36 expected_messages=3
+route=ingest_jpip_response bytes=25 expected_messages=3
+header forms class=8 stream=0 bin=4294967295
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=27 expected_messages=3
+header forms class=8 stream=1 bin=4294967295
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=27 expected_messages=3
+header forms class=8 stream=127 bin=4294967295
+route=ingest_jpip_response bytes=30 expected_messages=3
+route=ingest_jpip_response bytes=27 expected_messages=3
+header forms class=8 stream=128 bin=4294967295
+route=ingest_jpip_response bytes=33 expected_messages=3
+route=ingest_jpip_response bytes=28 expected_messages=3
+header forms class=8 stream=16384 bin=4294967295
+route=ingest_jpip_response bytes=36 expected_messages=3
+route=ingest_jpip_response bytes=29 expected_messages=3
+header forms class=8 stream=4294967295 bin=4294967295
+route=ingest_jpip_response bytes=42 expected_messages=3
+route=ingest_jpip_response bytes=31 expected_messages=3
+negative header wire=[10, 00, 00]
+negative header wire=[60]
+negative header wire=[60, 00, 00, 00, 02, 00]
+negative header wire=[00, 01, 00, ff]
+route=ingest_jpip_response bytes=8 expected_messages=1
+route=ingest_jpip_response bytes=5 expected_messages=1
+A.2.1 initial defaults: wire=[30, 00, 01, 00], expected class=0 CSn=0
+route=ingest_jpip_response bytes=4 expected_messages=1
+
+thread 'jpip::tests::contract_ingest_header_forms_response_local' (2189014) panicked at src/jpip_ingest_contract_tests.rs:62:5:
+input=[30, 00, 01, 00], result=Err(MalformedInput { offset: 0, kind: InvalidJpipHeader })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    jpip::tests::contract_ingest_header_forms_response_local
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--lib`

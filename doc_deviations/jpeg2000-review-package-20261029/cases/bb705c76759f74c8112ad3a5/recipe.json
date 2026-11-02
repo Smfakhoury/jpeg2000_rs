@@ -1,0 +1,53 @@
+{
+  "id": "bb705c76759f74c8112ad3a5",
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "layer_reference_tests.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/jp2.rs').read_text(); t=Path('src/jp2_layer_reference_tests.rs').read_text(); assert 'mod layer_reference_contract {\\n        include!(\"jp2_layer_reference_tests.rs\");\\n    }' in s; assert 'fn no_registration_uses_ordinal_bounds()' in t; assert 'fn registration_presence_is_file_wide_and_references_exist()' in t; assert 'accepted_mixed.is_empty()' in t"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--locked",
+      "--no-run"
+    ]
+  ],
+  "artifacts": {
+    "layer_reference_tests.patch": "365a0ddbdb62d415979f3a005a0699f50d788c7d11b940d5d18201de3899bdb1",
+    "src/jp2_layer_reference_tests.rs": "c616bf5f6c7d630fc9802618ca484f81798c9cd029cbec7de1fdd12d38121e15"
+  },
+  "tests": [
+    {
+      "id": "e62d0f8ba0be84c76f97c921",
+      "spec_id": "ce77e09dc97f1a44c8c8d5e3",
+      "command": [
+        "cargo",
+        "test",
+        "--lib",
+        "--locked",
+        "jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "M.11.7.7 all-or-none presence: accepted 494 mixed patterns; first=Some((2, 1))"
+      ],
+      "finding_ids": [
+        "F22"
+      ],
+      "recorded_output": "cases/bb705c76759f74c8112ad3a5/e62d0f8ba0be84c76f97c921.log"
+    }
+  ]
+}

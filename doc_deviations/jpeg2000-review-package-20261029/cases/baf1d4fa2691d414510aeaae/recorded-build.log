@@ -1,0 +1,6 @@
+$ ["bash", "-eu", "-c", "patch --batch --forward -p1 < validation/databin-contract-tests.patch; grep -Fq 'include!(\"jpip_databin_contract_tests.rs\");' src/jpip.rs; cargo test --lib --no-run --locked; python3 validation/databin-contract-runner.py"]
+patching file src/jpip.rs
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/baf1d4fa2691d414510aeaae-replay-62aa3afd0ae4486690178eeed5d38a81)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.36s
+  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
+

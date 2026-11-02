@@ -1,0 +1,29 @@
+{
+  "suite": "7b34b23231926ec82a67e1e9",
+  "case": "13da61704101aa4758fec233",
+  "deviation": "68863f8ed83222b5c6ed28e3",
+  "diagnosis": "5774ef39229568dcf659652c",
+  "spec": "af4bc1414e81593a62244981",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "Ordinary COC accepts zero precinct exponents above resolution zero",
+  "entry": "src/codestream.rs:8739:codestream::Parser::parse_coc",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "python3",
+      "coc_clause_harness.py",
+      "run",
+      "admission"
+    ],
+    "duration_s": 0.869,
+    "exit_code": 101,
+    "output_tail": "0, 0, 0, 1, 0, 240], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (0, 15)]))\nzero precinct exponent above resolution zero: Csiz=258, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 0], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (0, 0)]))\nzero precinct exponent above resolution zero: Csiz=258, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 1], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (1, 0)]))\nzero precinct exponent above resolution zero: Csiz=258, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 16], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (0, 1)]))\nzero precinct exponent above resolution zero: Csiz=258, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 15], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (15, 0)]))\nzero precinct exponent above resolution zero: Csiz=258, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 240], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (0, 15)]))\nzero precinct exponent above resolution zero: Csiz=513, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 0], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (0, 0)]))\nzero precinct exponent above resolution zero: Csiz=513, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 1], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (1, 0)]))\nzero precinct exponent above resolution zero: Csiz=513, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 16], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (0, 1)]))\nzero precinct exponent above resolution zero: Csiz=513, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 15], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (15, 0)]))\nzero precinct exponent above resolution zero: Csiz=513, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 240], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (0, 15)]))\nzero precinct exponent above resolution zero: Csiz=16384, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 0], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (0, 0)]))\nzero precinct exponent above resolution zero: Csiz=16384, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 1], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (1, 0)]))\nzero precinct exponent above resolution zero: Csiz=16384, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 16], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (0, 1)]))\nzero precinct exponent above resolution zero: Csiz=16384, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 15], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (15, 0)]))\nzero precinct exponent above resolution zero: Csiz=16384, payload=[0, 0, 1, 1, 0, 0, 0, 1, 0, 240], expected=Err(MalformedInput { offset: 6, kind: InvalidCodingStyle }), actual(component,depth,precincts[0..2])=Ok((0, 1, [(0, 0), (0, 15)]))\nmain-header parse_layout accepted illegal high-resolution precinct: [(1, 1), (0, 15)]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\nFAILED\n\nfailures:\n\nfailures:\n    codestream::tests::coc_clause_tests::component_selector_and_ordinary_coc_admission\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.83s\n\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Ordinary Part 1, Rsiz=0; does not generalize to unresolved Part 2 directional cases."
+}

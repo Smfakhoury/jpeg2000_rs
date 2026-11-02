@@ -1,0 +1,13 @@
+--- a/src/jp2.rs
++++ b/src/jp2.rs
+@@ -3170,6 +3170,10 @@
+ mod tests {
+     use super::*;
+ 
++    mod layer_reference_contract {
++        include!("jp2_layer_reference_tests.rs");
++    }
++
+     fn box32(box_type: [u8; 4], payload: &[u8]) -> Vec<u8> {
+         let length = u32::try_from(8 + payload.len()).unwrap();
+         let mut bytes = length.to_be_bytes().to_vec();

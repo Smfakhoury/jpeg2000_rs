@@ -1,0 +1,51 @@
+{
+  "id": "9970988c331d1d0c2b443c1d",
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "validation/metadata-cardinality-registration.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/jp2.rs').read_text(); assert s.count('    include!(\"jp2_metadata_cardinality_test.rs\");') == 1; assert 'fn retains_general_layer_cdef_and_nested_metadata()' in s; t=Path('src/jp2_metadata_cardinality_test.rs').read_text(); assert 'fn association_requires_two_immediate_children()' in t; assert 'failures.is_empty()' in t"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "artifacts": {
+    "src/jp2_metadata_cardinality_test.rs": "d8c51f27fe3cd6ff33d482c4a96b453b04b0f89ae88f861bd1d08c842267feb9",
+    "validation/metadata-cardinality-registration.patch": "823076fd680a82435f15e46e1edc478044714828c773eba014b58a1838f27d11"
+  },
+  "tests": [
+    {
+      "id": "31f9c6f9ee4357015c058216",
+      "spec_id": "fddd4285e23c96ff7162e33c",
+      "command": [
+        "cargo",
+        "test",
+        "--lib",
+        "jp2::tests::association_requires_two_immediate_children",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "empty at depth 1: immediate=0, expected=None, observed=Ok((1, 1))"
+      ],
+      "finding_ids": [
+        "F21"
+      ],
+      "recorded_output": "cases/9970988c331d1d0c2b443c1d/31f9c6f9ee4357015c058216.log"
+    }
+  ]
+}

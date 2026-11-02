@@ -1,0 +1,37 @@
+put { offset: 0, kind: InvalidPacketHeader }
+fixture=41 progression=1: expected 610 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+fixture=41 progression=2: expected 610 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+fixture=41 progression=3: expected 610 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+fixture=41 progression=4: expected 610 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+route=DatabinCache::insert -> derive_precinct_map fixture=42 geometry=MapContractGeometry { size: [45, 26], origin: [2, 0], tile: [49, 30], tile_origin: [0, 0], sampling: [[1, 1], [2, 1], [1, 3]], style: MapContractStyle { levels: 1, precincts: Some([35, 50]) }, overrides: false }
+route=DatabinCache::insert -> derive_precinct_map fixture=43 geometry=MapContractGeometry { size: [40, 44], origin: [1, 1], tile: [24, 24], tile_origin: [1, 1], sampling: [[1, 1], [2, 1], [1, 3]], style: MapContractStyle { levels: 2, precincts: None }, overrides: true }
+route=DatabinCache::insert -> derive_precinct_map fixture=44 geometry=MapContractGeometry { size: [53, 56], origin: [0, 3], tile: [57, 60], tile_origin: [0, 0], sampling: [[1, 1], [2, 1], [1, 3]], style: MapContractStyle { levels: 3, precincts: Some([35, 50, 35, 50]) }, overrides: false }
+route=DatabinCache::insert -> derive_precinct_map fixture=45 geometry=MapContractGeometry { size: [1, 1], origin: [1, 1], tile: [2, 2], tile_origin: [0, 0], sampling: [[1, 1]], style: MapContractStyle { levels: 3, precincts: Some([35, 50, 35, 50]) }, overrides: false }
+fixture=45 progression=0 stream=62: A-1/B-16 mismatch; actual=4 expected=1 first differing (actual,expected)=Some(((0, 0, 0, 0, 0), (0, 0, 3, 0, 0)))
+fixture=45 progression=1 stream=62: A-1/B-16 mismatch; actual=4 expected=1 first differing (actual,expected)=Some(((0, 0, 0, 0, 0), (0, 0, 3, 0, 0)))
+fixture=45 progression=2 stream=62: A-1/B-16 mismatch; actual=4 expected=1 first differing (actual,expected)=Some(((0, 0, 0, 0, 0), (0, 0, 3, 0, 0)))
+fixture=45 progression=3 stream=62: A-1/B-16 mismatch; actual=4 expected=1 first differing (actual,expected)=Some(((0, 0, 0, 0, 0), (0, 0, 3, 0, 0)))
+fixture=45 progression=4 stream=18446744073709551615: A-1/B-16 mismatch; actual=4 expected=1 first differing (actual,expected)=Some(((0, 0, 0, 0, 0), (0, 0, 3, 0, 0)))
+route=DatabinCache::insert -> derive_precinct_map fixture=46 geometry=MapContractGeometry { size: [513, 257], origin: [0, 0], tile: [513, 257], tile_origin: [0, 0], sampling: [[1, 1], [255, 255]], style: MapContractStyle { levels: 0, precincts: None }, overrides: false }
+
+thread 'jpip::tests::derive_precinct_map_matches_standard_geometry_contract' (2763098) panicked at src/jpip_precinct_map_contract.rs:382:5:
+60 geometry contract violations; first failures:
+fixture=13 progression=0: expected 810 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+fixture=13 progression=1: expected 810 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+fixture=13 progression=2: expected 810 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+fixture=13 progression=3: expected 810 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+fixture=13 progression=4: expected 810 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+fixture=15 progression=0: expected 856 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+fixture=15 progression=1: expected 856 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+fixture=15 progression=2: expected 856 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test jpip::tests::derive_precinct_map_matches_standard_geometry_contract ... FAILED
+
+failures:
+
+failures:
+    jpip::tests::derive_precinct_map_matches_standard_geometry_contract
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 660 filtered out; finished in 1.14s
+
+error: test failed, to rerun pass `--lib`

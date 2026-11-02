@@ -1,0 +1,28 @@
+{
+  "suite": "e1f075d7b5416d4f472c0f9a",
+  "case": "9c7d6b44332022f336f2ca0d",
+  "deviation": "aa382efda7c3965118fc5f28",
+  "diagnosis": "82c7405224ecbf91450bdbfc",
+  "spec": "fb0a3e26284355e86e6cfece",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "Stream-equivalent metadata payload is reconstructed with the original box identity",
+  "entry": "src/jpip.rs:2021:jpip::DatabinCache::expand_metadata_bin",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "python3",
+      "validation/run_metadata_contract_suite.py",
+      "stream_equivalent_uses_equivalent_box_identity"
+    ],
+    "duration_s": 0.035,
+    "exit_code": 101,
+    "output_tail": "route=DatabinCache::expand_metadata_bin case=jpip::tests::metadata_contract_tests::stream_equivalent_uses_equivalent_box_identity\n\nrunning 1 test\n\nthread 'jpip::tests::metadata_contract_tests::stream_equivalent_uses_equivalent_box_identity' (2754217) panicked at src/jpip_metadata_contract_tests.rs:338:5:\nwrong stream-equivalent box header:\nxref->colr original-XLBox=false, equivalent-XLBox=false: got [0, 0, 0, 15, 120, 114, 101, 102, 1, 0, 0, 0, 0, 0, 17], expected [0, 0, 0, 15, 99, 111, 108, 114, 1, 0, 0, 0, 0, 0, 17]\nxref->colr original-XLBox=false, equivalent-XLBox=true: got [0, 0, 0, 15, 120, 114, 101, 102, 1, 0, 0, 0, 0, 0, 17], expected [0, 0, 0, 1, 99, 111, 108, 114, 0, 0, 0, 0, 0, 0, 0, 23, 1, 0, 0, 0, 0, 0, 17]\nxref->colr original-XLBox=true, equivalent-XLBox=false: got [0, 0, 0, 1, 120, 114, 101, 102, 0, 0, 0, 0, 0, 0, 0, 23, 1, 0, 0, 0, 0, 0, 17], expected [0, 0, 0, 15, 99, 111, 108, 114, 1, 0, 0, 0, 0, 0, 17]\nxref->colr original-XLBox=true, equivalent-XLBox=true: got [0, 0, 0, 1, 120, 114, 101, 102, 0, 0, 0, 0, 0, 0, 0, 23, 1, 0, 0, 0, 0, 0, 17], expected [0, 0, 0, 1, 99, 111, 108, 114, 0, 0, 0, 0, 0, 0, 0, 23, 1, 0, 0, 0, 0, 0, 17]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest jpip::tests::metadata_contract_tests::stream_equivalent_uses_equivalent_box_identity ... FAILED\n\nfailures:\n\nfailures:\n    jpip::tests::metadata_contract_tests::stream_equivalent_uses_equivalent_box_identity\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 662 filtered out; finished in 0.00s\n\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Four compact/extended header combinations; recursive metadata helper, not a complete JPX rendering."
+}

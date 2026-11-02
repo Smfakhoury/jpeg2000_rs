@@ -1,0 +1,48 @@
+et: 0, kind: InvalidMarkerLength }
+case 1: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 2: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 3: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 4: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 5: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 6: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 7: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 8: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 9: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 10: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 11: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 12: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 13: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 14: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 15: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 16: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 17: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 18: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 19: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 20: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 21: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 22: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 23: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 24: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 25: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 26: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 27: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 28: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 29: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 30: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 31: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 32: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 33: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 34: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 35: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 36: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+case 37: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test codestream::tests::standard_plm::standard_plm_octet_counts_and_wire_order ... FAILED
+
+failures:
+
+failures:
+    codestream::tests::standard_plm::standard_plm_octet_counts_and_wire_order
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.02s
+

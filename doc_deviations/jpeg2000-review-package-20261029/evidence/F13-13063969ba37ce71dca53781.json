@@ -1,0 +1,29 @@
+{
+  "suite": "baf1d4fa2691d414510aeaae",
+  "case": "6430a2e679802b9144ea5a4b",
+  "deviation": "13063969ba37ce71dca53781",
+  "diagnosis": "535ed3ec10c1c512aa59ca7f",
+  "spec": "78ac2bcf8f8510fe8f2c9078",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "Metadata cache identity incorrectly depends on message codestream index",
+  "entry": "src/jpip.rs:62:jpip::DatabinId::new",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "target/databin-contract-tests",
+      "jpip::tests::metadata_databin_identity_ignores_codestream",
+      "--exact",
+      "--nocapture"
+    ],
+    "duration_s": 0.024,
+    "exit_code": 101,
+    "output_tail": "tity failures; first examples: [\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=0, reverse=false: wrong final length/prefix/bytes/intervals for DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 }: None\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=0, reverse=false: expected exact bytes [0, 0, 0, 12, 120, 109, 108, 32, 60, 97, 47, 62], got Err(MalformedInput { offset: 0, kind: MissingRequiredStructure })\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=0, reverse=false: complete alias range reported missing\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=0, reverse=true: wrong final length/prefix/bytes/intervals for DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 }: None\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=0, reverse=true: expected exact bytes [0, 0, 0, 12, 120, 109, 108, 32, 60, 97, 47, 62], got Err(MalformedInput { offset: 0, kind: MissingRequiredStructure })\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=0, reverse=true: complete alias range reported missing\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=1, reverse=false: expected one semantic bin, got 2\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=1, reverse=false: wrong final length/prefix/bytes/intervals for DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 }: Some(DatabinStatus { final_length: None, contiguous_prefix: 1, stored_bytes: 1, intervals: 1 })\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=1, reverse=false: expected exact bytes [0, 0, 0, 12, 120, 109, 108, 32, 60, 97, 47, 62], got Err(MalformedInput { offset: 1, kind: MissingRequiredStructure })\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=1, reverse=false: complete alias range reported missing\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=1, reverse=false: wrong final length/prefix/bytes/intervals for DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }: Some(DatabinStatus { final_length: Some(12), contiguous_prefix: 0, stored_bytes: 11, intervals: 1 })\",\n    \"DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=1, reverse=false: expected exact bytes [0, 0, 0, 12, 120, 109, 108, 32, 60, 97, 47, 62], got Err(MalformedInput { offset: 0, kind: MissingRequiredStructure })\",\n]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest jpip::tests::metadata_databin_identity_ignores_codestream ... FAILED\n\nfailures:\n\nfailures:\n    jpip::tests::metadata_databin_identity_ignores_codestream\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 662 filtered out; finished in 0.02s\n\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Typed identity/cache lookup; preserving raw wire CSn is allowed. Existing metadata candidates are not promoted."
+}

@@ -1,0 +1,33 @@
+{
+  "suite": "bb705c76759f74c8112ad3a5",
+  "case": "e62d0f8ba0be84c76f97c921",
+  "deviation": "df903a5147260ea3adf42972",
+  "diagnosis": "8c0d7cd779d32a76f39b2222",
+  "spec": "ce77e09dc97f1a44c8c8d5e3",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "JPX layer-reference validation accepts mixed registration-box presence",
+  "entry": "src/jp2.rs:1919:jp2::validate_layer_references",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "cargo",
+      "test",
+      "--lib",
+      "--locked",
+      "jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "duration_s": 0.146,
+    "exit_code": 101,
+    "output_tail": "olated; count=8, layers=8, creg_presence=0xe8; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe9; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xea; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xeb; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xec; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xed; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xee; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xef; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf0; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf1; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf2; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf3; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf4; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf5; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf6; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf7; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf8; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf9; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfa; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfb; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfc; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfd; all explicit references and implicit ordinals exist\nFAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfe; all explicit references and implicit ordinals exist\n\nthread 'jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist' (2040066) panicked at src/jp2_layer_reference_tests.rs:169:5:\nM.11.7.7 all-or-none presence: accepted 494 mixed patterns; first=Some((2, 1))\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist ... FAILED\n\nfailures:\n\nfailures:\n    jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.08s\n\nerror: test failed, to rerun pass `--lib`\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Parser-produced layers passed to the dedicated reference validator."
+}

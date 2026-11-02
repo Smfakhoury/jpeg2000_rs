@@ -1,0 +1,54 @@
+{
+  "id": "66aff522bc300198b9d75ec3",
+  "artifacts": {
+    "validation/jpip-ingest-contract.patch": "0a9bdf2a01936a8761a5d3afb087605b3f5dbd325d2bf32c62ccd11c069c4f7b",
+    "src/jpip_ingest_contract_tests.rs": "145a11c1299deea06e5bb43a688a08065bd83fca9974e1e9c995c01bb8f2947b"
+  },
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "validation/jpip-ingest-contract.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; p=Path('src/jpip.rs').read_text(); t=Path('src/jpip_ingest_contract_tests.rs').read_text(); assert p.count('include!(\"jpip_ingest_contract_tests.rs\");') == 1; assert 'fn ingests_response_with_inherited_context()' in p; assert 'fn contract_ingest_payload_reassembly()' in t; assert 'fn contract_ingest_header_forms_response_local()' in t"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "tests": [
+    {
+      "id": "1efdfed94ecf6fa7e50d4390",
+      "finding_ids": [
+        "F11"
+      ],
+      "command": [
+        "cargo",
+        "test",
+        "--locked",
+        "--lib",
+        "jpip::tests::contract_ingest_header_forms_response_local",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "input=[30, 00, 01, 00], result=Err(MalformedInput { offset: 0, kind: InvalidJpipHeader })",
+        "thread 'jpip::tests::contract_ingest_header_forms_response_local'",
+        "test result: FAILED. 0 passed; 1 failed; 0 ignored"
+      ],
+      "recorded_output": "cases/66aff522bc300198b9d75ec3/recorded-test.log"
+    }
+  ]
+}

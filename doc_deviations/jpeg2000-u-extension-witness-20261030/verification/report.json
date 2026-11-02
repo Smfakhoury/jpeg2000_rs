@@ -1,0 +1,54 @@
+{
+  "revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "selected_findings": [
+    "U1"
+  ],
+  "started_at": "20261030T112037Z",
+  "suites": [
+    {
+      "suite": "f4c99d87482bdb3bb429c765",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "import json,pathlib,shutil,subprocess; p=pathlib.Path('src/tier1.rs'); s=p.read_text(); anchor='        assert_eq!((long.vlc.bits_read, long.work_units), (9, 9));'; added='\\n        include!(\"tier1_noninitial_u_contract.rs\");'; assert s.count(anchor)==1 and 'tier1_noninitial_u_contract.rs' not in s; s=s.replace(anchor,anchor+added); p.write_text(s); assert p.read_text().count(added)==1; h=pathlib.Path('src/tier1_noninitial_u_contract.rs').read_text(); assert 'assert_eq!(count, 1089);' in h and 'pair={pair:?}' in h; r=subprocess.run(['cargo','test','--locked','--lib','--no-run','--message-format=json'],text=True,stdout=subprocess.PIPE); assert r.returncode==0, 'native test build failed'; a=[json.loads(line) for line in r.stdout.splitlines() if line.startswith('{')]; e=[x['executable'] for x in a if x.get('reason')=='compiler-artifact' and x.get('executable') and x.get('profile',{}).get('test')]; assert len(e)==1,e; shutil.copy2(e[0],'target/deepspec-noninitial-u-tests'); t=subprocess.check_output(['target/deepspec-noninitial-u-tests','--list'],text=True); assert 'tier1::tests::ht_uvlc_initial_and_noninitial_modes_have_literal_pair_results: test' in t and 'tier1::tests::ht_uvlc_invalid_modes_are_unchanged_and_byte_conversion_is_checked: test' in t"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.301,
+          "log": "build-0.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "fd97f5fc8719a8c3d0554742",
+          "findings": [
+            "U1"
+          ],
+          "argv": [
+            "target/deepspec-noninitial-u-tests",
+            "tier1::tests::ht_uvlc_",
+            "--nocapture",
+            "--test-threads=1"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "fd97f5fc8719a8c3d0554742.log",
+          "status": "reproduced",
+          "missing_expected_markers": []
+        }
+      ],
+      "status": "reproduced"
+    }
+  ],
+  "toolchain": "1.93.1",
+  "python_version": "3.12.12 (main, Oct 10 2025, 08:52:57) [GCC 11.4.0]",
+  "runner_sha256": "3405f0678772fb64b70ebac355130bc9a7c033ffd3eb072238ed80c66ce30eb2",
+  "manifest_sha256": "6a075de857eaa11674ff6886e251c4334a421caa0854bb81c470f1ed7842c6b4",
+  "qualification": "Expected original failures, not successful conformance tests.",
+  "status": "reproduced",
+  "executed_cases": 1,
+  "finished_at": "2026-10-30T11:20:52.232086+00:00"
+}

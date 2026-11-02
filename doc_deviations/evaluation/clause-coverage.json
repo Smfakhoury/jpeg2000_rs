@@ -1,0 +1,98 @@
+{
+  "at": "2026-10-30T12:07:34.020677+00:00",
+  "retained_specs": 4947,
+  "unique_executed_retained_specs": 4945,
+  "registered_cases": 4947,
+  "registered_verdicts": {
+    "observed_pass": 4855,
+    "observed_fail": 92
+  },
+  "unassigned_retained": [],
+  "executed_nonretained": [],
+  "retained_without_observed_verdict": [
+    {
+      "spec": "26a5fcebe11048293e786908",
+      "subject": "src/packet.rs:5035:packet::packet_arithmetic_overflow",
+      "intent": "documented",
+      "assigned": [
+        {
+          "item": "5a95f2c686dfa0885408a571",
+          "state": "exhausted"
+        }
+      ],
+      "reason": "Provider-blocked; exhausted at two attempts with no result. Never retry or substitute."
+    },
+    {
+      "spec": "4fc54d6646487096c7134da6",
+      "subject": "src/codestream.rs:3981:codestream::<TilePartPayload as Clone>::clone",
+      "intent": "implementation",
+      "assigned": [
+        {
+          "item": "38eee57156ae6d19ae7206e6",
+          "state": "accepted"
+        }
+      ],
+      "reason": "Explicit panic-unwind coverage gap in an otherwise accepted partial suite. No ordinary deterministic valid-input trigger was established; allocator abort is not unwind and a panicking GlobalAlloc is invalid. No fabricated passing test or production panic injection is claimed."
+    }
+  ],
+  "multiple_registered_cases_for_one_spec": {
+    "b3d179f2c20187923a1d32ea": [
+      {
+        "item": "540818d2c01095570abb3520",
+        "case": "bf8541276803981b95bba89a",
+        "verdict": "observed_pass"
+      },
+      {
+        "item": "540818d2c01095570abb3520",
+        "case": "f41c7c65e77946fa4359ff07",
+        "verdict": "observed_pass"
+      }
+    ],
+    "5f84f7dc84bafadcacd2b550": [
+      {
+        "item": "3c11517eff8dae45e407fc59",
+        "case": "9957d7729851f4268226ae02",
+        "verdict": "observed_pass"
+      },
+      {
+        "item": "3c11517eff8dae45e407fc59",
+        "case": "624d3e86e1bb062199a38c2b",
+        "verdict": "observed_pass"
+      }
+    ]
+  },
+  "partial_suite_original_notes": "Partial suite completed and host-replayed, with two meaningful independent cases and an explicit gap for the panic-unwind clause. check_test trial-1 built the existing Rust libtest harness once and observed PASS for 1e16a73f3efed042bf6a2cff (case 802d34d164e6ca4a51c57e53) and f30ce4f7973f3adee428cd66 (case 11d6baa0452d4a31ca36321a). Each command ran exactly one test. No production implementation is changed. The submitted Python build helper makes the test-only access explicit: it appends a module registration to src/codestream/tests.rs in the replay copy, builds cargo test --locked --lib --no-run once, and copies that exact executable to a stable target path. The supplemental module reuses the existing raw fixture and existing clone-preservation test rather than replacing that oracle. It covers 256 deterministic raw-value fixtures, empty and nonempty owned vectors, absent/present/empty MCTs, all packet source variants, both packed-header source variants, all flag combinations, extreme scalar values, and intentionally inconsistent represented metadata because clone imposes no JPEG2000 validity requirement. Ownership assertions compare every source allocation against every clone allocation, including outer/nested vectors and retained empty-source capacity, assert pointer-plus-length identity for every borrowed slice, mutate each side, exercise both destruction orders, and compile/use a clone after the source object's scope ends. No deviation was observed. Clause 4fc54d6646487096c7134da6 is NOT claimed tested: bounded inspection of TilePartPayload::clone and every concrete field clone at src/codestream.rs:3779-4007 found only scalar copies and standard Vec/Option clones, with no user callback or other ordinary deterministic panic trigger. For valid, platform-bounded source vectors, capacity overflow cannot be induced by cloning their existing lengths; ordinary allocation failure aborts and does not establish this clause's unwind premise. A GlobalAlloc implementation that panics would violate its no-unwind contract, and injecting a new panic into the implementation would test a modified exit path rather than the unchanged concrete code. Therefore no hollow catch_unwind-success test or allocation-abort test was supplied for this clause; retain it for human review or a separately justified fault-injection model. No executable coverage build is configured in the provided profile; Verus proof coverage is not native branch coverage. Available toolchains were stable 1.93.1/1.95.0, so no claimed ASan/UBSan run. The two-file overlay below is identical to the successful host check_test overlay; unrelated earlier scratch drafting edits are not required or submitted.",
+  "work_states": [
+    [
+      "diagnose",
+      "accepted",
+      104
+    ],
+    [
+      "infer",
+      "accepted",
+      1703
+    ],
+    [
+      "init",
+      "accepted",
+      1
+    ],
+    [
+      "rfc_map",
+      "accepted",
+      222
+    ],
+    [
+      "test",
+      "accepted",
+      2783
+    ],
+    [
+      "test",
+      "exhausted",
+      1
+    ]
+  ],
+  "qualification": "Executed cases and unique executed clauses differ. Accepted suite status can include an explicitly unexecuted clause. Native tests and model agreement are not proof or conformance."
+}

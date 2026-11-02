@@ -1,0 +1,5 @@
+$ ["python3", "register_normalization_contract_tests.py"]
+
+
+$ ["cargo", "test", "--lib", "--no-run", "--quiet"]
+

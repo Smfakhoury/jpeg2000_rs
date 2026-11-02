@@ -1,0 +1,20 @@
+route=DatabinCache::expand_metadata_bin case=jpip::tests::metadata_contract_tests::stream_equivalent_uses_equivalent_box_identity
+
+running 1 test
+test jpip::tests::metadata_contract_tests::stream_equivalent_uses_equivalent_box_identity ... 
+thread 'jpip::tests::metadata_contract_tests::stream_equivalent_uses_equivalent_box_identity' (3298832) panicked at src/jpip_metadata_contract_tests.rs:338:5:
+wrong stream-equivalent box header:
+xref->colr original-XLBox=false, equivalent-XLBox=false: got [0, 0, 0, 15, 120, 114, 101, 102, 1, 0, 0, 0, 0, 0, 17], expected [0, 0, 0, 15, 99, 111, 108, 114, 1, 0, 0, 0, 0, 0, 17]
+xref->colr original-XLBox=false, equivalent-XLBox=true: got [0, 0, 0, 15, 120, 114, 101, 102, 1, 0, 0, 0, 0, 0, 17], expected [0, 0, 0, 1, 99, 111, 108, 114, 0, 0, 0, 0, 0, 0, 0, 23, 1, 0, 0, 0, 0, 0, 17]
+xref->colr original-XLBox=true, equivalent-XLBox=false: got [0, 0, 0, 1, 120, 114, 101, 102, 0, 0, 0, 0, 0, 0, 0, 23, 1, 0, 0, 0, 0, 0, 17], expected [0, 0, 0, 15, 99, 111, 108, 114, 1, 0, 0, 0, 0, 0, 17]
+xref->colr original-XLBox=true, equivalent-XLBox=true: got [0, 0, 0, 1, 120, 114, 101, 102, 0, 0, 0, 0, 0, 0, 0, 23, 1, 0, 0, 0, 0, 0, 17], expected [0, 0, 0, 1, 99, 111, 108, 114, 0, 0, 0, 0, 0, 0, 0, 23, 1, 0, 0, 0, 0, 0, 17]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    jpip::tests::metadata_contract_tests::stream_equivalent_uses_equivalent_box_identity
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 662 filtered out; finished in 0.00s
+

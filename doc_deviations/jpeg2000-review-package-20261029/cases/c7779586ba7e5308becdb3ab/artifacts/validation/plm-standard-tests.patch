@@ -1,0 +1,5 @@
+diff --git a/src/codestream/tests.rs b/src/codestream/tests.rs
+--- a/src/codestream/tests.rs
++++ b/src/codestream/tests.rs
+@@ -0,0 +1 @@
++mod standard_plm;

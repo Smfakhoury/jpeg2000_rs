@@ -1,0 +1,29 @@
+{
+  "suite": "56c3811ca88c040d23aa7d2a",
+  "case": "349f62632c2048a190657687",
+  "deviation": "8857d0298e2942da6070ff7c",
+  "diagnosis": "2115053756faef290af7fee8",
+  "spec": "523cb72fe91c187071e962e3",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "JP2 header rejects reserved-method later colr boxes that the reader must ignore",
+  "entry": "src/jp2.rs:2139:jp2::parse_jp2_header",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "target/jp2-header-spec-tests",
+      "--exact",
+      "jp2::tests::spec_header_ignores_later_colour_semantics",
+      "--nocapture"
+    ],
+    "duration_s": 0.004,
+    "exit_code": 101,
+    "output_tail": "0: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }\nmethod=255 extra=0 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }\nmethod=255 extra=1 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }\nmethod=255 extra=7 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }\nmethod=255 extra=31 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }\nmethod=0 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=0 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=0 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=0 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=4 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=4 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=4 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=4 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=5 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=5 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=5 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=5 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=127 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=127 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=127 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=127 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=254 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=254 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=254 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=254 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=255 extra=0 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=255 extra=1 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=255 extra=7 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nmethod=255 extra=31 base=4294967296: expected ignored colr, got MalformedInput { offset: 4294967333, kind: InvalidColorSpecification }\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest jp2::tests::spec_header_ignores_later_colour_semantics ... FAILED\n\nfailures:\n\nfailures:\n    jp2::tests::spec_header_ignores_later_colour_semantics\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 662 filtered out; finished in 0.00s\n\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "JP2 header parsing; later ignored boxes, not the separate first-box unknown-method question."
+}

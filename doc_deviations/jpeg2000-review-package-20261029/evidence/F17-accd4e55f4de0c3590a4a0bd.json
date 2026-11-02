@@ -1,0 +1,29 @@
+{
+  "suite": "baf1d4fa2691d414510aeaae",
+  "case": "99fed806685c9122fb266211",
+  "deviation": "accd4e55f4de0c3590a4a0bd",
+  "diagnosis": "6c7e8d6b395fff6b5e626bdd",
+  "spec": "6dd97b323f90d87cebe6dafa",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "Reserved T.808 (12/2022) classes 3 and 7 receive standard TileHeader and MainHeader semantics",
+  "entry": "src/jpip.rs:62:jpip::DatabinId::new",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "target/databin-contract-tests",
+      "jpip::tests::standard_databin_class_assignment",
+      "--exact",
+      "--nocapture"
+    ],
+    "duration_s": 0.003,
+    "exit_code": 101,
+    "output_tail": "\nrunning 1 test\nroute: DatabinId::new -> class(); T.808 Table A.2, no extension\n\nthread 'jpip::tests::standard_databin_class_assignment' (3237615) panicked at src/jpip_databin_contract_tests.rs:78:5:\n264 reserved-class assignments received ordinary standard semantics; first examples: [(3, 0, 0, TileHeader), (7, 0, 0, MainHeader), (3, 0, 1, TileHeader), (7, 0, 1, MainHeader), (3, 0, 15, TileHeader), (7, 0, 15, MainHeader), (3, 0, 16, TileHeader), (7, 0, 16, MainHeader), (3, 0, 127, TileHeader), (7, 0, 127, MainHeader), (3, 0, 128, TileHeader), (7, 0, 128, MainHeader)]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest jpip::tests::standard_databin_class_assignment ... FAILED\n\nfailures:\n\nfailures:\n    jpip::tests::standard_databin_class_assignment\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 662 filtered out; finished in 0.00s\n\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "No separately negotiated extension. Does not impose a universal reject-unknown rule on raw-header tools."
+}

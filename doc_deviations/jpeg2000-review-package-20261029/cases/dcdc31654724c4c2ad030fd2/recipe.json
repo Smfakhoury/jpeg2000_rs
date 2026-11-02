@@ -1,0 +1,44 @@
+{
+  "id": "dcdc31654724c4c2ad030fd2",
+  "build": [
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; p=Path('src/decode.rs'); s=p.read_text(); anchor='#[cfg(test)]\\nmod tests {\\n'; assert s.count(anchor)==1; p.write_text(s.replace(anchor, anchor+'    mod jph_contract;\\n', 1))"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--locked",
+      "--no-run"
+    ]
+  ],
+  "artifacts": {
+    "src/decode/tests/jph_contract.rs": "07482a7420d2a1693cd896409703bf766c65978ffbeced573bc4c06f6d03633d"
+  },
+  "tests": [
+    {
+      "id": "debd9f4cb2047d9570f27b9b",
+      "spec_id": "6a3078c49e79034ec262df2c",
+      "command": [
+        "cargo",
+        "test",
+        "--lib",
+        "--locked",
+        "decode::tests::jph_contract::typed_planes_independent_of_colour_conversion",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "D.2 component-only JPH rejected: MalformedInput { offset: 40, kind: MissingRequiredStructure }"
+      ],
+      "finding_ids": [
+        "F07"
+      ],
+      "recorded_output": "cases/dcdc31654724c4c2ad030fd2/debd9f4cb2047d9570f27b9b.log"
+    }
+  ]
+}

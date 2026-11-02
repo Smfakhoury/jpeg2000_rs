@@ -1,0 +1,11 @@
+$ ["python3", "selected_contract_setup.py"]
+
+
+$ ["cargo", "test", "--locked", "--lib", "--no-run"]
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/12db5111ad29d4dc5a0ff9bb-replay-4)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.66s
+  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
+
+
+$ ["python3", "-c", "import glob,os,shutil,subprocess; p=[p for p in glob.glob('target/debug/deps/jpeg2000_rs-*') if os.path.isfile(p) and os.access(p,os.X_OK)]; assert len(p)==1,p; names=subprocess.check_output([p[0],'--list'],text=True); assert names.count('decode::tests::selected_contract_')==5,names; shutil.copy2(p[0],'target/selected-contract-suite')"]
+

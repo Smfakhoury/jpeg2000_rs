@@ -1,0 +1,33 @@
+{
+  "suite": "b22776d76bcd039a5c524749",
+  "case": "85c71c4469785571f2d66fe3",
+  "deviation": "b836483a38f343fb15d1b5e1",
+  "diagnosis": "7d6cf3eb3a6fd12debf26f03",
+  "spec": "e8e89fffa5faef739c2121f3",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "JP2 palette validator accepts NE above the T.800 (06/2019) limit of 1024",
+  "entry": "src/jp2.rs:2535:jp2::parse_palette",
+  "kind": "unit_contract",
+  "satisfies": [],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "cargo",
+      "test",
+      "--lib",
+      "--locked",
+      "jp2::tests::palette_contract_t800_entry_count_domain_and_complete_table",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "duration_s": 1.131,
+    "exit_code": 101,
+    "output_tail": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.01s\n     Running unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)\n\nrunning 1 test\nretained all entries and samples for every legal NE=1..1024\nunit route BoxReader -> parse_palette: forbidden NE=0, NPC=1, bytes=12\nrejected NE=0: MalformedInput { offset: 0, kind: InvalidBoxContents }\nunit route BoxReader -> parse_palette: forbidden NE=1025, NPC=1, bytes=1037\npredicate violated: admitted forbidden NE=1025\nunit route BoxReader -> parse_palette: forbidden NE=1026, NPC=1, bytes=1038\npredicate violated: admitted forbidden NE=1026\nunit route BoxReader -> parse_palette: forbidden NE=2048, NPC=1, bytes=2060\npredicate violated: admitted forbidden NE=2048\nunit route BoxReader -> parse_palette: forbidden NE=32768, NPC=1, bytes=32780\npredicate violated: admitted forbidden NE=32768\nunit route BoxReader -> parse_palette: forbidden NE=65535, NPC=1, bytes=65547\npredicate violated: admitted forbidden NE=65535\n\nthread 'jp2::tests::palette_contract_t800_entry_count_domain_and_complete_table' (2131469) panicked at src/jp2_palette_contract_tests.rs:199:5:\nT.800 (06/2019) I.5.3.4 requires NE in 1..1024; admitted [1025, 1026, 2048, 32768, 65535]\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest jp2::tests::palette_contract_t800_entry_count_domain_and_complete_table ... FAILED\n\nfailures:\n\nfailures:\n    jp2::tests::palette_contract_t800_entry_count_domain_and_complete_table\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 1.07s\n\nerror: test failed, to rerun pass `--lib`\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "Smallest negative case is a 1037-byte box; this is a palette-validation gap."
+}

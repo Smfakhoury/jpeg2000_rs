@@ -1,0 +1,29 @@
+
+running 1 test
+test decode::tests::selected_color_context_uses_crg_component_separation ... CRG physical-offset oracle: cases=5437, mismatches=3874
+
+thread 'decode::tests::selected_color_context_uses_crg_component_separation' (3292537) panicked at src/decode_crg_tests.rs:198:5:
+assertion `left == right` failed: parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[4, 4, 32768, 32768]] ROI=[9, 9, 10, 10] context=ImageRegion { x: 5, y: 5, width: 5, height: 5 }; component=0 axis=0 coordinate=9: physical sample 1 missing from coded range 2..3
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[4, 4, 32768, 32768]] ROI=[9, 9, 10, 10] context=ImageRegion { x: 5, y: 5, width: 5, height: 5 }; component=0 axis=1 coordinate=9: physical sample 1 missing from coded range 2..3
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[4, 4, 32768, 32768]] ROI=[13, 13, 14, 14] context=ImageRegion { x: 9, y: 9, width: 5, height: 5 }; component=0 axis=0 coordinate=13: physical sample 2 missing from coded range 3..4
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[4, 4, 32768, 32768]] ROI=[13, 13, 14, 14] context=ImageRegion { x: 9, y: 9, width: 5, height: 5 }; component=0 axis=1 coordinate=13: physical sample 2 missing from coded range 3..4
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[1, 255, 1, 65534]] ROI=[0, 511, 7, 514] context=ImageRegion { x: 0, y: 256, width: 7, height: 258 }; component=0 axis=1 coordinate=511: physical sample 1 missing from coded range 2..3
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[1, 255, 1, 65534]] ROI=[0, 511, 7, 514] context=ImageRegion { x: 0, y: 256, width: 7, height: 258 }; component=0 axis=1 coordinate=512: physical sample 1 missing from coded range 2..3
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[1, 255, 1, 65534]] ROI=[0, 511, 7, 514] context=ImageRegion { x: 0, y: 256, width: 7, height: 258 }; component=0 axis=1 coordinate=513: physical sample 1 missing from coded range 2..3
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[1, 1, 0, 0], [1, 255, 1, 65534], [3, 5, 0, 0]] ROI=[0, 511, 7, 514] context=ImageRegion { x: 0, y: 256, width: 7, height: 258 }; component=1 axis=1 coordinate=511: physical sample 1 missing from coded range 2..3
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[1, 1, 0, 0], [1, 255, 1, 65534], [3, 5, 0, 0]] ROI=[0, 511, 7, 514] context=ImageRegion { x: 0, y: 256, width: 7, height: 258 }; component=1 axis=1 coordinate=512: physical sample 1 missing from coded range 2..3
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[1, 1, 0, 0], [1, 255, 1, 65534], [3, 5, 0, 0]] ROI=[0, 511, 7, 514] context=ImageRegion { x: 0, y: 256, width: 7, height: 258 }; component=1 axis=1 coordinate=513: physical sample 1 missing from coded range 2..3
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[1, 255, 1, 65534]] ROI=[0, 1023, 7, 1024] context=ImageRegion { x: 0, y: 768, width: 7, height: 256 }; component=0 axis=1 coordinate=1023: physical sample 3 missing from coded range 4..5
+parse_layout(CRG)->validate_selection->color_selection_from_validated: components=[[1, 1, 0, 0], [1, 255, 1, 65534], [3, 5, 0, 0]] ROI=[0, 1023, 7, 1024] context=ImageRegion { x: 0, y: 768, width: 7, height: 256 }; component=1 axis=1 coordinate=1023: physical sample 3 missing from coded range 4..5
+  left: 3874
+ right: 0
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+FAILED
+
+failures:
+
+failures:
+    decode::tests::selected_color_context_uses_crg_component_separation
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 660 filtered out; finished in 0.13s
+

@@ -1,0 +1,53 @@
+{
+  "id": "b22776d76bcd039a5c524749",
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--fuzz=0",
+      "-p1",
+      "-i",
+      "validation/palette-contract-tests.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/jp2.rs').read_text(); t=Path('src/jp2_palette_contract_tests.rs').read_text(); assert s.count('include!(\"jp2_palette_contract_tests.rs\");') == 1; assert 'fn validates_palette_mapping_relationships()' in s; assert 'fn retains_signed_palette_and_channel_definition_records()' in s; assert 'fn palette_contract_wire_order_precision_and_signedness()' in t; assert 'fn palette_contract_t800_entry_count_domain_and_complete_table()' in t; print('Verified test-only registration and both clause assertions in replay source')"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--locked",
+      "--no-run"
+    ]
+  ],
+  "artifacts": {
+    "validation/palette-contract-tests.patch": "073bf562c3c57474fe25b1602913a9d5406b6dedb509ab94ef07397de69e6771",
+    "src/jp2_palette_contract_tests.rs": "f6db9cfd870d4113592327d4fac227a3c0cb15372ac1377b3ea26195c1ad1993"
+  },
+  "tests": [
+    {
+      "id": "85c71c4469785571f2d66fe3",
+      "spec_id": "e8e89fffa5faef739c2121f3",
+      "command": [
+        "cargo",
+        "test",
+        "--lib",
+        "--locked",
+        "jp2::tests::palette_contract_t800_entry_count_domain_and_complete_table",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "T.800 (06/2019) I.5.3.4 requires NE in 1..1024; admitted [1025, 1026, 2048, 32768, 65535]"
+      ],
+      "finding_ids": [
+        "F23"
+      ],
+      "recorded_output": "cases/b22776d76bcd039a5c524749/85c71c4469785571f2d66fe3.log"
+    }
+  ]
+}

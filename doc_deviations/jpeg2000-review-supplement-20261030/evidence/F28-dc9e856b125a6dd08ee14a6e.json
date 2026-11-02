@@ -1,0 +1,33 @@
+{
+  "suite": "d18e7664ef908ecf323e5b74",
+  "case": "e4ed0a3af2c9d0dbd08711cc",
+  "deviation": "dc9e856b125a6dd08ee14a6e",
+  "diagnosis": "5a57a67d49eae5d9f58793cf",
+  "spec": "e11d683717746f5872e7302c",
+  "original_intent": "documented",
+  "host_status": "reproduced",
+  "assessment": "agent_assessed",
+  "title": "Indexed JPX composition paints a zero-LIFE nonpersistent instruction that should be skipped",
+  "entry": "src/jpx.rs:169:jpx::JpxFrameInfo::persistent",
+  "kind": "unit_contract",
+  "satisfies": [
+    "Frames obtained from production build_timeline; no private JpxFrameInfo fabrication or mutation",
+    "Finite LIFE 1..0x7ffffffe and TICK=1; zero-LIFE/PERSIST=true composition prefixes; normalized instructions with no crop/rotation/reuse",
+    "Valid safe shared references; <=6 one-pixel opaque grayscale layers; default resource limits",
+    "Only test-only cfg(test) registration is changed; original regression fixture and assertions retained"
+  ],
+  "observed_verdict": "observed_fail",
+  "command": {
+    "argv": [
+      "python3",
+      "-c",
+      "import os, pathlib, subprocess; name='jpx::tests::timeline_expands_repetition_reuse_and_timing_deterministically'; bins=[p for p in pathlib.Path('target/debug/deps').glob('jpeg2000_rs-*') if p.is_file() and os.access(p,os.X_OK)]; assert len(bins)==1, bins; exe=str(bins[0]); listed=subprocess.check_output([exe,'--list','--exact',name],text=True); assert name+': test' in listed, listed; os.execv(exe,[exe,'--exact',name,'--nocapture'])"
+    ],
+    "duration_s": 0.037,
+    "exit_code": 101,
+    "output_tail": "\nrunning 1 test\nframe-closing route: build_timeline -> JpxFrameInfo observers -> render_normalized_frame -> select_frame_instructions; opaque 1x1 grayscale layers at disjoint canvas columns\nzero-LIFE nonpersistent update: observed metadata/pixels/alpha=([(0, 17, false), (17, 5, true)], [1000, 2000, 3000, 0], [65535, 65535, 65535, 0], [0, 0, 0, 4000], [0, 0, 0, 65535])\n\nthread 'jpx::tests::timeline_expands_repetition_reuse_and_timing_deterministically' (3574803) panicked at src/jpx_frame_semantics_tests.rs:215:5:\nassertion `left == right` failed: T.801 M.5.3.2.1: PERSIST=false/LIFE=0 should perform no action; column 1 must remain transparent, not display the skipped thumbnail\n  left: ([(0, 17, false), (17, 5, true)], [1000, 2000, 3000, 0], [65535, 65535, 65535, 0], [0, 0, 0, 4000], [0, 0, 0, 65535])\n right: ([(0, 17, false), (17, 5, true)], [1000, 0, 3000, 0], [65535, 0, 65535, 0], [0, 0, 0, 4000], [0, 0, 0, 65535])\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest jpx::tests::timeline_expands_repetition_reuse_and_timing_deterministically ... FAILED\n\nfailures:\n\nfailures:\n    jpx::tests::timeline_expands_repetition_reuse_and_timing_deterministically\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 659 filtered out; finished in 0.01s\n\n",
+    "timed_out": false
+  },
+  "source_revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "qualification": "SHOULD recommendation, not an unconditional SHALL violation. Small normalized timeline/rendering fixture with supplied decoded layers; no public encoded-file route or animation-bit admission claim. The persistent() getter itself correctly returns its stored flag. This overlaps the earlier independent no-action probe and is not an additional root."
+}

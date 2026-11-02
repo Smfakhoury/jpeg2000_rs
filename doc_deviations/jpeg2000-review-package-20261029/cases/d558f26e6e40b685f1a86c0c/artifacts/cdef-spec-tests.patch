@@ -1,0 +1,229 @@
+--- a/src/jp2.rs
++++ b/src/jp2.rs
+@@ -3737,4 +3737,226 @@
+     }
+ 
++    // T.800 I.5.3.6: RGB associations are colour indices, not component indices.
++    // This is a JP2 Header payload, not a claim of full codestream conformance.
++    fn spec_parse_rgb_cdef(
++        channels: u16,
++        descriptions: &[(u16, ChannelType, ChannelAssociation)],
++    ) -> Result<Vec<ChannelDefinitionRecord>, DecodeError> {
++        assert!((1..=64).contains(&channels));
++        let mut ihdr = Vec::new();
++        ihdr.extend_from_slice(&1_u32.to_be_bytes());
++        ihdr.extend_from_slice(&1_u32.to_be_bytes());
++        ihdr.extend_from_slice(&channels.to_be_bytes());
++        ihdr.extend_from_slice(&[7, 7, 0, 0]); // Unsigned 8-bit components; no palette.
++        let mut payload = u16::try_from(descriptions.len())
++            .unwrap()
++            .to_be_bytes()
++            .to_vec();
++        for &(channel, channel_type, association) in descriptions {
++            payload.extend_from_slice(&channel.to_be_bytes());
++            let wire_type: u16 = match channel_type {
++                ChannelType::Color => 0,
++                ChannelType::Opacity => 1,
++                ChannelType::PremultipliedOpacity => 2,
++                ChannelType::Unspecified => 0xffff,
++            };
++            let wire_association = match association {
++                ChannelAssociation::WholeImage => 0,
++                ChannelAssociation::Color(index) => {
++                    assert!((1..=3).contains(&index), "RGB colour domain");
++                    index
++                }
++                ChannelAssociation::Unassociated => 0xffff,
++            };
++            payload.extend_from_slice(&wire_type.to_be_bytes());
++            payload.extend_from_slice(&wire_association.to_be_bytes());
++        }
++        let mut header = box32(*b"ihdr", &ihdr);
++        header.extend(box32(*b"colr", &[1, 0, 0, 0, 0, 0, 16]));
++        header.extend(box32(*b"cdef", &payload));
++        let boxes = BoxReader::new(&header, &ResourceLimits::default())
++            .unwrap()
++            .collect::<Result<Vec<_>, _>>()
++            .unwrap();
++        assert_eq!(boxes.len(), 3);
++        for (box_ref, expected) in boxes.iter().zip([*b"ihdr", *b"colr", *b"cdef"]) {
++            assert_eq!(box_ref.header.box_type().bytes(), expected);
++        }
++        assert_eq!(boxes[0].payload, ihdr);
++        assert_eq!(boxes[1].payload, &[1, 0, 0, 0, 0, 0, 16]);
++        assert_eq!(boxes[2].payload.len(), 2 + 6 * descriptions.len());
++        eprintln!(
++            "unit route BoxReader -> parse_channel_definition: channels={channels}, N={}, RGB, unsigned, direct component mapping, base=73, cdef_offset={}",
++            descriptions.len(),
++            boxes[2].header.offset()
++        );
++        parse_channel_definition(boxes[2], channels, 73)
++    }
++
++    fn spec_expected_cdef(
++        descriptions: &[(u16, ChannelType, ChannelAssociation)],
++    ) -> Vec<ChannelDefinitionRecord> {
++        descriptions
++            .iter()
++            .map(
++                |&(channel, channel_type, association)| ChannelDefinitionRecord {
++                    channel,
++                    definition: ChannelDefinition::new(channel_type, association),
++                },
++            )
++            .collect()
++    }
++
++    #[test]
++    fn spec_cdef_retains_every_admitted_description() {
++        retains_signed_palette_and_channel_definition_records();
++        let mut seed = 0x51cdef_u32;
++        for channels in [3_u16, 4, 8, 31, 64] {
++            for _ in 0..16 {
++                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
++                let shared = u16::try_from(seed % u32::from(channels)).unwrap();
++                let mut descriptions = vec![
++                    (shared, ChannelType::Color, ChannelAssociation::Color(3)),
++                    (shared, ChannelType::Color, ChannelAssociation::Color(1)),
++                    (shared, ChannelType::Color, ChannelAssociation::Color(2)),
++                ];
++                for channel in 0..channels {
++                    if channel != shared {
++                        descriptions.push((
++                            channel,
++                            ChannelType::Unspecified,
++                            ChannelAssociation::Unassociated,
++                        ));
++                    }
++                }
++                let shift = usize::try_from(seed).unwrap() % descriptions.len();
++                descriptions.rotate_left(shift);
++                assert!(
++                    descriptions
++                        .iter()
++                        .all(|&(channel, _, _)| channel < channels)
++                );
++                for color in 1..=3 {
++                    assert_eq!(
++                        descriptions
++                            .iter()
++                            .filter(|&&(_, kind, association)| {
++                                kind == ChannelType::Color
++                                    && association == ChannelAssociation::Color(color)
++                            })
++                            .count(),
++                        1,
++                        "one description for each RGB colour; no conflicting type/association pairs"
++                    );
++                }
++                let parsed = spec_parse_rgb_cdef(channels, &descriptions).unwrap();
++                assert_eq!(
++                    parsed,
++                    spec_expected_cdef(&descriptions),
++                    "retain every record, channel, type, association, and wire order"
++                );
++            }
++        }
++        // The unspecified pair may repeat; N is a nonzero unsigned 16-bit count.
++        let mut maximum = vec![
++            (0, ChannelType::Color, ChannelAssociation::Color(1)),
++            (0, ChannelType::Color, ChannelAssociation::Color(2)),
++            (0, ChannelType::Color, ChannelAssociation::Color(3)),
++        ];
++        maximum.resize(
++            usize::from(u16::MAX) - 1,
++            (
++                1,
++                ChannelType::Unspecified,
++                ChannelAssociation::Unassociated,
++            ),
++        );
++        maximum.push((
++            2,
++            ChannelType::Unspecified,
++            ChannelAssociation::Unassociated,
++        ));
++        assert_eq!(maximum.len(), usize::from(u16::MAX));
++        assert_eq!(
++            spec_parse_rgb_cdef(3, &maximum).unwrap(),
++            spec_expected_cdef(&maximum)
++        );
++    }
++
++    #[test]
++    fn spec_cdef_separates_channel_and_colour_domains() {
++        let mut failures = Vec::new();
++        for channels in [1_u16, 2, 3, 4, 8, 64] {
++            // Sharing all RGB colours makes cdef necessary even with one channel.
++            let mut descriptions = vec![
++                (0, ChannelType::Color, ChannelAssociation::Color(1)),
++                (0, ChannelType::Color, ChannelAssociation::Color(2)),
++                (0, ChannelType::Color, ChannelAssociation::Color(3)),
++            ];
++            for channel in 1..channels {
++                descriptions.push((
++                    channel,
++                    ChannelType::Unspecified,
++                    ChannelAssociation::Unassociated,
++                ));
++            }
++            assert!(
++                descriptions
++                    .iter()
++                    .all(|&(channel, _, _)| channel < channels)
++            );
++            let expected = spec_expected_cdef(&descriptions);
++            match spec_parse_rgb_cdef(channels, &descriptions) {
++                Ok(actual) if actual == expected => {}
++                actual => failures.push(format!(
++                    "channels={channels}: RGB colour indices 1,2,3 must be retained independently of channel count: {actual:?}"
++                )),
++            }
++            if channels >= 3 {
++                for kind in [ChannelType::Opacity, ChannelType::PremultipliedOpacity] {
++                    let mut with_opacity = descriptions.clone();
++                    with_opacity[3] = (1, kind, ChannelAssociation::WholeImage);
++                    assert_eq!(
++                        spec_parse_rgb_cdef(channels, &with_opacity).unwrap(),
++                        spec_expected_cdef(&with_opacity),
++                        "association 0 means WholeImage, not colour 0"
++                    );
++                }
++            }
++            // Exact last valid channel, then first invalid and maximum wire index.
++            for channel in [channels - 1, channels, u16::MAX] {
++                let mut boundary = descriptions.clone();
++                boundary.insert(
++                    0,
++                    (
++                        channel,
++                        ChannelType::Unspecified,
++                        ChannelAssociation::Unassociated,
++                    ),
++                );
++                let actual = spec_parse_rgb_cdef(channels, &boundary);
++                if channel < channels {
++                    match actual {
++                        Ok(records) if records == spec_expected_cdef(&boundary) => {}
++                        actual => failures.push(format!(
++                            "last valid channel {channel}, channels={channels}: {actual:?}"
++                        )),
++                    }
++                } else if channels >= 3 {
++                    // cdef follows a 22-byte ihdr and 15-byte colr.
++                    assert_eq!(
++                        actual,
++                        Err(DecodeError::MalformedInput {
++                            offset: 73 + 22 + 15,
++                            kind: MalformedKind::InvalidBoxContents,
++                        }),
++                        "reject Cni={channel} at channels={channels}, even with special association"
++                    );
++                }
++            }
++        }
++        assert!(failures.is_empty(), "{}", failures.join("\n"));
++    }
++
+     #[test]
+     fn rejects_invalid_mapping_type_and_bounds_output_channels() {

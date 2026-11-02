@@ -1,0 +1,37 @@
+olated; count=8, layers=8, creg_presence=0xe8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xe9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xea; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xeb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xec; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xed; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xee; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xef; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf0; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf1; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf2; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf3; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf4; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf5; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf6; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf7; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf8; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xf9; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfa; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfb; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfc; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfd; all explicit references and implicit ordinals exist
+FAIL unit validate_layer_references: all-or-none violated; count=8, layers=8, creg_presence=0xfe; all explicit references and implicit ordinals exist
+
+thread 'jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist' (2040066) panicked at src/jp2_layer_reference_tests.rs:169:5:
+M.11.7.7 all-or-none presence: accepted 494 mixed patterns; first=Some((2, 1))
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist ... FAILED
+
+failures:
+
+failures:
+    jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.08s
+
+error: test failed, to rerun pass `--lib`

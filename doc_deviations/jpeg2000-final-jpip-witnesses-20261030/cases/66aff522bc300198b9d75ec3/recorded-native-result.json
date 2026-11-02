@@ -1,0 +1,72 @@
+{
+  "build": [
+    {
+      "argv": [
+        "patch",
+        "--batch",
+        "--forward",
+        "-p1",
+        "-i",
+        "validation/jpip-ingest-contract.patch"
+      ],
+      "duration_s": 0.003,
+      "exit_code": 0,
+      "output_tail": "patching file src/jpip.rs\n",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "python3",
+        "-c",
+        "from pathlib import Path; p=Path('src/jpip.rs').read_text(); t=Path('src/jpip_ingest_contract_tests.rs').read_text(); assert p.count('include!(\"jpip_ingest_contract_tests.rs\");') == 1; assert 'fn ingests_response_with_inherited_context()' in p; assert 'fn contract_ingest_payload_reassembly()' in t; assert 'fn contract_ingest_header_forms_response_local()' in t"
+      ],
+      "duration_s": 0.026,
+      "exit_code": 0,
+      "output_tail": "",
+      "timed_out": false
+    },
+    {
+      "argv": [
+        "cargo",
+        "test",
+        "--locked",
+        "--lib",
+        "--no-run"
+      ],
+      "duration_s": 13.49,
+      "exit_code": 0,
+      "output_tail": "   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/66aff522bc300198b9d75ec3-replay-ee26440f051c4d12b2595a92b1da7a54)\n    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.44s\n  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)\n",
+      "timed_out": false
+    }
+  ],
+  "clause": {
+    "case_id": "1efdfed94ecf6fa7e50d4390",
+    "command": {
+      "argv": [
+        "cargo",
+        "test",
+        "--locked",
+        "--lib",
+        "jpip::tests::contract_ingest_header_forms_response_local",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "duration_s": 0.063,
+      "exit_code": 101,
+      "output_tail": "3\nheader forms class=8 stream=16384 bin=128\nroute=ingest_jpip_response bytes=27 expected_messages=3\nroute=ingest_jpip_response bytes=20 expected_messages=3\nheader forms class=8 stream=4294967295 bin=128\nroute=ingest_jpip_response bytes=33 expected_messages=3\nroute=ingest_jpip_response bytes=22 expected_messages=3\nheader forms class=8 stream=0 bin=2047\nroute=ingest_jpip_response bytes=21 expected_messages=3\nroute=ingest_jpip_response bytes=18 expected_messages=3\nheader forms class=8 stream=1 bin=2047\nroute=ingest_jpip_response bytes=21 expected_messages=3\nroute=ingest_jpip_response bytes=18 expected_messages=3\nheader forms class=8 stream=127 bin=2047\nroute=ingest_jpip_response bytes=21 expected_messages=3\nroute=ingest_jpip_response bytes=18 expected_messages=3\nheader forms class=8 stream=128 bin=2047\nroute=ingest_jpip_response bytes=24 expected_messages=3\nroute=ingest_jpip_response bytes=19 expected_messages=3\nheader forms class=8 stream=16384 bin=2047\nroute=ingest_jpip_response bytes=27 expected_messages=3\nroute=ingest_jpip_response bytes=20 expected_messages=3\nheader forms class=8 stream=4294967295 bin=2047\nroute=ingest_jpip_response bytes=33 expected_messages=3\nroute=ingest_jpip_response bytes=22 expected_messages=3\nheader forms class=8 stream=0 bin=2048\nroute=ingest_jpip_response bytes=24 expected_messages=3\nroute=ingest_jpip_response bytes=21 expected_messages=3\nheader forms class=8 stream=1 bin=2048\nroute=ingest_jpip_response bytes=24 expected_messages=3\nroute=ingest_jpip_response bytes=21 expected_messages=3\nheader forms class=8 stream=127 bin=2048\nroute=ingest_jpip_response bytes=24 expected_messages=3\nroute=ingest_jpip_response bytes=21 expected_messages=3\nheader forms class=8 stream=128 bin=2048\nroute=ingest_jpip_response bytes=27 expected_messages=3\nroute=ingest_jpip_response bytes=22 expected_messages=3\nheader forms class=8 stream=16384 bin=2048\nroute=ingest_jpip_response bytes=30 expected_messages=3\nroute=ingest_jpip_response bytes=23 expected_messages=3\nheader forms class=8 stream=4294967295 bin=2048\nroute=ingest_jpip_response bytes=36 expected_messages=3\nroute=ingest_jpip_response bytes=25 expected_messages=3\nheader forms class=8 stream=0 bin=4294967295\nroute=ingest_jpip_response bytes=30 expected_messages=3\nroute=ingest_jpip_response bytes=27 expected_messages=3\nheader forms class=8 stream=1 bin=4294967295\nroute=ingest_jpip_response bytes=30 expected_messages=3\nroute=ingest_jpip_response bytes=27 expected_messages=3\nheader forms class=8 stream=127 bin=4294967295\nroute=ingest_jpip_response bytes=30 expected_messages=3\nroute=ingest_jpip_response bytes=27 expected_messages=3\nheader forms class=8 stream=128 bin=4294967295\nroute=ingest_jpip_response bytes=33 expected_messages=3\nroute=ingest_jpip_response bytes=28 expected_messages=3\nheader forms class=8 stream=16384 bin=4294967295\nroute=ingest_jpip_response bytes=36 expected_messages=3\nroute=ingest_jpip_response bytes=29 expected_messages=3\nheader forms class=8 stream=4294967295 bin=4294967295\nroute=ingest_jpip_response bytes=42 expected_messages=3\nroute=ingest_jpip_response bytes=31 expected_messages=3\nnegative header wire=[10, 00, 00]\nnegative header wire=[60]\nnegative header wire=[60, 00, 00, 00, 02, 00]\nnegative header wire=[00, 01, 00, ff]\nroute=ingest_jpip_response bytes=8 expected_messages=1\nroute=ingest_jpip_response bytes=5 expected_messages=1\nA.2.1 initial defaults: wire=[30, 00, 01, 00], expected class=0 CSn=0\nroute=ingest_jpip_response bytes=4 expected_messages=1\n\nthread 'jpip::tests::contract_ingest_header_forms_response_local' (2179935) panicked at src/jpip_ingest_contract_tests.rs:62:5:\ninput=[30, 00, 01, 00], result=Err(MalformedInput { offset: 0, kind: InvalidJpipHeader })\nnote: run with `RUST_BACKTRACE=1` environment variable to display a backtrace\ntest jpip::tests::contract_ingest_header_forms_response_local ... FAILED\n\nfailures:\n\nfailures:\n    jpip::tests::contract_ingest_header_forms_response_local\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 661 filtered out; finished in 0.01s\n\nerror: test failed, to rerun pass `--lib`\n",
+      "timed_out": false
+    },
+    "entry": "src/jpip.rs:3504:jpip::ingest_jpip_response",
+    "kind": "unit_contract",
+    "satisfies": [],
+    "spec_id": "f927e4d42200fb374bda61d6",
+    "verdict": "observed_fail"
+  },
+  "notes": "Identical files/build/runs to successful check_test trial e419bba0b7e14806b06e6a653b17ce60: clause 9eabb0fb9a5580e49568d81f observed_pass; f927e4d42200fb374bda61d6 observed_fail at the initial dependent header, not build/fixture setup. Both clauses have independent native libtest cases, compiled once with cargo test --no-run; per-case cargo invocations reuse the unchanged compiled binary. Test-only patch includes the added assertions inside the existing jpip::tests module and source guards prove registration before compilation. Original tests, fixtures, declarations and production behavior remain unchanged (diff verified: only include plus blank line). Original relevant tests are called by each clause's case rather than duplicated. No subject preconditions in work-item unit entry; fixtures use valid Rust ownership, default resource limits, compatible content, buffers <=1033 bytes, no private mutation or injected faults. Payload oracle is generated independently with fixed-seed bytes and a byte-presence bitmap: lengths 0,1,2,15,16,127,128,255,256,1025; three orders; identical overlap/retransmission; gaps, completeness, final lengths, bin isolation, exact bytes and counters after every accepted fragment; whole-vs-chunked and order metamorphic equality, plus exact conflicting-overlap error/state preservation. Empty nonfinal fragments are excluded because this accepted-message profile rejects them. Header case tests literal encoder witnesses and 144 class/bin/stream combinations per encoding, ordered explicit versus inherited/class-only relations, exact identities/payloads/counts, auxiliary framing, empty input, EOR and forbidden/truncated/trailing errors with exact codes/offsets and unchanged empty cache. It proves class-only default-CSn reset across responses before testing the initial-dependent default. Standard premises checked with read_rfc_section on originating mapping dc9db665e258a9562dc090af: pinned T.808 A.2.1, A.2.2, A.2.3 and A.3.1. Tests exercise bare Annex A ordered JPP-compatible class 0/1/8 sequences, not H.2 packet transport, so no transport-specific independent-first requirement is assumed. Class 1 fixtures contain one-byte empty packets and Aux reports completed packet/layer count; bodies are opaque databin fragments at this API, not a complete JPEG2000 decoder conformance claim. Metamorphic reordering uses only independent headers; compressed-header pairs preserve order; only fragment counts and cache insertion ordering may legitimately differ in chunking/order comparisons, while direct byte/state assertions prevent compensating parser/cache errors from being the sole oracle. The failing complete wire [0x30,0,1,0] requires default class=0 CSn=0 by A.2.1 but returns InvalidJpipHeader at offset 0. Candidate deviation a344db6b768a6a42a25deab2 recorded for later diagnosis; its initial report could not resolve the new overlay test file against the baseline and marked repro needs_review, so use this authoritative submitted suite/host replay rather than that report's standalone reproduction status. No clause omitted; bounded tests are not exhaustive conformance proof. No configured runtime coverage or sanitizer build was found in the Cargo manifest/workflows; no new instrumentation flags added. Assertions after the intentionally failing initial-default check cannot execute until production accepts that valid header; preceding sweeps and negative checks ran on the host.",
+  "original_test": "66aff522bc300198b9d75ec3",
+  "metadata_review_notes": [
+    "evidence[2]: no such file: src/jpip_ingest_contract_tests.rs",
+    "Input should be a valid list"
+  ]
+}

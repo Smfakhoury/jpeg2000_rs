@@ -1,0 +1,8 @@
+$ ["patch", "--batch", "--forward", "-p1", "-i", "validation/jpip-transcode-registration.patch"]
+patching file src/jpip.rs
+
+
+$ ["python3", "validation/jpip-transcode-suite.py", "build"]
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/0825d2151cc175fbae2c4912-replay-ca840ed243904053aae937317ef9a065)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.08s
+

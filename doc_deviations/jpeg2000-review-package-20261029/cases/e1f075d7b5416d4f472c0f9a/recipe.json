@@ -1,0 +1,33 @@
+{
+  "id": "e1f075d7b5416d4f472c0f9a",
+  "build": [
+    [
+      "python3",
+      "validation/run_metadata_contract_suite.py",
+      "build"
+    ]
+  ],
+  "artifacts": {
+    "validation/run_metadata_contract_suite.py": "127c7f034c705a03d038af6136029fafc445c45e7836a57279bfb566bc80e167",
+    "src/jpip_metadata_contract_tests.rs": "0d8789c8a4bfa1365c236218de7c38b7a21b0775f0ec7d094d67566ee3f33cae"
+  },
+  "tests": [
+    {
+      "id": "9c7d6b44332022f336f2ca0d",
+      "spec_id": "fb0a3e26284355e86e6cfece",
+      "command": [
+        "python3",
+        "validation/run_metadata_contract_suite.py",
+        "stream_equivalent_uses_equivalent_box_identity"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "xref->colr original-XLBox=false, equivalent-XLBox=false: got [0, 0, 0, 15, 120, 114, 101, 102, 1, 0, 0, 0, 0, 0, 17], expected [0, 0, 0, 15, 99, 111, 108, 114, 1, 0, 0, 0, 0, 0, 17]"
+      ],
+      "finding_ids": [
+        "F16"
+      ],
+      "recorded_output": "cases/e1f075d7b5416d4f472c0f9a/9c7d6b44332022f336f2ca0d.log"
+    }
+  ]
+}

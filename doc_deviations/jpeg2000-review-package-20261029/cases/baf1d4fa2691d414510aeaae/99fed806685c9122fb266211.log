@@ -1,0 +1,16 @@
+
+running 1 test
+route: DatabinId::new -> class(); T.808 Table A.2, no extension
+
+thread 'jpip::tests::standard_databin_class_assignment' (3237615) panicked at src/jpip_databin_contract_tests.rs:78:5:
+264 reserved-class assignments received ordinary standard semantics; first examples: [(3, 0, 0, TileHeader), (7, 0, 0, MainHeader), (3, 0, 1, TileHeader), (7, 0, 1, MainHeader), (3, 0, 15, TileHeader), (7, 0, 15, MainHeader), (3, 0, 16, TileHeader), (7, 0, 16, MainHeader), (3, 0, 127, TileHeader), (7, 0, 127, MainHeader), (3, 0, 128, TileHeader), (7, 0, 128, MainHeader)]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test jpip::tests::standard_databin_class_assignment ... FAILED
+
+failures:
+
+failures:
+    jpip::tests::standard_databin_class_assignment
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 662 filtered out; finished in 0.00s
+

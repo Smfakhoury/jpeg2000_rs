@@ -1,0 +1,33 @@
+{
+  "id": "afef8cd7d6537e8a08814419",
+  "build": [
+    [
+      "python3",
+      "validation/build_placeholder_contract_tests.py"
+    ]
+  ],
+  "artifacts": {
+    "validation/build_placeholder_contract_tests.py": "e7a6858e610b2659b25cec6bea22b9cfc646362bcd2b3a076d1e496ad9b09952",
+    "src/jpip_placeholder_contract_tests.rs": "451dd69c1b098314530f7b0b7331aece6ee8ad05300fa6069a5beecacc9ca73c"
+  },
+  "tests": [
+    {
+      "id": "9105d99750798402cec08c7f",
+      "spec_id": "521d9216cac9df1209a1e7cf",
+      "command": [
+        "target/placeholder-contract-tests",
+        "jpip::tests::placeholder_contract_stream_identifiers_and_counts",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "736 legal placeholders rejected; first failures:\nflags=0x4, CSID=0x0, NCS=Some(0), wide=false: MalformedInput { offset: 0, kind: InvalidBoxContents }"
+      ],
+      "finding_ids": [
+        "F18"
+      ],
+      "recorded_output": "cases/afef8cd7d6537e8a08814419/9105d99750798402cec08c7f.log"
+    }
+  ]
+}

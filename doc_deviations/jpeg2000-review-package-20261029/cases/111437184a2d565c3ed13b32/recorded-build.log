@@ -1,0 +1,12 @@
+$ ["patch", "--batch", "--forward", "-p1", "-i", "deepspec_codestream.patch"]
+patching file src/jp2.rs
+
+
+$ ["python3", "-c", "import hashlib; from pathlib import Path; assert hashlib.sha256(Path('src/jp2.rs').read_bytes()).hexdigest() == '85817f58973870ac765c4ba110650fffcd4b43a5e20c9a5c04a92bb15dfb5750', 'replay source must contain the entire additive assertion extension'"]
+
+
+$ ["cargo", "test", "--locked", "--lib", "--no-run"]
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/111437184a2d565c3ed13b32-replay-60238eed7aaf49208cab2e4871db3098)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 14.03s
+  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
+

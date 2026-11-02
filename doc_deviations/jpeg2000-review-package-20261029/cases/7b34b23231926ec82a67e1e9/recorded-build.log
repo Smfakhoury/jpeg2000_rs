@@ -1,0 +1,4 @@
+$ ["python3", "coc_clause_harness.py", "build"]
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/7b34b23231926ec82a67e1e9-replay-3)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.70s
+

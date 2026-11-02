@@ -1,0 +1,43 @@
+{
+  "id": "0825d2151cc175fbae2c4912",
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "validation/jpip-transcode-registration.patch"
+    ],
+    [
+      "python3",
+      "validation/jpip-transcode-suite.py",
+      "build"
+    ]
+  ],
+  "artifacts": {
+    "validation/jpip-transcode-registration.patch": "2dd37d3671a9c818a6bbb46ca77442e6ce2044869911a9bf2963447055bf5a4d",
+    "validation/jpip-transcode-suite.py": "a8f700a0b5234d381363cbb900714352d17d4cbfb29320b8d1711bd48526b4f0",
+    "src/jpip/transcode_contract_tests.rs": "95fec3397ee6a47f21b51e45c50c27b6355508c327b593a3936a43c6e0c3af6b"
+  },
+  "tests": [
+    {
+      "id": "46e0d3178e7a407a7247f7b8",
+      "spec_id": "f2c61ee4ddec8a88d2a0a9e7",
+      "command": [
+        "python3",
+        "validation/jpip-transcode-suite.py",
+        "run",
+        "explicit_profile_rejects_all_non_lrcp_and_attached_sources"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "profile contract violations:\neffective tile progression 1: published output=true, status=Available\neffective tile progression 2: published output=true, status=Available\neffective tile progression 3: published output=true, status=Available\neffective tile progression 4: published output=true, status=Available"
+      ],
+      "finding_ids": [
+        "F26"
+      ],
+      "recorded_output": "cases/0825d2151cc175fbae2c4912/46e0d3178e7a407a7247f7b8.log"
+    }
+  ]
+}

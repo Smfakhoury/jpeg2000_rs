@@ -1,0 +1,143 @@
+{
+  "revision": "69fe0bce9024ab5a4cb6556e3ebdf91134324148",
+  "selected_findings": [
+    "F11",
+    "F31"
+  ],
+  "started_at": "20261030T120355Z",
+  "suites": [
+    {
+      "suite": "55730ec94ef7342e41f0ebc5",
+      "build": [
+        {
+          "argv": [
+            "python3",
+            "validation/install-jpip-vbas-contract.py"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.033,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--locked",
+            "--no-run"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 14.205,
+          "log": "build-1.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "a47255338004ddac419b357f",
+          "findings": [
+            "F31"
+          ],
+          "argv": [
+            "cargo",
+            "test",
+            "--lib",
+            "--locked",
+            "jpip::tests::bounded_standard_vbas_contract",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "a47255338004ddac419b357f.log",
+          "status": "unexpected_result",
+          "missing_expected_markers": [
+            "test jpip::tests::bounded_standard_vbas_contract ... FAILED"
+          ]
+        }
+      ],
+      "status": "unexpected_result"
+    },
+    {
+      "suite": "66aff522bc300198b9d75ec3",
+      "build": [
+        {
+          "argv": [
+            "patch",
+            "--batch",
+            "--forward",
+            "-p1",
+            "-i",
+            "validation/jpip-ingest-contract.patch"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.004,
+          "log": "build-0.log"
+        },
+        {
+          "argv": [
+            "python3",
+            "-c",
+            "from pathlib import Path; p=Path('src/jpip.rs').read_text(); t=Path('src/jpip_ingest_contract_tests.rs').read_text(); assert p.count('include!(\"jpip_ingest_contract_tests.rs\");') == 1; assert 'fn ingests_response_with_inherited_context()' in p; assert 'fn contract_ingest_payload_reassembly()' in t; assert 'fn contract_ingest_header_forms_response_local()' in t"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 0.032,
+          "log": "build-1.log"
+        },
+        {
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "--no-run"
+          ],
+          "exit_code": 0,
+          "timed_out": false,
+          "duration_s": 13.751,
+          "log": "build-2.log"
+        }
+      ],
+      "tests": [
+        {
+          "case": "1efdfed94ecf6fa7e50d4390",
+          "findings": [
+            "F11"
+          ],
+          "argv": [
+            "cargo",
+            "test",
+            "--locked",
+            "--lib",
+            "jpip::tests::contract_ingest_header_forms_response_local",
+            "--",
+            "--exact",
+            "--nocapture"
+          ],
+          "exit_code": 101,
+          "timed_out": false,
+          "duration_s": 0.065,
+          "log": "1efdfed94ecf6fa7e50d4390.log",
+          "status": "unexpected_result",
+          "missing_expected_markers": [
+            "test jpip::tests::contract_ingest_header_forms_response_local ... FAILED"
+          ]
+        }
+      ],
+      "status": "unexpected_result"
+    }
+  ],
+  "toolchain": "1.93.1",
+  "python_version": "3.12.12 (main, Oct 10 2025, 08:52:57) [GCC 11.4.0]",
+  "runner_sha256": "3405f0678772fb64b70ebac355130bc9a7c033ffd3eb072238ed80c66ce30eb2",
+  "manifest_sha256": "3d93ad788d952a29fd23c3415a09c1abf298bae511baca9ea5f22a390e241e91",
+  "qualification": "Expected original failures, not successful conformance tests.",
+  "status": "needs_review",
+  "executed_cases": 2,
+  "finished_at": "2026-10-30T12:04:23.506251+00:00"
+}

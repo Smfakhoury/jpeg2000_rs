@@ -1,0 +1,12 @@
+$ ["patch", "--batch", "--forward", "--fuzz=0", "-p0", "-i", "frame-semantics.patch"]
+patching file src/jpx.rs
+
+
+$ ["python3", "-c", "from pathlib import Path; s=Path('src/jpx.rs').read_text(); t=Path('src/jpx_frame_semantics_tests.rs').read_text(); assert s.count('include!(\"jpx_frame_semantics_tests.rs\");')==1; assert s.count('assert_frame_closing_semantics();')==1; assert 'column 1 must remain transparent' in t; assert 'for requested in [2, 0, 1, 2, 1, 0]' in t"]
+
+
+$ ["cargo", "test", "--locked", "--lib", "--no-run"]
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/d18e7664ef908ecf323e5b74-replay-a8795b8ab61942a580eed798a66679d2)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 15.16s
+  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
+

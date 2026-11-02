@@ -1,0 +1,8 @@
+$ ["python3", "-c", "from pathlib import Path; p=Path('src/decode.rs'); s=p.read_text(); anchor='#[cfg(test)]\\nmod tests {\\n'; assert s.count(anchor)==1; p.write_text(s.replace(anchor, anchor+'    mod jph_contract;\\n', 1))"]
+
+
+$ ["cargo", "test", "--lib", "--locked", "--no-run"]
+   Compiling jpeg2000_rs v0.1.0 (/datadisk/sfakhoury/work/deepspec/workspace/jpeg2000-full-20261028/.deepstar/core/executions/dcdc31654724c4c2ad030fd2-replay-4)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.56s
+  Executable unittests src/lib.rs (target/debug/deps/jpeg2000_rs-d1b3a45c09c93f8e)
+

@@ -1,0 +1,76 @@
+{
+  "id": "ea8d9c3e31baf68e430c41aa",
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "jp2-spec-registration.patch"
+    ],
+    [
+      "python3",
+      "validation/jp2_spec_runner.py",
+      "build"
+    ]
+  ],
+  "artifacts": {
+    "jp2-spec-registration.patch": "72f38d9d2d5418ff65b693856f6cc3d54840c377f1a46597ac32cf86a7abca5b",
+    "validation/jp2_spec_runner.py": "70fd1cf40199a480eda463a5174856f74ab66c9e8c5de74f45b05fb1492fc3a3",
+    "src/jp2/spec_tests.rs": "273779122e890eb01c6232749af91db7cc4d034adc049eebe05ed8e408cf5cd1"
+  },
+  "tests": [
+    {
+      "id": "e68962b8c90cb4b6836ef844",
+      "spec_id": "6137c299a688f80716db60bc",
+      "command": [
+        "python3",
+        "validation/jp2_spec_runner.py",
+        "spec_later_jp2_codestreams_preserve_first_display"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "jp2::parse: ordinary JP2 accepts 2 complete well-framed codestreams within limit 8; Err(MalformedInput { offset: 176, kind: InvalidBoxContents }): false"
+      ],
+      "finding_ids": [
+        "F10"
+      ],
+      "recorded_output": "cases/ea8d9c3e31baf68e430c41aa/e68962b8c90cb4b6836ef844.log"
+    },
+    {
+      "id": "68574d962e014b599022f579",
+      "spec_id": "8d6f7e8f32d0032e5626ca7b",
+      "command": [
+        "python3",
+        "validation/jp2_spec_runner.py",
+        "spec_signature_first_fixed_and_unique"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "second signature at box 2; malformed rejection, got Ok(Jp2File"
+      ],
+      "finding_ids": [
+        "F25"
+      ],
+      "recorded_output": "cases/ea8d9c3e31baf68e430c41aa/68574d962e014b599022f579.log"
+    },
+    {
+      "id": "1732b85cde6699859e0f568a",
+      "spec_id": "af4791b760f272348295a870",
+      "command": [
+        "python3",
+        "validation/jp2_spec_runner.py",
+        "spec_file_type_immediate_and_unique"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "second ftyp at box 2; malformed rejection, got Ok(Jp2File"
+      ],
+      "finding_ids": [
+        "F25"
+      ],
+      "recorded_output": "cases/ea8d9c3e31baf68e430c41aa/1732b85cde6699859e0f568a.log"
+    }
+  ]
+}

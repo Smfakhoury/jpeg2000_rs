@@ -1,0 +1,45 @@
+{
+  "id": "12db5111ad29d4dc5a0ff9bb",
+  "build": [
+    [
+      "python3",
+      "selected_contract_setup.py"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ],
+    [
+      "python3",
+      "-c",
+      "import glob,os,shutil,subprocess; p=[p for p in glob.glob('target/debug/deps/jpeg2000_rs-*') if os.path.isfile(p) and os.access(p,os.X_OK)]; assert len(p)==1,p; names=subprocess.check_output([p[0],'--list'],text=True); assert names.count('decode::tests::selected_contract_')==5,names; shutil.copy2(p[0],'target/selected-contract-suite')"
+    ]
+  ],
+  "artifacts": {
+    "selected_contract_setup.py": "682727fd5d0490544b45e6dc8ec9f60b33fbda0f4b0466d375cdc374e1976372",
+    "src/decode_selected_contract_tests.rs": "680f22238729639b483c247a4a6eb747822903c5aa7b639895dbddf5c97714c9"
+  },
+  "tests": [
+    {
+      "id": "817c898abc85ba6ef483648d",
+      "spec_id": "1db73a2c9da1c067c2a9d39a",
+      "command": [
+        "target/selected-contract-suite",
+        "decode::tests::selected_contract_geometry_and_native_samples",
+        "--exact",
+        "--nocapture"
+      ],
+      "expected_exit": 101,
+      "markers": [
+        "native tile-specific nonlinear transform mismatch: [\"d=1, region=None, native=(4,1), tile=1, expected=64, actual=128\", \"d=1, region=Some(ImageRegion { x: 3, y: 3, width: 26, height: 12 }), native=(4,2), tile=1, expected=64, actual=128\"]"
+      ],
+      "finding_ids": [
+        "F27"
+      ],
+      "recorded_output": "cases/12db5111ad29d4dc5a0ff9bb/817c898abc85ba6ef483648d.log"
+    }
+  ]
+}
