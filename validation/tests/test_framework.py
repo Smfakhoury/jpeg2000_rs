@@ -950,6 +950,52 @@ class FrameworkTests(WorkingFiles):
             framework._CODESTREAM_READER_CONTRACTS, 10,
         )
 
+    def test_inventory_binds_actual_raw_tile_data_window_result_and_complete_reader_frame(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-tile-data-window"},
+            framework._TILE_DATA_WINDOW_CONTRACTS, 1,
+        )
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        coverage["requirements"] = [
+            entry for entry in coverage["requirements"]
+            if entry["id"] == "part1-complete-native-tile-data-window"
+        ]
+        model = next(
+            reference for reference in coverage["requirements"][0]["spec_refs"]
+            if reference["symbol"] == "part1_tile_data_window"
+        )
+        self.assertEqual(model["path"], "specs/packet_input.rs")
+        wrong_path = copy.deepcopy(coverage)
+        next(
+            reference for reference in wrong_path["requirements"][0]["spec_refs"]
+            if reference["symbol"] == "part1_tile_data_window"
+        )["path"] = "specs/mod.rs"
+        old_source = framework.ROOT / "specs/mod.rs"
+        old_text = old_source.read_text()
+        read_text = Path.read_text
+
+        def duplicate_model(path, *args, **kwargs):
+            return (old_text + "\npub open spec fn part1_tile_data_window() {}\n"
+                    if path == old_source else read_text(path, *args, **kwargs))
+
+        with mock.patch.object(Path, "read_text", duplicate_model), \
+                self.assertRaisesRegex(ValueError, "model must be bound to specs/packet_input.rs"):
+            framework.validate_normative_coverage(wrong_path)
+        source = framework.ROOT / "src/codestream/tiles.rs"
+        original = source.read_text()
+        read_text = Path.read_text
+        for projection in ["unlisted_outcome(result)", "result"]:
+            modified = original.replace("tile_data_window_outcome(result)", projection, 1)
+            self.assertNotEqual(modified, original)
+
+            def altered(path, *args, **kwargs):
+                return modified if path == source else read_text(path, *args, **kwargs)
+
+            with self.subTest(projection=projection), \
+                    mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "lacks executable Verus contract"):
+                framework.validate_normative_coverage(coverage)
+
     def test_inventory_binds_actual_raw_siz_full_geometry_and_component_payload_result(self):
         self._assert_complete_packet_contract_bindings(
             {"part1-complete-native-raw-siz-geometry"},
@@ -1014,6 +1060,18 @@ class FrameworkTests(WorkingFiles):
             framework._LAYOUT_PROLOGUE_CONTRACTS, 1,
         )
         coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        siz = next(
+            item for item in coverage["requirements"]
+            if item["id"] == "part1-complete-native-raw-siz-geometry"
+        )
+        self.assertIn(
+            {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
+            siz["implementation_refs"],
+        )
+        self.assertIn(
+            {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout_prologue"},
+            siz["implementation_refs"],
+        )
         coverage["requirements"] = [
             item for item in coverage["requirements"]
             if item["id"] == "part1-complete-native-layout-prologue"
@@ -1060,6 +1118,87 @@ class FrameworkTests(WorkingFiles):
             {"part2-complete-native-raw-decomposition-resolution"},
             framework._DECOMPOSITION_RESOLUTION_CONTRACTS, 5,
         )
+
+    def test_inventory_binds_actual_main_component_factories_finalizers_and_complete_results(self):
+        self._assert_complete_packet_contract_bindings(
+            {"part1-complete-native-main-component-finalization"},
+            framework._MAIN_COMPONENT_FINALIZATION_CONTRACTS, 6,
+        )
+
+    def test_inventory_requires_actual_layout_calls_to_both_main_component_finalizers(self):
+        original = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        entry = next(item for item in original["requirements"]
+                     if item["id"] == "part1-complete-native-main-component-finalization")
+        source = framework.ROOT / "src/codestream/layout.rs"
+        native = source.read_text()
+        read_text = Path.read_text
+        for symbol in ("finish_main_component_styles", "finish_main_component_quantizations"):
+            coverage = copy.deepcopy(original)
+            isolated = copy.deepcopy(entry)
+            reference = next(ref for ref in isolated["contract_refs"]
+                             if ref["symbol"] == f"Parser::{symbol}")
+            isolated["contract_refs"] = [reference]
+            isolated["proof_refs"] = [reference]
+            isolated["implementation_refs"] = [
+                {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
+            ]
+            coverage["requirements"] = [isolated]
+            self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+            changed = native.replace(f"parser.{symbol}(", f"parser.unlisted_{symbol}(", 1)
+            self.assertNotEqual(native, changed)
+
+            def altered(path, *args, **kwargs):
+                return changed if path == source else read_text(path, *args, **kwargs)
+
+            with self.subTest(symbol=symbol), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+                framework.validate_normative_coverage(coverage)
+
+    def test_inventory_preserves_decomposition_caller_object_through_exact_total_result_stage(self):
+        coverage = json.loads((framework.VALIDATION / "normative-coverage.json").read_text())
+        entry = next(item for item in coverage["requirements"]
+                     if item["id"] == "part2-complete-native-raw-decomposition-resolution")
+        self.assertNotIn(
+            {"path": "src/codestream/coding_style.rs", "symbol": "Parser::finish_main_component_styles"},
+            entry["implementation_refs"],
+        )
+        reference = next(ref for ref in entry["contract_refs"]
+                         if ref["symbol"] == "Parser::resolve_decomposition_structures")
+        entry["contract_refs"] = [reference]
+        entry["proof_refs"] = [reference]
+        entry["implementation_refs"] = [
+            {"path": "src/codestream/layout.rs", "symbol": "Parser::parse_layout"},
+        ]
+        coverage["requirements"] = [entry]
+        self.assertEqual(framework.validate_normative_coverage(coverage)["status"], "passed")
+        read_text = Path.read_text
+        layout = framework.ROOT / "src/codestream/layout.rs"
+        style = framework.ROOT / "src/codestream/coding_style.rs"
+        mutations = [
+            (layout, "parser.finish_main_component_styles(", "parser.unlisted_finish_main_component_styles("),
+            (style, "self.resolve_decomposition_structures(", "self.unlisted_resolve_decomposition_structures("),
+            (style, "ensures parsed_style_owner_outcome(result) == crate::specs::part1_finish_main_styles(",
+             "requires false, ensures parsed_style_owner_outcome(result) == crate::specs::part1_finish_main_styles("),
+            (style, "ensures parsed_style_owner_outcome(result) == crate::specs::part1_finish_main_styles(",
+             "ensures result.is_ok() ==> parsed_style_owner_outcome(result) == crate::specs::part1_finish_main_styles("),
+            (style, "crate::specs::part1_finish_main_styles(",
+             "crate::specs::part1_unlisted_finish_main_styles("),
+            (style, "segment_slots_view(segments@),\n            &self.limits, owned_extensions_view(extensions)",
+             "segment_slots_view(unrelated@),\n            &self.limits, owned_extensions_view(extensions)"),
+            (style, "pub(super) fn finish_main_component_styles(",
+             "pub(super) fn unlisted_finish_main_component_styles("),
+        ]
+        for path, before, after in mutations:
+            native = read_text(path)
+            changed = native.replace(before, after, 1)
+            self.assertNotEqual(native, changed)
+
+            def altered(candidate, *args, **kwargs):
+                return changed if candidate == path else read_text(candidate, *args, **kwargs)
+
+            with self.subTest(before=before, after=after), mock.patch.object(Path, "read_text", altered), \
+                    self.assertRaisesRegex(ValueError, "not used by claimed implementation"):
+                framework.validate_normative_coverage(coverage)
 
     def test_inventory_binds_raw_cbd_partial_depth_prefix_and_complete_owner_frames(self):
         self._assert_complete_packet_contract_bindings(
@@ -1323,9 +1462,24 @@ class FrameworkTests(WorkingFiles):
                 caller_source = (framework.ROOT / caller["path"]).read_text()
                 callee = reference["symbol"].rsplit("::", 1)[-1]
                 if caller["path"] == reference["path"] or framework._coverage_named_caller_required(reference["path"]):
-                    return framework._coverage_same_file_call(
+                    if framework._coverage_same_file_call(
                         caller_source, caller["symbol"], callee,
                         distinct_file=caller["path"] != reference["path"],
+                    ):
+                        return True
+                    owner = caller["symbol"].rsplit("::", 1)[0] if "::" in caller["symbol"] else None
+                    return any(
+                        owner is not None and relay.startswith(owner + "::")
+                        and relay.rsplit("::", 1)[-1] != callee
+                        and framework._coverage_same_file_call(
+                            caller_source, caller["symbol"], relay.rsplit("::", 1)[-1],
+                            distinct_file=True,
+                        )
+                        and framework._coverage_same_file_call(
+                            (framework.ROOT / relay_path).read_text(), relay, callee,
+                            distinct_file=True,
+                        )
+                        for relay_path, relay in framework._MAIN_COMPONENT_FINALIZATION_CONTRACTS
                     )
                 return re.search(rf"\b{re.escape(callee)}\s*\(", caller_source) is not None
 

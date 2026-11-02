@@ -505,6 +505,575 @@ fn actual_layout_prologue_derives_complete_image_and_stops_before_main_header() 
     assert_eq!((parser.position, parser.work_units), (start, 2));
 }
 
+fn reference_main_styles(
+    parser: &Parser<'_>,
+    components: u16,
+    default: CodingStyle,
+    segments: &[Option<Segment<'_>>],
+    extensions: &Part2Extensions,
+) -> Result<ComponentCodingStyles, DecodeError> {
+    if components == 0 || usize::from(components) > MAX_COMPONENTS {
+        return Err(input_error_literal(0, MalformedKind::InvalidImageGeometry));
+    }
+    let mut owner = ComponentCodingStyles {
+        components,
+        styles: [default; MAX_COMPONENTS],
+    };
+    for component in 0..components {
+        if let Some(Some(segment)) = segments.get(usize::from(component)) {
+            let (_, style) = parser.parse_coc(*segment, components, default)?;
+            owner.styles[usize::from(component)] = style;
+        }
+    }
+    reference_decomposition_owner(&mut owner, extensions)?;
+    Ok(owner)
+}
+
+fn reference_main_quantizations(
+    parser: &Parser<'_>,
+    components: u16,
+    default: Quantization,
+    styles: &ComponentCodingStyles,
+    segments: &[Option<Segment<'_>>],
+) -> Result<ComponentQuantizations, DecodeError> {
+    if components == 0 || usize::from(components) > MAX_COMPONENTS {
+        return Err(input_error_literal(0, MalformedKind::InvalidImageGeometry));
+    }
+    let mut owner = ComponentQuantizations {
+        components,
+        quantizations: vec![default; usize::from(components)],
+    };
+    for component in 0..components {
+        let style = || {
+            if component >= styles.components || usize::from(component) >= styles.styles.len() {
+                Err(input_error_literal(0, MalformedKind::InvalidCodingStyle))
+            } else {
+                Ok(styles.styles[usize::from(component)])
+            }
+        };
+        if let Some(Some(segment)) = segments.get(usize::from(component)) {
+            let (_, value) = parser.parse_qcc(*segment, components, style()?)?;
+            owner.quantizations[usize::from(component)] = value;
+        }
+        let quantization = owner.quantizations[usize::from(component)];
+        let compatible = match quantization.style {
+            QuantizationStyle::ScalarDerived => {
+                style()?;
+                quantization.step_count == 1
+            }
+            _ => quantization.step_count == reference_truncated_subband_count(style()?),
+        };
+        if !compatible {
+            return Err(input_error_literal(0, MalformedKind::InvalidQuantization));
+        }
+    }
+    Ok(owner)
+}
+
+#[test]
+fn actual_main_component_factories_preserve_all_counts_defaults_and_storage() {
+    let mut cases = 0;
+    for components in 0..=u16::MAX {
+        let pattern = usize::from(components % 8);
+        let style = raw_resolution_style(components as u8, pattern);
+        let quantization = raw_subband_quantization(
+            [
+                QuantizationStyle::None,
+                QuantizationStyle::ScalarDerived,
+                QuantizationStyle::ScalarExpounded,
+            ][pattern % 3],
+            components,
+            pattern,
+        );
+        let styles = ComponentCodingStyles::new(components, style);
+        let quantizations = ComponentQuantizations::new(components, quantization);
+        if components == 0 || components > 64 {
+            let error = input_error_literal(0, MalformedKind::InvalidImageGeometry);
+            assert_eq!(styles, Err(error));
+            assert_eq!(quantizations, Err(error));
+        } else {
+            let styles = styles.unwrap();
+            let quantizations = quantizations.unwrap();
+            assert_eq!(styles.components, components);
+            assert_eq!(styles.styles, [style; MAX_COMPONENTS]);
+            assert_eq!(quantizations.components, components);
+            assert_eq!(
+                quantizations.quantizations,
+                vec![quantization; usize::from(components)]
+            );
+            assert_eq!(
+                ComponentCodingStyles::uniform(components, style).unwrap(),
+                styles
+            );
+            assert_eq!(
+                ComponentQuantizations::uniform(components, quantization).unwrap(),
+                quantizations
+            );
+        }
+        cases += 1;
+    }
+    assert_eq!(cases, 65_536);
+}
+
+#[test]
+fn actual_main_component_quantization_access_preserves_raw_owner_and_error_tails() {
+    let mut cases = 0;
+    for count in [0, 1, 2, 63, 64, 65, 257, u16::MAX] {
+        for length in [0, 1, 2, 63, 64, 65, 257] {
+            for component in [0, 1, 2, 63, 64, 256, u16::MAX] {
+                let mut values: Vec<_> = (0..length)
+                    .map(|i| {
+                        raw_subband_quantization(
+                            QuantizationStyle::ScalarExpounded,
+                            i as u16,
+                            i % 8,
+                        )
+                    })
+                    .collect();
+                values.reserve(3);
+                let mut owner = ComponentQuantizations {
+                    components: count,
+                    quantizations: values,
+                };
+                let before = owner.clone();
+                let capacity = owner.quantizations.capacity();
+                let pointer = owner.quantizations.as_ptr();
+                let invalid = component >= count || usize::from(component) >= length;
+                let error = input_error_literal(0, MalformedKind::InvalidQuantization);
+                let expected = if invalid {
+                    Err(error)
+                } else {
+                    Ok(before.quantizations[usize::from(component)])
+                };
+                assert_eq!(owner.quantization(component), expected);
+                assert_eq!(owner, before);
+                let value = raw_subband_quantization(QuantizationStyle::ScalarDerived, u16::MAX, 7);
+                let mut expected = before;
+                if !invalid {
+                    expected.quantizations[usize::from(component)] = value;
+                }
+                assert_eq!(
+                    owner.set(component, value),
+                    if invalid { Err(error) } else { Ok(()) }
+                );
+                assert_eq!(owner, expected);
+                assert_eq!(owner.quantizations.capacity(), capacity);
+                assert_eq!(owner.quantizations.as_ptr(), pointer);
+                cases += 1;
+            }
+        }
+    }
+    assert_eq!(cases, 392);
+}
+
+#[test]
+fn actual_main_component_compatibility_preserves_raw_fields_and_truncated_directions() {
+    let mut cases = 0;
+    for levels in 0..=u8::MAX {
+        for pattern in 0..8 {
+            let style = raw_resolution_style(levels, pattern);
+            for count in [
+                0,
+                1,
+                2,
+                32,
+                64,
+                97,
+                98,
+                u16::MAX,
+                reference_truncated_subband_count(style),
+            ] {
+                for kind in [
+                    QuantizationStyle::None,
+                    QuantizationStyle::ScalarDerived,
+                    QuantizationStyle::ScalarExpounded,
+                ] {
+                    let value = raw_subband_quantization(kind, count, pattern);
+                    let expected = if kind == QuantizationStyle::ScalarDerived {
+                        count == 1
+                    } else {
+                        count == reference_truncated_subband_count(style)
+                    };
+                    assert_eq!(value.is_compatible_with(style), expected);
+                    cases += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(cases, 55_296);
+}
+
+fn assert_main_component_frames(
+    parser: &Parser<'_>,
+    state: PacketAdmissionState,
+    input: &[u8],
+    limits: &ResourceLimits,
+    segments: &[Option<Segment<'_>>],
+    before: &[Option<Segment<'_>>],
+) {
+    assert_packet_admission_state(parser, state, input, limits);
+    assert_eq!(segments.len(), before.len());
+    for (after, before) in segments.iter().zip(before) {
+        match (after, before) {
+            (Some(after), Some(before)) => {
+                assert_eq!(
+                    (after.marker, after.offset, after.payload),
+                    (before.marker, before.offset, before.payload)
+                );
+                assert!(core::ptr::eq(
+                    after.payload.as_ptr(),
+                    before.payload.as_ptr()
+                ));
+            }
+            (None, None) => {}
+            _ => panic!("segment presence changed"),
+        }
+    }
+}
+
+#[test]
+fn actual_main_component_styles_preserve_lazy_slots_defaults_resolution_and_first_errors() {
+    let input = [0xa5, 0x5a];
+    let limits = ResourceLimits::HARDENED;
+    let mut parser = new_parser(&input, &limits).unwrap();
+    let defaults = [
+        parser
+            .parse_cod(Segment {
+                marker: COD,
+                offset: 19,
+                payload: &[6, 4, 0, 3, 0, 2, 2, 2, 0, 1],
+            })
+            .unwrap(),
+        raw_resolution_style(2, 4),
+        raw_resolution_style(33, 7),
+        raw_resolution_style(u8::MAX, 2),
+    ];
+    let payloads: &[&[u8]] = &[
+        &[],
+        &[0],
+        &[0, 0, 1, 2, 2, 0, 1],
+        &[0, 0, 129, 2, 2, 0, 1],
+        &[255, 255],
+    ];
+    let mut cases = 0;
+    for components in [0, 1, 2, 63, 64, 65, u16::MAX] {
+        for default in defaults {
+            for variant in 0..8 {
+                let extensions = raw_decomposition_extensions(variant, 3);
+                let extension_before = extensions.clone();
+                for length in [0, 1, 2, 64, 66] {
+                    for payload in payloads {
+                        let segments: Vec<_> = (0..length)
+                            .map(|index| {
+                                if index % 3 == 2 {
+                                    None
+                                } else {
+                                    Some(Segment {
+                                        marker: QCD,
+                                        offset: 100 + index * 17,
+                                        payload,
+                                    })
+                                }
+                            })
+                            .collect();
+                        let before = segments.clone();
+                        for position in [0, usize::MAX] {
+                            let state = PacketAdmissionState {
+                                position,
+                                work: u64::MAX,
+                                header_bytes: 97,
+                                packet_count: u64::MAX,
+                            };
+                            set_packet_admission_state(&mut parser, state);
+                            assert_eq!(
+                                parser.finish_main_component_styles(
+                                    components,
+                                    default,
+                                    &segments,
+                                    &extensions
+                                ),
+                                reference_main_styles(
+                                    &parser,
+                                    components,
+                                    default,
+                                    &segments,
+                                    &extensions
+                                ),
+                                "count={components}, length={length}, variant={variant}, payload={payload:?}"
+                            );
+                            assert_main_component_frames(
+                                &parser, state, &input, &limits, &segments, &before,
+                            );
+                            assert_eq!(extensions, extension_before);
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(cases, 11_200);
+}
+
+#[test]
+fn actual_main_component_quantizations_preserve_resolved_styles_slots_compatibility_and_first_errors()
+ {
+    let input = [0x5a, 0xa5];
+    let limits = ResourceLimits::HARDENED;
+    let mut parser = new_parser(&input, &limits).unwrap();
+    let payloads: &[&[u8]] = &[&[], &[0], &[0, 0, 0], &[0, 1, 0, 0], &[255, 255]];
+    let mut cases = 0;
+    for components in [0, 1, 2, 63, 64, 65, u16::MAX] {
+        for style_count in [0, 1, 2, 64, 65, u16::MAX] {
+            for pattern in 0..8 {
+                let styles = ComponentCodingStyles {
+                    components: style_count,
+                    styles: core::array::from_fn(|i| raw_resolution_style((i % 3) as u8, pattern)),
+                };
+                let styles_before = styles;
+                for kind in [
+                    QuantizationStyle::None,
+                    QuantizationStyle::ScalarDerived,
+                    QuantizationStyle::ScalarExpounded,
+                ] {
+                    let default = raw_subband_quantization(
+                        kind,
+                        if pattern % 2 == 0 { 1 } else { u16::MAX },
+                        pattern,
+                    );
+                    for length in [0, 1, 2, 64, 66] {
+                        for payload in payloads {
+                            let segments: Vec<_> = (0..length)
+                                .map(|index| {
+                                    if index % 3 == 2 {
+                                        None
+                                    } else {
+                                        Some(Segment {
+                                            marker: COD,
+                                            offset: 200 + index * 19,
+                                            payload,
+                                        })
+                                    }
+                                })
+                                .collect();
+                            let before = segments.clone();
+                            let state = PacketAdmissionState {
+                                position: usize::MAX,
+                                work: u64::MAX,
+                                header_bytes: 73,
+                                packet_count: u64::MAX,
+                            };
+                            set_packet_admission_state(&mut parser, state);
+                            assert_eq!(
+                                parser.finish_main_component_quantizations(
+                                    components, default, &styles, &segments
+                                ),
+                                reference_main_quantizations(
+                                    &parser, components, default, &styles, &segments
+                                ),
+                                "count={components}, style_count={style_count}, pattern={pattern}, length={length}, kind={kind:?}, payload={payload:?}"
+                            );
+                            assert_eq!(styles, styles_before);
+                            assert_main_component_frames(
+                                &parser, state, &input, &limits, &segments, &before,
+                            );
+                            cases += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(cases, 25_200);
+}
+
+#[test]
+fn actual_main_component_finalizers_consume_real_header_reader_and_decomposition_producers() {
+    let mut input = siz_with_components(2);
+    input.extend(segment(COD, &[6, 4, 0, 3, 0, 2, 2, 2, 0, 1]));
+    input.extend(segment(COC, &[0, 0, 129, 2, 2, 0, 1]));
+    input.extend(segment(QCD, &[1, 0x38, 0x73]));
+    input.extend(segment(QCC, &[1, 1, 0x40, 0x19]));
+    input.extend(segment(DFS, &raw_dfs_payload(1, 2)));
+    input.extend(segment(ADS, &raw_ads_payload(1, 3, 4, 1)));
+    let limits = ResourceLimits::HARDENED;
+    let mut parser = new_parser(&input, &limits).unwrap();
+    let segment = parser.read_segment().unwrap();
+    let (size, _) = parser.parse_siz(segment).unwrap();
+    let segment = parser.read_segment().unwrap();
+    let default = parser.parse_cod(segment).unwrap();
+    let coc = parser.read_segment().unwrap();
+    let segment = parser.read_segment().unwrap();
+    let quantization = parser.parse_qcd(segment, default).unwrap();
+    let qcc = parser.read_segment().unwrap();
+    let mut extensions = raw_decomposition_extensions(0, 0);
+    extensions.metadata_bytes = 0;
+    let segment = parser.read_segment().unwrap();
+    parser.parse_dfs(segment, &mut extensions).unwrap();
+    let segment = parser.read_segment().unwrap();
+    parser.parse_ads(segment, &mut extensions).unwrap();
+    // Slot ownership, not the repeated encoded component index, selects the override.
+    let coc_slots = [None, Some(coc)];
+    let qcc_slots = [Some(qcc), None];
+    let state = PacketAdmissionState {
+        position: parser.position,
+        work: parser.work_units,
+        header_bytes: parser.packet_length_bytes,
+        packet_count: parser.packet_lengths,
+    };
+    let extension_before = extensions.clone();
+    let expected_styles =
+        reference_main_styles(&parser, size.components, default, &coc_slots, &extensions).unwrap();
+    let styles = parser
+        .finish_main_component_styles(size.components, default, &coc_slots, &extensions)
+        .unwrap();
+    assert_eq!(styles, expected_styles);
+    assert_ne!(
+        styles.styles[1].decomposition_directions,
+        default.decomposition_directions
+    );
+    let quantizations = parser
+        .finish_main_component_quantizations(size.components, quantization, &styles, &qcc_slots)
+        .unwrap();
+    assert_eq!(
+        quantizations,
+        reference_main_quantizations(&parser, size.components, quantization, &styles, &qcc_slots)
+            .unwrap()
+    );
+    assert_ne!(quantizations.quantizations[0], quantization);
+    assert_eq!(quantizations.quantizations[1], quantization);
+    assert_eq!(extensions, extension_before);
+    assert_main_component_frames(&parser, state, &input, &limits, &coc_slots, &coc_slots);
+    assert_main_component_frames(&parser, state, &input, &limits, &qcc_slots, &qcc_slots);
+    assert_eq!(parser.position, input.len());
+
+    let headers = [
+        self::segment(COD, &[6, 4, 0, 3, 0, 2, 2, 2, 0, 1]),
+        self::segment(COC, &[1, 0, 129, 2, 2, 0, 1]),
+        self::segment(QCD, &[1, 0x38, 0x73]),
+        self::segment(QCC, &[0, 1, 0x40, 0x19]),
+        self::segment(DFS, &raw_dfs_payload(1, 2)),
+    ];
+    let bytes = codestream_with_headers(2, &headers, &[], &[]);
+    let layout = parse_layout(&bytes, &limits).unwrap();
+    assert_eq!(layout.info.component_coding_styles, styles);
+    assert_eq!(layout.info.component_quantizations, quantizations);
+}
+
+#[test]
+fn actual_main_component_finalizers_preserve_specific_raw_order_and_unused_payloads() {
+    let input = [0x73, 0x19];
+    let limits = ResourceLimits::HARDENED;
+    let parser = new_parser(&input, &limits).unwrap();
+    let default = parser
+        .parse_cod(Segment {
+            marker: COD,
+            offset: 13,
+            payload: &[0, 0, 0, 1, 0, 2, 2, 2, 0, 1],
+        })
+        .unwrap();
+    let mut extensions = raw_decomposition_extensions(0, 0);
+    extensions
+        .decomposition_structures
+        .push(DecompositionStructure {
+            index: 1,
+            directions: vec![DecompositionDirection::Horizontal],
+        });
+    let explicit = Segment {
+        marker: COC,
+        offset: 101,
+        payload: &[0, 0, 1, 2, 2, 0, 1],
+    };
+    let dfs = Segment {
+        marker: COC,
+        offset: 203,
+        payload: &[0, 0, 129, 2, 2, 0, 1],
+    };
+    let malformed = Segment {
+        marker: COC,
+        offset: 777,
+        payload: &[],
+    };
+    let slots = [Some(explicit), Some(dfs), Some(malformed)];
+    let styles = parser
+        .finish_main_component_styles(2, default, &slots, &extensions)
+        .unwrap();
+    assert_eq!(styles.styles[0].decomposition_levels, 1);
+    assert_eq!(
+        styles.styles[1].decomposition_levels,
+        default.decomposition_levels
+    );
+    assert_eq!(styles.styles[2..], [default; MAX_COMPONENTS][2..]);
+    assert_eq!(
+        styles.styles[1].decomposition_directions[..2],
+        [DecompositionDirection::Horizontal; 2]
+    );
+    assert_eq!(
+        parser.finish_main_component_styles(
+            2,
+            default,
+            &[Some(explicit), Some(malformed), Some(dfs)],
+            &extensions
+        ),
+        Err(input_error_literal(777, MalformedKind::InvalidMarkerLength))
+    );
+    let mut missing = default;
+    missing.decomposition_structure = Some(127);
+    // All COC payloads are parsed before any decomposition lookup.
+    assert_eq!(
+        parser.finish_main_component_styles(2, missing, &[None, Some(malformed)], &extensions),
+        Err(input_error_literal(777, MalformedKind::InvalidMarkerLength))
+    );
+    let empty = ComponentCodingStyles {
+        components: 0,
+        styles: styles.styles,
+    };
+    let value = raw_subband_quantization(QuantizationStyle::ScalarDerived, 1, 7);
+    // The style lookup precedes a present QCC parse, but not factory geometry.
+    assert_eq!(
+        parser.finish_main_component_quantizations(1, value, &empty, &[Some(malformed)]),
+        Err(input_error_literal(0, MalformedKind::InvalidCodingStyle))
+    );
+    assert_eq!(
+        parser.finish_main_component_quantizations(0, value, &empty, &[Some(malformed)]),
+        Err(input_error_literal(0, MalformedKind::InvalidImageGeometry))
+    );
+    let incompatible = Quantization {
+        step_count: 0,
+        ..value
+    };
+    assert_eq!(
+        parser.finish_main_component_quantizations(
+            2,
+            incompatible,
+            &styles,
+            &[None, Some(malformed)]
+        ),
+        Err(input_error_literal(0, MalformedKind::InvalidQuantization))
+    );
+    let valid_qcc = Segment {
+        marker: QCC,
+        offset: 509,
+        payload: &[0, 1, 0, 0],
+    };
+    let values = parser
+        .finish_main_component_quantizations(
+            1,
+            incompatible,
+            &styles,
+            &[Some(valid_qcc), Some(malformed)],
+        )
+        .unwrap();
+    assert_eq!(values.quantizations.len(), 1);
+    assert_eq!(values.quantizations[0].step_count, 1);
+    assert_eq!(parser.position, 0);
+    assert_eq!(parser.work_units, 0);
+    assert_eq!(parser.packet_length_bytes, 0);
+    assert_eq!(parser.packet_lengths, 0);
+    assert!(core::ptr::eq(parser.input.as_ptr(), input.as_ptr()));
+    assert!(core::ptr::eq(parser.limits, &limits));
+}
+
 fn raw_decomposition_extensions(variant: usize, length: usize) -> Part2Extensions {
     use DecompositionDirection::{Horizontal, None, TwoDimensional, Vertical};
     let directions = (0..length)
@@ -16858,6 +17427,319 @@ fn actual_raw_reader_derives_marker_payload_cursor_work_and_partial_error_state(
         }
     }
     assert_eq!(state_cases, 1_808);
+}
+
+fn reference_tile_data_window(
+    input: &[u8],
+    limits: &ResourceLimits,
+    state: &mut PacketAdmissionState,
+    data_start: usize,
+    start: usize,
+    length: u32,
+) -> Result<(usize, Vec<u8>), DecodeError> {
+    let end = if length == 0 {
+        loop {
+            let Some(word) = input.get(state.position..).and_then(|tail| tail.get(..2)) else {
+                return Err(input_error_literal(
+                    state.position,
+                    MalformedKind::Truncated,
+                ));
+            };
+            let charged = u128::from(state.work) + 1;
+            if charged > u128::from(u64::MAX) {
+                return Err(input_error_literal(
+                    state.position,
+                    MalformedKind::ArithmeticOverflow,
+                ));
+            }
+            state.work = charged as u64;
+            if state.work > limits.maximum_work_units() {
+                return Err(DecodeError::LimitExceeded {
+                    resource: Resource::WorkUnits,
+                    limit: limits.maximum_work_units(),
+                    actual: state.work,
+                });
+            }
+            if word == [255, 217] {
+                break state.position;
+            }
+            state.position += 1;
+        }
+    } else {
+        if u128::from(length) > usize::MAX as u128 {
+            return Err(input_error_literal(
+                state.position,
+                MalformedKind::InvalidTilePart,
+            ));
+        }
+        let wide = start as u128 + u128::from(length);
+        if wide > usize::MAX as u128 {
+            return Err(input_error_literal(
+                state.position,
+                MalformedKind::ArithmeticOverflow,
+            ));
+        }
+        let end = wide as usize;
+        if end < state.position || end > input.len() {
+            return Err(input_error_literal(start, MalformedKind::InvalidTilePart));
+        }
+        end
+    };
+    if data_start > end || end > input.len() {
+        return Err(input_error_literal(
+            state.position,
+            MalformedKind::InvalidTilePart,
+        ));
+    }
+    Ok((end, input[data_start..end].to_vec()))
+}
+
+#[test]
+fn actual_raw_tile_data_window_matches_independent_full_state_reference() {
+    let limits = [
+        ResourceLimits::HARDENED,
+        ResourceLimits::HARDENED.with_maximum_work_units(0).unwrap(),
+        ResourceLimits::HARDENED.with_maximum_work_units(1).unwrap(),
+        ResourceLimits::HARDENED.with_maximum_work_units(2).unwrap(),
+        ResourceLimits::HARDENED
+            .with_maximum_input_bytes(0)
+            .unwrap(),
+    ];
+    let fixtures: &[&[u8]] = &[
+        &[],
+        &[255],
+        &[0],
+        &[255, 217],
+        &[0, 255, 217],
+        &[255, 0, 255, 217],
+        &[255, 217, 0, 255, 217],
+        &[1, 2, 3],
+    ];
+    let mut cases = 0;
+    let (mut successes, mut slice_errors, mut scans, mut overflows) = (0, 0, 0, 0);
+    for &input in fixtures {
+        for limit in &limits {
+            for position in [0, 1, input.len(), input.len() + 1, usize::MAX] {
+                for work in [0, 1, u64::MAX - 1, u64::MAX] {
+                    for (header_bytes, packet_count) in [(0, 0), (u64::MAX, 17)] {
+                        for data_start in [0, 1, input.len(), input.len() + 1, usize::MAX] {
+                            for start in [0, 1, input.len(), usize::MAX - 1, usize::MAX] {
+                                for length in [0, 1, 2, input.len() as u32, u32::MAX] {
+                                    let initial = PacketAdmissionState {
+                                        position,
+                                        work,
+                                        header_bytes,
+                                        packet_count,
+                                    };
+                                    let mut expected = initial;
+                                    let reference = reference_tile_data_window(
+                                        input,
+                                        limit,
+                                        &mut expected,
+                                        data_start,
+                                        start,
+                                        length,
+                                    );
+                                    let mut parser = Parser {
+                                        input,
+                                        limits: limit,
+                                        position,
+                                        work_units: work,
+                                        packet_length_bytes: header_bytes,
+                                        packet_lengths: packet_count,
+                                    };
+                                    let actual = parser.tile_data_window(data_start, start, length);
+                                    assert_eq!(
+                                        actual.map(|(end, data)| (end, data.to_vec())),
+                                        reference,
+                                        "position={position} start={start} length={length} data_start={data_start}"
+                                    );
+                                    assert_packet_admission_state(&parser, expected, input, limit);
+                                    if let Ok((end, data)) = actual {
+                                        assert!(core::ptr::eq(
+                                            data.as_ptr(),
+                                            input[data_start..end].as_ptr()
+                                        ));
+                                        successes += 1;
+                                    } else if actual
+                                        == Err(input_error_literal(
+                                            expected.position,
+                                            MalformedKind::InvalidTilePart,
+                                        ))
+                                        && (length == 0
+                                            || (start as u128 + u128::from(length)
+                                                <= input.len() as u128
+                                                && start as u128 + u128::from(length)
+                                                    >= position as u128))
+                                    {
+                                        slice_errors += 1;
+                                    }
+                                    if expected.position != initial.position {
+                                        scans += 1;
+                                    }
+                                    if matches!(
+                                        actual,
+                                        Err(DecodeError::MalformedInput {
+                                            kind: MalformedKind::ArithmeticOverflow,
+                                            ..
+                                        })
+                                    ) {
+                                        overflows += 1;
+                                    }
+                                    cases += 1;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(cases, 200_000);
+    assert_eq!(
+        (successes, slice_errors, scans, overflows),
+        (7_720, 8_030, 2_100, 54_250)
+    );
+    eprintln!(
+        "tile window: cases={cases} success={successes} slice_errors={slice_errors} scans={scans} overflows={overflows}"
+    );
+}
+
+#[test]
+fn actual_tile_data_window_reader_joins_preserve_metadata_failure_cursor_order() {
+    let limits = ResourceLimits::HARDENED;
+    let mut joins = 0;
+    for zero_length in [false, true] {
+        for bad_lengths in [false, true] {
+            let mut input = vec![0x42, 0x43];
+            input.extend(segment(PLT, &[0, if bad_lengths { 2 } else { 3 }]));
+            input.extend(segment(PPT, &[0, 0xab]));
+            input.extend(SOD.to_be_bytes());
+            let data_start = input.len();
+            input.extend([0x12, 0x34]);
+            let end = input.len();
+            input.extend(EOC.to_be_bytes());
+            let mut parser = new_parser(&input, &limits).unwrap();
+            parser.position = 2;
+            let style = parser
+                .parse_cod(Segment {
+                    marker: COD,
+                    offset: 0,
+                    payload: &[0, 0, 0, 1, 0, 0, 2, 2, 0, 1],
+                })
+                .unwrap();
+            let quantization = Quantization::reversible_default(style);
+            let result = parser.read_tile_part(
+                TilePart {
+                    start: 1,
+                    length: if zero_length { 0 } else { (end - 1) as u32 },
+                    tile_index: 17,
+                    tile_part_index: 23,
+                    tile_part_count: 29,
+                },
+                (style, quantization),
+                ComponentCodingStyles::uniform(1, style).unwrap(),
+                ComponentQuantizations::uniform(1, quantization).unwrap(),
+                RoiShifts::none(),
+                ProgressionChanges::none(),
+                MctParameters {
+                    arrays: Vec::new(),
+                    records: Vec::new(),
+                    order: Vec::new(),
+                },
+                Part2Extensions::default(),
+                1,
+                PacketLengths::none(),
+                PackedPacketHeaders::none(),
+            );
+            if bad_lengths {
+                assert_eq!(
+                    result.err(),
+                    Some(input_error_literal(1, MalformedKind::InvalidPacketLength))
+                );
+            } else {
+                let (payload, _, _) = result.unwrap();
+                assert_eq!(
+                    (
+                        payload.tile_index,
+                        payload.tile_part_index,
+                        payload.tile_part_count
+                    ),
+                    (17, 23, 29)
+                );
+                assert_eq!(payload.data, [0x12, 0x34]);
+                assert!(core::ptr::eq(
+                    payload.data.as_ptr(),
+                    input[data_start..end].as_ptr()
+                ));
+                assert_eq!(payload.packet_lengths.packet_count(), 1);
+                assert_eq!(payload.packet_lengths.encoded_bytes(), 1);
+                assert_eq!(
+                    payload.packed_packet_headers.reassemble(&limits).unwrap(),
+                    [0xab]
+                );
+            }
+            assert_packet_admission_state(
+                &parser,
+                PacketAdmissionState {
+                    position: if zero_length || !bad_lengths {
+                        end
+                    } else {
+                        data_start
+                    },
+                    work: if zero_length { 8 } else { 5 },
+                    header_bytes: 2,
+                    packet_count: 1,
+                },
+                &input,
+                &limits,
+            );
+            joins += 1;
+        }
+    }
+    assert_eq!(joins, 4);
+
+    // Both metadata finalizers can fail after a successful raw window.
+    for length in [0, 4] {
+        let input = [0x12, 0x34, 255, 217];
+        let mut parser = new_parser(&input, &limits).unwrap();
+        let (_, data) = parser.tile_data_window(0, 0, length).unwrap();
+        let expected = PacketAdmissionState {
+            position: if length == 0 { 2 } else { 0 },
+            work: if length == 0 { 3 } else { 0 },
+            header_bytes: 0,
+            packet_count: 0,
+        };
+        assert_eq!(
+            parser.finish_packet_lengths(
+                usize::MAX,
+                0,
+                PacketLengths::none(),
+                true,
+                0,
+                0,
+                0,
+                data.len(),
+                0,
+                19,
+            ),
+            Err(input_error_literal(19, MalformedKind::InvalidTilePart))
+        );
+        assert_packet_admission_state(&parser, expected, &input, &limits);
+        assert_eq!(
+            parser.finish_packed_packet_headers(
+                usize::MAX,
+                0,
+                PackedPacketHeaders::none(),
+                1,
+                0,
+                23,
+            ),
+            Err(input_error_literal(23, MalformedKind::InvalidTilePart))
+        );
+        assert_packet_admission_state(&parser, expected, &input, &limits);
+    }
+    eprintln!("tile window joins: reader=4 raw_finalizer_failures=4");
 }
 
 #[test]

@@ -24,6 +24,7 @@ proposals while this file is on a feature branch; only owner adoption on trusted
 | `proposal-198-component-depth-registration` | Proposed exact seven-path component-depth/registration application and physical uniformity; eligibility only | #198; original CI41144651127 / Verus41144651097; final refresh and separate source review required |
 | `proposal-200-decomposition-resolution` | Proposed exact nine-path actual DFS/ADS lookup, setter and owner-resolution contracts; eligibility only | #200; original CI41153180810 / Verus41153180822; final refresh and separate source review required |
 | `proposal-202-sot-reader-marker` | Proposed exact eight-path actual SOT reader and marker-admission Result/frame refinement; eligibility only | #202; original CI41252094188 / Verus41252094124; final refresh and separate source review required |
+| `proposal-206-tile-data-window` | Proposed exact seven-path actual tile-data range Result/final-reader refinement; eligibility only | #206; original CI41261831548 / Verus41261831538; final refresh and separate source review required |
 
 Record adoption is gate eligibility, not permission to merge a source PR.
 For every future record, refresh the source branch from accepted main after
@@ -33,6 +34,40 @@ No record permits unlisted model/proof Rust or controller changes, combined
 amendments, or changed verifier/dependency pins and resource caps. An explicitly
 adopted source-derived proof profile can admit only its exact listed additions;
 gate eligibility does not establish their correspondence with a standard.
+
+### Actual tile-data window and cursor commits
+
+The proposed #206 record covers exactly the seven protected paths of the
+already adopted `tile-data-window` profile, relative to accepted SOT main
+`614f3509aac0117a5c171813bfa0578775e6dc37`. All fourteen older registry objects,
+seventeen profile meanings, earlier models, pins and resource caps remain
+unchanged. This is no new controller operation or combined source allowance.
+
+Held source `58d4c50c5c97f8002fc1e686694ffad9641b1403` passed original
+[CI41261831548](https://github.com/microsoft/jpeg2000_rs/actions/runs/41261831548)
+and [Verus41261831538](https://github.com/microsoft/jpeg2000_rs/actions/runs/41261831538):
+350 Python tests without skips, MSRV 687 library plus six example tests and
+three doctests, 3,536 verified/zero errors for both root and the byte-bound
+actual 173-entry/157-Rust-file archive, and all normal numerical, HT, consumer
+and resource gates. All 4,591 previous observed items plus exactly the actual
+helper, its closed Result projection and its source-derived model were
+retained. The one new helper job is measured, not inferred from three
+definition names or claimed as a source-coverage percentage.
+
+The sole helper and its two real `read_tile_part` calls preserve the old body
+after inlining. The zero-length path commits the located EOC boundary before
+data-range or packet-metadata failure; the fixed-length path validates its raw
+length/end/range but commits the cursor only after both packet finalizers
+succeed. Complete Result, borrowed data bytes, reader/input/limits/work/packet
+frames and every original error/partial-commit boundary are bound. The model
+uses `specs/packet_input.rs`, not a widened root/SOT model profile.
+
+This documentation-only proposal requires its own full qualification, fresh
+Ready policy and independent record review before normal adoption and fresh
+actual-main acceptance. Then #206 still needs final source refresh,
+source/archive qualification, Ready policy, separate actual-source review,
+guarded merge and fresh actual-main source validation. Record eligibility is
+not source integration, lifetime analysis, normative or publication approval.
 
 ### Actual SOT reader and marker admission
 
@@ -1591,6 +1626,139 @@ not independent human/normative approval; no publication is authorized.
         "validation/tests/test_framework.py": {
           "before": "e31370e9ca7f27ae54f80b39fa1ac97f23d556af",
           "after": "4c22aed6faff81a3ad5852769b2fd63c798efa05"
+        }
+      }
+    },
+    {
+      "id": "proposal-206-tile-data-window",
+      "profile": "tile-data-window",
+      "source_pr": 206,
+      "source_head": "58d4c50c5c97f8002fc1e686694ffad9641b1403",
+      "ci_run": 41261831548,
+      "verus_run": 41261831538,
+      "rationale": "Complete actual tile-data range Result and reader frame with unchanged zero-length early and fixed-length late cursor commits around packet metadata finalizers, raw range/error precedence and exact source-derived packet-input model. Existing SOT and other model meanings, controller policy, pins and caps unchanged. Eligibility only, not source, lifetime, normative or publication approval.",
+      "paths": {
+        "src/codestream/tiles.rs": {
+          "before": "f8c2abf6108357ff18816823f47f45c078fb0d48",
+          "after": "2ce7ec064bb79bedd57c435deb200f3abad09d38"
+        },
+        "src/codestream/proof_support.rs": {
+          "before": "6d50a37e0fb7c8b4ef622bb07e6594fe7955873a",
+          "after": "e1a38ee2d1a8293798e259d9886afe52157106e4"
+        },
+        "src/codestream/tests.rs": {
+          "before": "aba72932ab810a90463c9795e642dd55a8cbfd6f",
+          "after": "51fe581f07aca7d2096b1c0186e71486c8dbbdfc"
+        },
+        "specs/packet_input.rs": {
+          "before": "b6059efda674f7744b65fe8515ffe3e1a6c614a2",
+          "after": "e16a50ea7f2125be54627dafa92630252770b59e"
+        },
+        "validation/framework.py": {
+          "before": "8bbb5258e27a611a4a0a29926113d7d4d1cdbf93",
+          "after": "528b8af4b7640c81ad7a86b84cf018ca54eb4635"
+        },
+        "validation/normative-coverage.json": {
+          "before": "5e0befd4bd0b07be56823da34f0c207956b12180",
+          "after": "d89f0ca3362e4f6c521b6788d2b9ec4ccdd5b531"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "4c22aed6faff81a3ad5852769b2fd63c798efa05",
+          "after": "93adbc2e5f1b1ec5c125908f16103c750081a1a7"
+        }
+      }
+    },
+    {
+      "id": "proposal-208-main-component-finalization",
+      "profile": "main-component-finalization",
+      "source_pr": 208,
+      "source_head": "adeaaa3b0129c4f5030222384c210cf25c22f950",
+      "ci_run": 41362592419,
+      "verus_run": 41362592321,
+      "rationale": "Complete actual main component coding-style and quantization finalizers with raw owner lookup, ordered partial updates, full Result and parser frames. Accepted window and other model meanings, controller policy, pins and caps unchanged. Eligibility only, not source integration, lifetime, normative or publication approval.",
+      "paths": {
+        "src/codestream/layout.rs": {
+          "before": "3b6c15fdfb3530656d8c31d3380f4e90545f45c4",
+          "after": "601e2f4aa4ea4535b6ea99f89955f9751b1c6276"
+        },
+        "src/codestream/coding_style.rs": {
+          "before": "d937e2e20ac3bb15b06ea5c031d436cf20e53d90",
+          "after": "fccfe422fe1e8b67f19158e85466591b2c724857"
+        },
+        "src/codestream/quantization.rs": {
+          "before": "b2ed1bd063706a17623b64a5352cc7362423cbf5",
+          "after": "aacf491e8622863ef6c946b284ee465a6d7b3f6e"
+        },
+        "src/codestream/proof_support.rs": {
+          "before": "e1a38ee2d1a8293798e259d9886afe52157106e4",
+          "after": "ec6aea6c4654c9270f6ccd95c7a5e13779ef479c"
+        },
+        "src/codestream/tests.rs": {
+          "before": "51fe581f07aca7d2096b1c0186e71486c8dbbdfc",
+          "after": "523ab6a1c5ab8aa8a3ade68f9821da367c803502"
+        },
+        "specs/mod.rs": {
+          "before": "8ae9fac97ff55d537da1a4c765dc0721a619f93e",
+          "after": "5a927ed5abd33f663c4e1f41921e54b3caf9fffc"
+        },
+        "validation/framework.py": {
+          "before": "528b8af4b7640c81ad7a86b84cf018ca54eb4635",
+          "after": "e695a610abf9cc967f9de63c9a5ac1104742cb81"
+        },
+        "validation/normative-coverage.json": {
+          "before": "d89f0ca3362e4f6c521b6788d2b9ec4ccdd5b531",
+          "after": "bcacd075ee0e1c91eb18bd508c0b35fac3a4fc7a"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "93adbc2e5f1b1ec5c125908f16103c750081a1a7",
+          "after": "d0b1c2c78e27e4f62bc9fc10fa76f238cd2354ce"
+        }
+      }
+    },
+    {
+      "id": "proposal-210-layout-prologue",
+      "profile": "layout-prologue",
+      "source_pr": 210,
+      "source_head": "91df2b0537d024d91f4fffd6d35458b41b9bb2d0",
+      "ci_run": 41370207229,
+      "verus_run": 41370207276,
+      "rationale": "Complete actual raw SOC/segment/SIZ prologue Result, image fields, header start and reader frame through the real layout caller. Existing finalizers, window, model meanings and requirement reference unions, controller policy, pins and caps unchanged. Eligibility only, not source integration, lifetime, normative or publication approval.",
+      "paths": {
+        "src/codestream/layout.rs": {
+          "before": "601e2f4aa4ea4535b6ea99f89955f9751b1c6276",
+          "after": "3cf79541364cf877e803f9b1a6b0db0b64bfdb47"
+        },
+        "src/codestream/proof_support.rs": {
+          "before": "ec6aea6c4654c9270f6ccd95c7a5e13779ef479c",
+          "after": "52424a594d8eed1af903f82e77918b741ed779f8"
+        },
+        "src/codestream/tests.rs": {
+          "before": "523ab6a1c5ab8aa8a3ade68f9821da367c803502",
+          "after": "176bbabf80bc807eb4299f6e2fde7ecd91d9f99c"
+        },
+        "specs/layout_input.rs": {
+          "before": null,
+          "after": "dc8e5eae0ad7827077d704027b356e9883df9a89"
+        },
+        "specs/mod.rs": {
+          "before": "5a927ed5abd33f663c4e1f41921e54b3caf9fffc",
+          "after": "89aa88cf4bddeb555f71a4acb614f973b18b5369"
+        },
+        "validation/framework.py": {
+          "before": "e695a610abf9cc967f9de63c9a5ac1104742cb81",
+          "after": "7f98828e2ec8a185551d71aab93b310b74c34de1"
+        },
+        "validation/normative-coverage.json": {
+          "before": "bcacd075ee0e1c91eb18bd508c0b35fac3a4fc7a",
+          "after": "f88050a00d57d3964f3f184692cbffceb3ac70b8"
+        },
+        "validation/tests/test_framework.py": {
+          "before": "d0b1c2c78e27e4f62bc9fc10fa76f238cd2354ce",
+          "after": "e1c0f76af75fa7e576111f8c0caacfe51d893ff1"
+        },
+        "validation/expected-package-files.txt": {
+          "before": "75b8ae8a0f0edf530ec711a73ba26fb45d291a64",
+          "after": "b71fac7e12e563eb3ca44808853b5cd81fc51a6e"
         }
       }
     }

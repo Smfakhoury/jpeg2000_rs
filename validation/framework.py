@@ -1250,6 +1250,40 @@ _COMPONENT_DEPTH_BYTES_CONTRACTS = {
     ),
 }
 
+_MAIN_COMPONENT_FINALIZATION_CONTRACTS = {
+    ("src/codestream/coding_style.rs", "new_component_coding_styles"): (
+        "part1_component_styles_new", _coverage_call("parsed_style_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("parsed_coding_style_view", "default"),
+    ),
+    ("src/codestream/quantization.rs", "new_component_quantizations"): (
+        "part1_component_quantizations_new", _coverage_call("parsed_quantization_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("quantization_view", r"&\s*default"),
+    ),
+    ("src/codestream/quantization.rs", "ComponentQuantizations::set"): (
+        "part1_set_component_quantization", r"\1",
+        _coverage_call("parsed_quantization_owner_view", _coverage_call("final", "self")),
+        _coverage_call("parsed_quantization_owner_view", _coverage_call("old", "self"))
+        + r"\s*,\s*component\s*,\s*" + _coverage_call("quantization_view", r"&\s*quantization"),
+    ),
+    ("src/codestream/quantization.rs", "Quantization::is_compatible_with"): (
+        "part1_quantization_compatible", r"\1", None,
+        _coverage_call("quantization_view", r"&\s*self") + r"\s*,\s*"
+        + _coverage_call("decomposition_selector_view", "coding_style"),
+    ),
+    ("src/codestream/coding_style.rs", "Parser::finish_main_component_styles"): (
+        "part1_finish_main_styles", _coverage_call("parsed_style_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("parsed_coding_style_view", "default") + r"\s*,\s*"
+        + _coverage_call("segment_slots_view", r"segments@") + r"\s*,\s*&\s*self\.limits\s*,\s*"
+        + _coverage_call("owned_extensions_view", "extensions"),
+    ),
+    ("src/codestream/quantization.rs", "Parser::finish_main_component_quantizations"): (
+        "part1_finish_main_quantizations", _coverage_call("parsed_quantization_owner_outcome", r"\1"), None,
+        r"components\s*,\s*" + _coverage_call("quantization_view", r"&\s*default") + r"\s*,\s*"
+        + _coverage_call("component_style_owner_view", "styles") + r"\s*,\s*"
+        + _coverage_call("segment_slots_view", r"segments@"),
+    ),
+}
+
 _DECOMPOSITION_RESOLUTION_CONTRACTS = {
     ("src/codestream/extensions.rs", "Part2Extensions::decomposition_structure"): (
         "part1_dfs_lookup", _coverage_call("dfs_option_view", r"\1"), None,
@@ -1419,6 +1453,15 @@ _SIZ_GEOMETRY_CONTRACTS = {
     ),
     ("src/codestream/geometry.rs", "ceil_div"): (
         "part1_image_ceil_div", r"\1", None, r"value\s*,\s*divisor",
+    ),
+}
+
+_TILE_DATA_WINDOW_CONTRACTS = {
+    ("src/codestream/tiles.rs", "Parser::tile_data_window"): (
+        "part1_tile_data_window", _coverage_call("tile_data_window_outcome", r"\1"),
+        _coverage_call("parser_view", _coverage_call("final", "self")),
+        _coverage_call("parser_view", _coverage_call("old", "self"))
+        + r"\s*,\s*data_start\s*,\s*start\s*,\s*length",
     ),
 }
 
@@ -2161,7 +2204,36 @@ def validate_normative_coverage(
         path: Path, caller: str, callee: str, *, require_caller_body: bool,
     ) -> bool:
         if require_caller_body:
-            return same_file_call(path, caller, callee, distinct_file=True)
+            if same_file_call(path, caller, callee, distinct_file=True):
+                return True
+            owner = caller.rsplit("::", 1)[0] if "::" in caller else None
+            for (relay_path, relay), binding in _MAIN_COMPONENT_FINALIZATION_CONTRACTS.items():
+                if owner is None or not relay.startswith(owner + "::"):
+                    continue
+                relay_short = relay.rsplit("::", 1)[-1]
+                if relay_short == callee or not same_file_call(
+                    path, caller, relay_short, distinct_file=True,
+                ):
+                    continue
+                resolved = (ROOT / relay_path).resolve()
+                header = function_header(resolved, relay)
+                if header is None or not same_file_call(
+                    resolved, relay, callee, distinct_file=True,
+                ):
+                    continue
+                text = source_text(resolved)
+                start = text.rfind("#[cfg_attr(verus_keep_ghost, verus_spec(", 0, header.start())
+                contract = text[start:header.start()] if start >= 0 else ""
+                model, projection, final_state, arguments = binding
+                # Preserve earlier caller objects through one actual, total-Result stage.
+                if final_state is None and re.search(
+                    r"\bverus_spec\(\s*(\w+)\s*=>\s*ensures\s+"
+                    + projection + r"\s*==\s*crate::specs::" + re.escape(model)
+                    + r"\s*\(\s*" + arguments + r"\s*,?\s*\)\s*,?\s*\)\)\]",
+                    contract,
+                ):
+                    return True
+            return False
         text = source_text(path)
         if re.fullmatch(r"\w+", callee) is None:
             return re.search(rf"\b{re.escape(callee)}\s*\(", text) is not None
@@ -2691,6 +2763,7 @@ def validate_normative_coverage(
                 or _TYPED_LAYOUT_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _CODESTREAM_READER_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SOT_READER_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _TILE_DATA_WINDOW_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _SIZ_GEOMETRY_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _LAYOUT_PROLOGUE_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _MAIN_HEADER_ADMISSION_CONTRACTS.get((reference["path"], reference["symbol"]))
@@ -2700,6 +2773,7 @@ def validate_normative_coverage(
                 or _COMPONENT_MARKER_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECOMPOSITION_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _DECOMPOSITION_RESOLUTION_CONTRACTS.get((reference["path"], reference["symbol"]))
+                or _MAIN_COMPONENT_FINALIZATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_DEPTH_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _COMPONENT_HEADER_APPLICATION_CONTRACTS.get((reference["path"], reference["symbol"]))
                 or _PROFILE_BYTES_CONTRACTS.get((reference["path"], reference["symbol"]))
@@ -2732,6 +2806,10 @@ def validate_normative_coverage(
             )
             if header_contract:
                 expected_result_model = header_contract[0]
+            if (reference["path"], reference["symbol"]) in _TILE_DATA_WINDOW_CONTRACTS and {
+                "path": "specs/packet_input.rs", "symbol": "part1_tile_data_window",
+            } not in entry["spec_refs"]:
+                raise ValueError("tile-data window model must be bound to specs/packet_input.rs")
             if (reference["path"], reference["symbol"]) in (
                 ("src/tier1/coding.rs", "Tier1CodingStyle::set_force_high_throughput"),
                 ("src/tier1/contributions.rs", "Tier1CodeBlockDecoder::set_multiple_ht_sets_allowed"),
