@@ -47,8 +47,10 @@ jobs:
         run: |
           cargo publish --dry-run --locked 2>&1 | tee target/publication/dry-run.log
           grep -F "aborting upload due to dry run" target/publication/dry-run.log
-          sha256sum "target/package/jpeg2000-decoder-$CRATE_VERSION.crate" \
-            > target/publication/SHA256SUMS
+          (
+            cd target
+            sha256sum "package/jpeg2000-decoder-$CRATE_VERSION.crate"
+          ) > target/publication/SHA256SUMS
       - name: Retain the exact preflight archive and receipt
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

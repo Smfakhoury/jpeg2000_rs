@@ -37,6 +37,8 @@ the [release preflight](.github/workflows/release.yml) from `release/0.1`.
 It rejects other refs, checks the package identity and inventory, runs
 `cargo publish --dry-run --locked`, and retains the actual archive, checksum,
 source commit and command log. It has no upload step or registry credential.
+From the downloaded artifact root, verify its archive with
+`sha256sum --check publication/SHA256SUMS`.
 
 This packaging preflight does not replace the candidate checks, separate
 packaged-source Verus replay, numerical/resource gates or instrumented fuzz
