@@ -15,6 +15,55 @@ contracts and models. Exact run counts and source/tool hashes belong in fresh
 CI artifacts, not committed result snapshots. Independent model-to-standard
 review and official conformance testing remain separate.
 
+## Proposed exact main-component finalizer record
+
+The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
+proposes only the nine protected paths of the existing
+`main-component-finalization` profile for #208. This record branch changes
+documentation only; the fifteen existing records, seventeen profiles,
+decoder/model source, pins and resource caps are unchanged.
+
+The exact source amendment is measured against accepted main
+`6d613158e0d5b0908908cb93f1a1846b77beab9e`. Its held technical source is
+`adeaaa3b0129c4f5030222384c210cf25c22f950`, with original CI
+`41362592419` and Verus `41362592321`. Every protected regular-file Git blob
+pair is included, not a subset or an authorization for a combined amendment.
+
+The proposed source refines the actual main component style/quantization
+finalizers, raw owner lookup, ordered updates, errors and full parser frames.
+It preserves the accepted tile-data window and all earlier model meanings.
+It does not prove complete main-header traversal, inherited tile configuration,
+raw public decoding, lifetime analysis or normative correspondence.
+
+Record adoption provides eligibility only. After separate record review,
+normal guarded adoption and fresh actual-main acceptance, #208 still requires
+refreshed source ancestry, fresh gates and Ready hold, separate actual-source
+review, normal guarded merge and fresh main acceptance. This record is not
+source approval, official conformance qualification or publication completion.
+
+## Proposed exact tile-data-window record
+
+The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
+proposes only the seven protected paths of the already adopted
+`tile-data-window` profile for #206. This branch changes documentation only,
+not any executing body, model, controller, test, pin or resource limit.
+
+The proposed source factors the two actual tile-data range paths into one
+executing helper with a complete Result/final-reader relation. It preserves
+the zero-length path's early cursor commit before packet metadata errors and
+the fixed-length path's late commit after both metadata finalizers succeed.
+Raw length/start/range failures, partial updates and all reader accounting
+fields retain their original behavior; no normalized input or supplied range
+result is introduced.
+
+The additive model remains in the existing packet input module, preserving
+the independent seven-path profile rather than changing the SOT model scope.
+Normal record adoption and fresh main acceptance provide eligibility only.
+Refreshed full source/archive gates, fresh Ready policy, independent source
+review, guarded merge and fresh actual-main source acceptance remain required.
+No whole public decoder, Verus lifetime analysis, standards correspondence,
+official conformance or publication completion is established here.
+
 ## Proposed SOT reader and marker-admission record
 
 The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
@@ -36,6 +85,48 @@ source and actual archive qualification, a fresh Ready policy check,
 independent source review, guarded merge and fresh actual-main acceptance.
 This does not establish complete outer parsing, public image composition,
 Verus lifetime analysis, standards correspondence or publication readiness.
+
+## Actual main component style/quantization finalization
+
+The main-header callsite executes the sole style and quantization finalizers in
+their owning modules. Total Result contracts start from raw defaults, counts and
+borrowed segment slots, not normalized owners or supplied parse outcomes. Style
+factory geometry checks precede COC payload access, all physical style slots are
+filled, positional overrides precede actual DFS/ADS resolution, and QCC uses the
+resolved per-component style before each compatibility check. Quantization
+storage retains its original logical Vec length and original factory bounds.
+Every field and unused tail is retained; internal owners are consumed on errors.
+Shared references without interior mutability frame parser/limits/work, segment
+bytes and extension/style owners. Existing exact getters and producer contracts
+are reused without widening their opaque visibility.
+
+The pinned `verus_spec` frontend cannot resolve associated static constructors
+(`cannot find function new`). Thin existing factory facades therefore call one
+shared executable free-function factory each; no alternate algorithm exists.
+The setter's explicit length check and indexed assignment preserve its former
+`get_mut` error and update order while exposing the complete frame to the solver.
+Native differential tests include raw factory/owner states, lazy payloads,
+precise first errors and real reader/SIZ/COD/COC/QCD/QCC/DFS/ADS joins.
+
+This additive LOCAL refresh retains the previously qualified finalizers on
+accepted actual-main source, including its SOT and DFS/ADS producers. Main QCD
+parsing remains before style/decomposition finalization; tile QCD ordering is
+unchanged. Earlier components may be committed internally before an error;
+the complete error is returned and that internal owner is consumed, not staged
+or exposed as an alternate result. Raw counts, physical holes, positional
+indices and unused tails are not normalized.
+
+Earlier inventory requirement objects are retained exactly. Their named caller
+check may follow one owning-type finalizer stage only when both actual call
+edges and that stage's exact, premise-free total-Result contract are present.
+Removing either edge or weakening the intermediate contract fails closed.
+
+Fresh matched-parent/root/archive and focused proof evidence belongs in the
+local qualification receipt, not inferred from definition counts or earlier
+runs. Verification retains the pinned `--no-lifetime` boundary. This is a
+technical candidate only: parent-owned record, review, CI, guarded integration
+and actual-main acceptance remain separate. No complete parsing, pixels,
+lifetime verification, normative conformance or publication claim follows.
 
 ## Actual DFS/ADS decomposition resolution
 
@@ -357,6 +448,93 @@ official conformance or document-use rights. Actual PLT/PPT admission is
 described above; `read_tile_part`, layout/public decoder and F2/F4/F8 composition
 remain separate; the executable caller reference is not a proof of those outer
 joins.
+
+## Actual tile-data window production
+
+`Parser::tile_data_window` is the single executed range/slice producer used by
+both `read_tile_part` branches. Its total source-derived model consumes the
+complete raw `parser_view`, explicit original data/start offsets and u32 length,
+without SOT, cursor, range or admission premises. The existing EOC contract
+derives zero-length scanning, including partial work/cursor updates and errors;
+the original end store precedes slice lookup. Fixed lengths retain conversion,
+checked addition, range-before-slice precedence and every original error offset,
+without storing the cursor. The actual caller still runs the existing contracted
+length/header finalizers in order and stores the fixed end only after both
+succeed. Payload construction and all other reader bodies are unchanged.
+
+The additive `part1_tile_data_window` model lives in `specs/packet_input.rs`;
+its actual helper contract and reveal resolve through the existing
+`crate::specs` re-export. Explicit imports reuse the root reader/EOC/frame
+models, without moving or changing any integrated models in `specs/mod.rs`.
+The inventory/framework bind this model to its exact packet-input source path;
+even a duplicate model at the former root path is rejected. This distinguishes
+the already-adopted fixed seven-path tile-data-window profile from the separate
+eight-path SOT scope; no amendment/profile authorization is made here.
+
+The result projection observes end and borrowed bytes, with every reader field
+on success and error. The explicit data offset also covers raw reversed or
+out-of-input slices; genuine callers pass their original current position.
+Independent wide-arithmetic/full-state tests exercise 200,000 contexts, including
+missing/first EOC, raw cursors, work limits/overflow, fixed boundaries/addition
+overflow, slice errors, untouched counters, and exact borrowed pointer identity.
+Four actual PLT/PPT/SOD reader joins distinguish successful and failing metadata
+finalization for zero/fixed lengths; four additional raw finalizer failures
+preserve the helper's resulting frame. Conversion failure is modeled but is not
+executable for u32-to-usize on the tested 64-bit targets.
+
+Original local evidence remains under ignored `target/tile-data-window/`.
+The source198-main refresh onto `313a1d089491fdc8e752d9e39546b6905b999469`
+is indexed by `refresh-313a1d0/index.json`: commands/logs, source/tool/binary hashes,
+source-inlining equivalence,
+two runtime/SMT positive controls and four assertion/SMT-rejected executing-helper
+mutants. Both Rust 1.93.1 and MSRV 1.88 rerun the two focused window tests;
+the original qualification's 668 library and six example tests remain indexed
+separately, not relabeled as refreshed full-suite results. Focused inventory
+binding/mutation tests, fmt and pinned-toolchain Clippy pass.
+MSRV Clippy with `-D warnings` retains the baseline's unrelated unknown
+`manual_is_multiple_of` lint; the same run with only unknown lints allowed passes.
+Pristine pinned Verus/Rust 1.98.1 verifies matching tile-module jobs 9 -> 10 and
+metadata-finalizer jobs 2 -> 2, and packet-input jobs 9 -> 9, with explicit
+nonzero successful SMT rows.
+These are focused counts, not whole-root/archive qualification; the existing
+`--no-lifetime` boundary is unchanged. Outer tile/header/public composition and
+normative qualification remain separate.
+
+The preceding local additive refresh was based only on accepted main
+`2732fcb51d476d3665245dc59be4268ed796ed8a`, retaining the qualified
+`e609ff450080ff71b4897c667a8321907a061be4` helper/model and historical receipts.
+That controller's 17 profiles and 14 reviewed-record objects were not
+changed. Record 205 adopts the separate SOT scope, not this window source or a
+window record; unaccepted SOT source was not incorporated. Its local receipts
+under `target/tile-window-current2732/index.json` bind the frozen current source,
+pristine whole-root and actual source-archive verification, focused native and
+source/caller/full-frame checks, and exact package membership and order.
+Historical focused counts above are not current whole-crate counts. Dependency
+reuse is limited to identical pinned third-party Cargo inputs; project outputs
+and proof-result caches are not reused. These technical checks retain
+`--no-lifetime` and do not establish whole-decoder correctness, lifetime
+verification, normative fidelity, publication readiness, or source/record
+approval. That source and evidence remain frozen, rather than relabeled as
+post-integration qualification.
+
+The subsequent local child normally merges that qualified window candidate
+`b223f88ab3797078a40ced08b13a7a7345a620f5` with accepted actual main
+`614f3509aac0117a5c171813bfa0578775e6dc37`, after source #202's normal SOT
+integration and fresh actual-main acceptance. All accepted SOT source contracts,
+models, requirements, tests and caller behavior are retained. The only
+protected diff against this accepted main is the fixed window7 amendment;
+the already-integrated SOT8 source is not a second new amendment. The 17
+controller profiles, 14 reviewed-record objects, committed pins and native
+resource limits remain unchanged. Fresh matched-parent ROOT, current ROOT and
+actual current archive receipts, positive helper/model SMT rows, native/MSRV
+tests, source/caller/full-frame guards, fmt, strict Clippy and exact package
+membership/order are indexed locally under
+`target/tile-window-accepted614/qualification-summary.json`. Counts are measured
+from these executions, not transferred from either earlier candidate.
+Identical third-party dependency compilation may be reused, never project
+outputs or proof-result caches. This child retains all boundaries above and
+stops at LOCAL technical qualification: no source/record/Ready approval, remote
+operation, publication, whole-decoder, lifetime or normative claim.
 
 ## Actual packet-length admission and PLM group production
 

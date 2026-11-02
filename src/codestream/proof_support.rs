@@ -114,6 +114,32 @@ verus! {
         (styles.components, styles.styles@.map_values(|style: CodingStyle| parsed_coding_style_view(style)))
     }
 
+    closed spec fn parsed_style_owner_outcome(result: Result<ComponentCodingStyles, DecodeError>)
+        -> Result<(u16, Seq<crate::specs::Part1ParsedCodingStyle>), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(owner) => Ok(component_style_owner_view(&owner)) }
+    }
+
+    closed spec fn parsed_quantization_owner_view(owner: &ComponentQuantizations)
+        -> (u16, Seq<crate::specs::Part2Quantization>)
+    {
+        (owner.components, owner.quantizations@.map_values(|value: Quantization| quantization_view(&value)))
+    }
+
+    closed spec fn parsed_quantization_owner_outcome(result: Result<ComponentQuantizations, DecodeError>)
+        -> Result<(u16, Seq<crate::specs::Part2Quantization>), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok(owner) => Ok(parsed_quantization_owner_view(&owner)) }
+    }
+
+    closed spec fn segment_slots_view(segments: Seq<Option<Segment<'_>>>)
+        -> Seq<Option<crate::specs::Part1CodestreamSegment>>
+    {
+        segments.map_values(|value: Option<Segment<'_>>| match value {
+            None => None, Some(segment) => Some(segment_view(segment)),
+        })
+    }
+
     pub closed spec fn component_coding_style_result(styles: &ComponentCodingStyles, component: u16) -> Result<CodingStyle, DecodeError> {
         if component >= styles.components {
             Err(DecodeError::MalformedInput { offset: 0, kind: MalformedKind::InvalidCodingStyle })
@@ -663,6 +689,12 @@ verus! {
         -> Result<crate::specs::Part1CodestreamReader<'a>, DecodeError>
     {
         match result { Err(error) => Err(error), Ok(parser) => Ok(parser_view(&parser)) }
+    }
+
+    closed spec fn tile_data_window_outcome(result: Result<(usize, &[u8]), DecodeError>)
+        -> Result<(usize, Seq<u8>), DecodeError>
+    {
+        match result { Err(error) => Err(error), Ok((end, data)) => Ok((end, data@)) }
     }
 
     closed spec fn segment_view(segment: Segment<'_>) -> crate::specs::Part1CodestreamSegment {
