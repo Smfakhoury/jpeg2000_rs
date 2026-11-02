@@ -1,13 +1,52 @@
 # Publishing and releasing
 
 Publishing source, claiming standards conformance, and publishing a versioned
-crate are different decisions. `publish = false` remains in force until a
-package release is explicitly authorized.
+crate are different decisions. This release candidate uses
+`publish = ["crates-io"]` to permit Cargo's publication dry-run. That metadata
+does not authorize an upload. Development branches may keep `publish = false`.
 
 The intended registry package is `jpeg2000-decoder`, imported in Rust as
 `jpeg2000_decoder`. Repository URLs remain `microsoft/jpeg2000_rs`.
 Check registry name availability again for the actual release; an earlier
 not-found response does not reserve a name or authorize publication.
+
+## Manual first 0.1 release
+
+Prepare a clean, reviewed `0.1.0` commit from `release/0.1`, not an unmerged
+proof-development or CI-hardening branch. Preserve the experimental,
+non-certified claims and the documented proof and resource boundaries.
+Credentials and crate ownership are separate from repository/JIT access;
+never print a registry token or place it in source, reports or chat.
+
+Run all candidate checks below against that exact commit and actual archive.
+In particular, retain the separate root and packaged-source Verus results,
+independent numerical/resource results and instrumented fuzz qualification.
+Then run the no-upload packaging checks:
+
+```sh
+cargo package --list --locked
+cargo package --locked
+cargo publish --dry-run --locked --registry crates-io
+```
+
+The dry-run must explicitly report that upload was aborted. Retain the
+`target/package/jpeg2000-decoder-0.1.0.crate` bytes and SHA256 with the source
+commit and original validation evidence. A previously qualified commit or
+archive does not attest a changed candidate.
+
+Only after separate owner authorization for the exact release commit,
+version and archive may the publishing operator run
+`cargo publish --locked --registry crates-io`. That command uploads; it is
+not a validation command. Verify the registry archive/version, an external
+consumer build and docs.rs afterward. Published versions cannot be overwritten,
+and yanking does not delete their contents.
+
+No publishing workflow is needed for this manual first upload. The
+[crates.io Trusted Publishing prerequisites](https://crates.io/docs/trusted-publishing)
+currently require an already published crate; initial publication uses an
+API token. Configure an OIDC publisher only later, with agreed crate owners,
+exact workflow identity, protected release refs and complete same-candidate
+release gates. A dry-run or successful workflow is not upload authority.
 
 ## Source publication
 
@@ -44,8 +83,8 @@ boundary before proposing any destructive operation.
 
 Source-publication approval does not by itself choose a history strategy or
 authorize ref deletion, force-pushing, or repository replacement/renaming.
-Keep the repository private until the actual retained content and any proposed
-operations have the required owner approval.
+Obtain owner approval for the actual retained content and proposed operations
+before any future visibility or history change.
 
 ### Unsafe-code review
 
