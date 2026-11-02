@@ -1,0 +1,55 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "precinct-map-test-registration.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/jpip.rs').read_text(); t=Path('src/jpip_precinct_map_contract.rs').read_text(); assert 'include!(\"jpip_precinct_map_contract.rs\");' in s; assert 'fn derive_precinct_map_matches_standard_geometry_contract()' in t; assert 'failures.is_empty()' in t; assert 'requested' not in t"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "1b6ab2a4ad1f14f5081e6afd",
+  "deviation_id": "004b7580baff7f50533ef449",
+  "entry": "src/jpip.rs:1845:jpip::DatabinCache::derive_precinct_map",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "fixture=13 progression=0: expected 810 mappings, got MalformedInput { offset: 0, kind: InvalidPacketHeader }"
+  },
+  "files": [
+    {
+      "path": "src/jpip_precinct_map_contract.rs",
+      "sha256": "d625e36395f5bc0accaf67ad55676fc884e226df5e16e0ba211a89fda9dd0ad9"
+    },
+    {
+      "path": "precinct-map-test-registration.patch",
+      "sha256": "8b3e8f1b9a713c9875c12f08e78abe19bd97ce85c685ade69edcfcad3dec52f3"
+    }
+  ],
+  "id": "DEV-76BF9F9717",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "874546c124e6ad9dd9eab8de",
+  "test": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "jpip::tests::derive_precinct_map_matches_standard_geometry_contract",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "8a33f3c4299ccaa7ac8de80c"
+}

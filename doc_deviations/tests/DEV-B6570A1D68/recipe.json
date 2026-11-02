@@ -1,0 +1,43 @@
+{
+  "build": [
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; p=Path('src/codestream/tests.rs'); s=p.read_text(); line='\\ninclude!(\"metadata_contract_tests.rs\");\\n'; p.write_text(s+line) if line not in s else None"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--locked",
+      "--no-run"
+    ]
+  ],
+  "case_id": "2a02569cbc667013b0d0abec",
+  "deviation_id": "ccd9c97cc7525a9cdd102fd7",
+  "entry": "src/codestream.rs:3633:codestream::parse",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "legal T.800 PLM=true, PLT=true, layers=1: expected metadata, got MalformedInput { offset: 65, kind: InvalidMarkerLength }"
+  },
+  "files": [
+    {
+      "path": "src/codestream/metadata_contract_tests.rs",
+      "sha256": "b523b5349547fd0efe3a289b7a893c83e02b585de4c8b22984282d4310ade0c2"
+    }
+  ],
+  "id": "DEV-B6570A1D68",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "3657ef26f30ed53d4b5e2551",
+  "test": [
+    "cargo",
+    "test",
+    "--lib",
+    "--locked",
+    "codestream::tests::metadata_contract::metadata_plm_plt_admission_and_error_propagation",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "65dbccafb1e648edaf1e39cd"
+}

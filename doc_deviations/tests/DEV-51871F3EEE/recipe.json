@@ -1,0 +1,55 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "stored-bytes-registration.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/jpip.rs').read_text(); t=Path('src/jpip/stored_bytes_tests.rs').read_text(); assert s.count('include!(\"jpip/stored_bytes_tests.rs\");') == 1; assert t.count('fn stored_bytes_obeys_metadata_bin_identity_and_sparse_union()') == 1; assert 'expected union={expected}' in t; print('verified registration and oracle in replay source')"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "28a49192872db0fa40f803aa",
+  "deviation_id": "1e2f5bdf4506354e38f4b60a",
+  "entry": "src/jpip.rs:1429:jpip::DatabinCache::stored_bytes",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "relabeled n=39 step=2 CSn=7: stored_bytes=41 expected union=31"
+  },
+  "files": [
+    {
+      "path": "src/jpip/stored_bytes_tests.rs",
+      "sha256": "cf85d3e3144e5d9be1af16980816a3ebf0d2ff0827c1a5d0ce3547836d886e47"
+    },
+    {
+      "path": "stored-bytes-registration.patch",
+      "sha256": "9514a8ea5878ce29d0423e90dde948237a3e119cc9d26e4a7465e6ebaa3b7ba1"
+    }
+  ],
+  "id": "DEV-51871F3EEE",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "f2b5e2fde27c8d427b93d091",
+  "test": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "jpip::tests::stored_bytes_obeys_metadata_bin_identity_and_sparse_union",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "76093ce8dd77c50a3b60f6e6"
+}

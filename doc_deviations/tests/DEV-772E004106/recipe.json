@@ -1,0 +1,46 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/register-jpip-contract-tests.py"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "6586aa830a6ecaabb80bb964",
+  "deviation_id": "f26860378c67ef91480cc6ae",
+  "entry": "src/jpip.rs:3504:jpip::ingest_jpip_response",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "T.808 A.2.1 initial inherited-header defaults violated:\nprimed=false, bin=0: MalformedInput { offset: 0, kind: InvalidJpipHeader }"
+  },
+  "files": [
+    {
+      "path": "src/jpip_ingest_contract_tests.rs",
+      "sha256": "8754902b8b8bd81c9498cc89540fa8c46e1b126a3a53a12c74abd6d12904e8db"
+    },
+    {
+      "path": "validation/register-jpip-contract-tests.py",
+      "sha256": "2c3be19eb97af213bb1319018c749d6179fc7de7af8e55d3c9e7846f8f7d1ae5"
+    }
+  ],
+  "id": "DEV-772E004106",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "45eff4865fe38a6f814ee21b",
+  "test": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "jpip::tests::contract_ingest_standard_headers_and_response_local_defaults",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "901c8e46d43b2c36f29e9cc9"
+}

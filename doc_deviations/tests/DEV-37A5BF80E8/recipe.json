@@ -1,0 +1,44 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/install-column-pair-contract-test.py"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "1a17e3ea63a5e2d61153056f",
+  "deviation_id": "1d56123f20c53670cd1ffde5",
+  "entry": "src/transform.rs:1700:transform::inverse_column_pair",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "inverse_column_pair width=1 height=1 origin=1 x=0 irreversible=true low=[] high=[-15859712]: expected=[-7929856], actual=Ok([-15859712])"
+  },
+  "files": [
+    {
+      "path": "src/transform_column_pair_contract_tests.rs",
+      "sha256": "135fcc34b838d2a28a81b4240254914bc7aab6b7f1570acea57307463193571d"
+    },
+    {
+      "path": "validation/install-column-pair-contract-test.py",
+      "sha256": "49482d3cf88552ef020396fd9e6a523b0edae9a3486fb9bd7ce0294a261d181f"
+    }
+  ],
+  "id": "DEV-37A5BF80E8",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "addb5e4e5b1eb100ab900f62",
+  "test": [
+    "cargo",
+    "test",
+    "--lib",
+    "transform::tests::part1_column_pair_contract",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "a58f5a821f0df6756f7e94f2"
+}

@@ -1,0 +1,51 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "jpip_databin_contract.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "import hashlib; assert hashlib.sha256(open('src/jpip.rs','rb').read()).hexdigest() == 'a997101e1b6d41f15ef6f9832cd4564f02a49fb6b42a380d01d9cab3d38c11f7', 'replay source mismatch: test registration/assertions missing'"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "d7f34344b2caaea10ce59061",
+  "deviation_id": "7a7dd7e121a983e540bd582d",
+  "entry": "src/jpip.rs:137:jpip::JpipMessageHeader::databin",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "parse -> header.databin -> fragment: form=1 class=0 stream=0 bin=0 offset=0 last=false wire=[20, 00, 01, 00]: MalformedInput { offset: 0, kind: InvalidJpipHeader }"
+  },
+  "files": [
+    {
+      "path": "jpip_databin_contract.patch",
+      "sha256": "07023b074e16e0837dd5d5d6235df48ba2314fae3989c520f06f41854a718f0b"
+    }
+  ],
+  "id": "DEV-E9BA9C12DC",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "15c602d57a59b4226e9d6c5e",
+  "test": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "jpip::tests::parses_all_three_standard_header_forms_and_auxiliary",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "e85f6e1595e685d9e480e9cd"
+}

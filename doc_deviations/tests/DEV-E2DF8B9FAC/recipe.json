@@ -1,0 +1,35 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/build_automatic_headers_contract.py"
+    ]
+  ],
+  "case_id": "33ce86fa2748896b94d81d14",
+  "deviation_id": "31f0862daac4d7339a6b6163",
+  "entry": "src/jpip.rs:2843:jpip::DatabinCache::automatic_headers",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "A.3.3 class-2 raw JPP bins: stream=37, tiles=1, components=1, marker_bytes=0, SOD=false: rejected legal bin: MalformedInput { offset: 0, kind: MissingRequiredStructure }"
+  },
+  "files": [
+    {
+      "path": "src/jpip_automatic_headers_contract_tests.rs",
+      "sha256": "a1a42935f8ad3996db502403d9611d08c97fea83fc46763c2e75e85bf997ec44"
+    },
+    {
+      "path": "validation/build_automatic_headers_contract.py",
+      "sha256": "b47aa9d2806ce1768b0198ddcaf6e45eab78a0a4c50134ef71db67ad5dc7d768"
+    }
+  ],
+  "id": "DEV-E2DF8B9FAC",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "4047561ef847a95bf8edd735",
+  "test": [
+    "target/automatic_headers_contract",
+    "jpip::tests::automatic_headers_optional_sod_contract",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "4bcf68dce311909d630c2985"
+}

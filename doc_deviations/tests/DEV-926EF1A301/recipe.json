@@ -1,0 +1,40 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/tile_transition_suite.py",
+      "build"
+    ]
+  ],
+  "case_id": "294dc3cab57bd4b0e4d6345f",
+  "deviation_id": "855a0fa63dd570a3b1b405b2",
+  "entry": "src/jpip.rs:3874:jpip::parse_tile_part_transitions",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "assertion `left == right` failed: route=parse_tile_part_transitions(tile=7); input=[ff, 90, 00, 0a, 00, 07, 00, 00, 00, 0d, 05, 00, ff, 93]\n  left: Ok([JpipTilePartTransition { tile: 7, tile_part: 5, packet_count: None, data_length: None, functional: false, header: [255, 144, 0, 10, 0, 7, 0, 0, 0, 13, 5, 0, 255, 147] }])\n right: Err(MalformedInput { offset: 0, kind: InvalidTilePart })"
+  },
+  "files": [
+    {
+      "path": "src/jpip_transition_contract_tests.rs",
+      "sha256": "440e4a8e38ed38909b6a4e7521bcdfb2ea7b325ddf53ddc43a8c818edc77129f"
+    },
+    {
+      "path": "validation/tile_transition_access.patch",
+      "sha256": "dff04e9fb0bd76fe14cdce6cdbd1aade1beecf75562d857841c8e1c33c83be82"
+    },
+    {
+      "path": "validation/tile_transition_suite.py",
+      "sha256": "f6033d021f5df2310968fcd75f365d81862f88b4ae8e21db8c775d00613aad9f"
+    }
+  ],
+  "id": "DEV-926EF1A301",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "20f954947eed5f28a085ba7e",
+  "test": [
+    "python3",
+    "validation/tile_transition_suite.py",
+    "run",
+    "contract_transition_psot_lengths"
+  ],
+  "test_item": "32cc62dbf63c6da1321051c0"
+}

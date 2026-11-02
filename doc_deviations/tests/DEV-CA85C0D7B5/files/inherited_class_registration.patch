@@ -1,0 +1,15 @@
+--- a/src/jpip.rs
++++ b/src/jpip.rs
+@@ -5072,8 +5072,12 @@
+         };
+         assert_eq!(header.databin().class(), DatabinClass::Metadata);
+         assert_eq!(header.databin().codestream(), 1);
++
++        check_inherited_class_contract();
+     }
+ 
++    include!("jpip_inherited_class_contract.rs");
++
+     #[test]
+     fn parses_end_of_response() {
+         let mut context = JpipHeaderContext::new();

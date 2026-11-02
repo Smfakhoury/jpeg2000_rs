@@ -1,0 +1,44 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/build-precinct-contract-tests.py"
+    ]
+  ],
+  "case_id": "3cf1a88fbaecd2883adbd142",
+  "deviation_id": "770981616b006ca434fb132a",
+  "entry": "src/jpip.rs:3740:jpip::validate_precinct_codestream",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "main progression=0, effective tile progression=1: expected Err(MalformedInput { offset: 0, kind: InvalidJpipLayout }), got Ok(())"
+  },
+  "files": [
+    {
+      "path": "src/jpip_precinct_validation_tests.rs",
+      "sha256": "9bf3359556c91de93045407913d1c1c87ddbbd5f1a4210e9a550625761bc611e"
+    },
+    {
+      "path": "validation/precinct-contract-alloc/Cargo.toml",
+      "sha256": "5cbf55ed03164cb886882e76f66060a56018be2fe8e05d627e446ca9fa1bd449"
+    },
+    {
+      "path": "validation/precinct-contract-alloc/lib.rs",
+      "sha256": "4ebf3dc9c77000531fc0de6bd2d509fa2ab1ba82bb6daa80456e9d1b4c1777f9"
+    },
+    {
+      "path": "validation/build-precinct-contract-tests.py",
+      "sha256": "3f1c1a0734f8dc6d9732982aaf4d8b257b2e4e6827dd89fad191c56c219009bd"
+    }
+  ],
+  "id": "DEV-80E8727274",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "5d199dfcfdfdb4afc8f756e9",
+  "test": [
+    "target/precinct-contract-tests",
+    "--exact",
+    "jpip::tests::precinct_contract_structural_eligibility",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "test_item": "8afbde10624bca348eb275a1"
+}

@@ -1,0 +1,39 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/build-progression-contract.py"
+    ]
+  ],
+  "case_id": "44c55ec8f76ec6b24e477888",
+  "deviation_id": "4fb578e5efe0b16eaaae3a78",
+  "entry": "src/packet.rs:2965:packet::decode_progression_precinct_packet",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "T.800 A.8.1 permits absent SOP with Scod bit 1 set: packed=false, flags=2, actual=Err(MalformedInput { offset: 0, kind: Truncated }), expected=Ok((PacketBodyDecode { present: false, code_blocks: 1, contributions: 0, segments: 0, passes: 0, header_bytes: 1, body_bytes: 0, bytes_consumed: 1 }, 1, 0))"
+  },
+  "files": [
+    {
+      "path": "src/packet_progression_contract_tests.rs",
+      "sha256": "61c6af893208fd7dee0f53f5ab9a01dc61d43aacf7e0a413538c706fb19cdb31"
+    },
+    {
+      "path": "validation/deepspec-progression-registration.patch",
+      "sha256": "2c28653d3f199f33a0ee6c46c52c95185efd68217243db8d293de9292d7b5999"
+    },
+    {
+      "path": "validation/build-progression-contract.py",
+      "sha256": "b316886280f826efd5ccde8dbda4a6ecdf504d708e8733f95602f794bac82504"
+    }
+  ],
+  "id": "DEV-709CD8127B",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "9581f8bf93e6bf0e73ab4d0f",
+  "test": [
+    "target/deepspec-progression-suite",
+    "--exact",
+    "packet::tests::progression_contract_sop_policy_and_optional_marker",
+    "--nocapture"
+  ],
+  "test_item": "f71c07d698d8441f7f243d58"
+}

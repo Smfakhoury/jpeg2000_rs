@@ -1,0 +1,32 @@
+{
+  "build": [
+    [
+      "bash",
+      "-c",
+      "patch --batch --forward -p1 < semantic-needs.patch && grep -Fq 'fn semantic_metadata_needs_ignore_metadata_codestream_index()' src/jpip.rs && grep -Fq 'exact outstanding dependencies' src/jpip.rs && grep -Fq 'for split in splits' src/jpip.rs && cargo test --locked --lib --no-run && cp \"$(find target/debug/deps -maxdepth 1 -type f -executable -name 'jpeg2000_rs-*')\" target/semantic-needs-tests"
+    ]
+  ],
+  "case_id": "bd44625aaae9e533298cf3ee",
+  "deviation_id": "d68b6e9d7a81b7b727f130cf",
+  "entry": "src/jpip.rs:1200:jpip::JpipContainerAssembly::semantic_needs",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "bin=18446744073709551615 root_csn=0 child_csn=1 query_csn=0 complete=true: actual=(Partial, [(MetadataBin, 18446744073709551615)], None) expected=(Available, [],"
+  },
+  "files": [
+    {
+      "path": "semantic-needs.patch",
+      "sha256": "e4123d7c5510e59dc0efb216f7a4c7aa790ab44dfb695996f36f393b53117606"
+    }
+  ],
+  "id": "DEV-A64A9EFAD1",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "14ba92bb9ab4b9fc4b9ed06e",
+  "test": [
+    "target/semantic-needs-tests",
+    "--exact",
+    "jpip::tests::semantic_metadata_needs_ignore_metadata_codestream_index",
+    "--nocapture"
+  ],
+  "test_item": "797998cd69a411657edec5ec"
+}

@@ -1,0 +1,35 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/build_nonlinear_lookup_contract.py"
+    ]
+  ],
+  "case_id": "efad0ebad5f0e363d0ab2122",
+  "deviation_id": "ef3353983851a3fec301a138",
+  "entry": "src/codestream.rs:1801:codestream::Part2Extensions::nonlinear_transform_for",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "parse_layout -> first tile extensions -> nonlinear_transform_for: Rsiz=0x8200, main=[(Some(0), 9), (Some(2), 9)], tile=[(Some(2), 11), (None, 10)], component=0, expected=Some(NonlinearPointTransform { component: None, precision: 10, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None }), actual=Some(NonlinearPointTransform { component: Some(0), precision: 9, signed: false, transform_type: 2, parameters: [0, 1, 0, 0, 0, 0, 255, 255, 255, 255, 8, 0, 255], d_min: Some(0), d_max: Some(4294967295), point_bits: Some(8), points: [0, 255], gamma_parameters: None })"
+  },
+  "files": [
+    {
+      "path": "validation/nonlinear_lookup_contract.rs",
+      "sha256": "9e2ea87a310f415be3bb1b0159ceb0ed39fc06abf468b3a61d1c35ad8a3ce0e0"
+    },
+    {
+      "path": "validation/build_nonlinear_lookup_contract.py",
+      "sha256": "c98848e053ca6ca50f2d9473683d34521b4cb6f40e6da77dbe7b7aaab2ad0b06"
+    }
+  ],
+  "id": "DEV-8825E34C8B",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "32aa5ed6bcd40eed56feecfe",
+  "test": [
+    "target/nonlinear-lookup-contract",
+    "--exact",
+    "codestream::tests::nonlinear_lookup_standard_header_precedence",
+    "--nocapture"
+  ],
+  "test_item": "2bbb4b7f6d9814081dc6d341"
+}

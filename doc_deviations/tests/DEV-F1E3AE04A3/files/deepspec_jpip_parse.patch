@@ -1,0 +1,501 @@
+--- a/src/jpip.rs
++++ b/src/jpip.rs
+@@ -5104,6 +5104,498 @@
+         assert!(parse_jpip_message(&overflow, &mut JpipHeaderContext::new(), &limits).is_err());
+     }
+ 
++    // Independent wire model: T.808 (12/2022), A.2.1--A.2.3 and D.3.
++    // These are binary framing tests, not claims that opaque bodies decode images.
++    fn spec_vbas(value: u64) -> Vec<u8> {
++        let mut groups = vec![(value & 127) as u8];
++        let mut remaining = value >> 7;
++        while remaining != 0 {
++            groups.push(((remaining & 127) as u8) | 128);
++            remaining >>= 7;
++        }
++        groups.reverse();
++        groups
++    }
++
++    struct SpecMessage {
++        class: u64,
++        stream: u64,
++        bin: u64,
++        offset: u64,
++        body: Vec<u8>,
++        last: bool,
++        auxiliary: Option<u64>,
++    }
++
++    impl SpecMessage {
++        fn wire(&self, form: u8) -> (Vec<u8>, usize) {
++            assert!((1..=3).contains(&form));
++            assert!([0, 1, 2, 4, 5, 6, 8].contains(&self.class));
++            assert_eq!(self.auxiliary.is_some(), self.class % 2 == 1);
++            let mut tail = Vec::new();
++            let mut bin = self.bin;
++            while bin > 15 {
++                tail.push((bin & 127) as u8);
++                bin >>= 7;
++            }
++            tail.reverse();
++            let mut bytes = vec![
++                (form << 5)
++                    | if self.last { 16 } else { 0 }
++                    | bin as u8
++                    | if tail.is_empty() { 0 } else { 128 },
++            ];
++            for (index, group) in tail.iter().enumerate() {
++                bytes.push(*group | if index + 1 == tail.len() { 0 } else { 128 });
++            }
++            if form >= 2 {
++                bytes.extend(spec_vbas(self.class));
++            }
++            if form == 3 {
++                bytes.extend(spec_vbas(self.stream));
++            }
++            bytes.extend(spec_vbas(self.offset));
++            bytes.extend(spec_vbas(self.body.len() as u64));
++            if let Some(auxiliary) = self.auxiliary {
++                bytes.extend(spec_vbas(auxiliary));
++            }
++            let header_length = bytes.len();
++            bytes.extend_from_slice(&self.body);
++            (bytes, header_length)
++        }
++
++        fn assert_parse(&self, parser: &mut JpipMessageParser, form: u8, trailer: bool) {
++            let (mut wire, header_length) = self.wire(form);
++            let consumed_expected = wire.len();
++            if trailer {
++                wire.extend_from_slice(&[0, 2, 0]);
++            }
++            let (message, consumed) = parser.parse(&wire).unwrap_or_else(|error| {
++                panic!("JpipMessageParser::parse form={form} wire={wire:02x?}: {error:?}")
++            });
++            let JpipMessage::Data { header, body } = message else {
++                panic!("data framing expected: {wire:02x?}");
++            };
++            assert_eq!(header.databin().class_identifier(), self.class);
++            let class = match self.class {
++                0 | 1 => DatabinClass::Precinct,
++                2 => DatabinClass::TileHeader,
++                4 | 5 => DatabinClass::TileData,
++                6 => DatabinClass::MainHeader,
++                8 => DatabinClass::Metadata,
++                _ => unreachable!(),
++            };
++            assert_eq!(header.databin().class(), class);
++            assert_eq!(header.databin().codestream(), self.stream);
++            assert_eq!(header.databin().in_class(), self.bin);
++            assert_eq!(header.offset(), self.offset);
++            assert_eq!(header.length(), self.body.len() as u64);
++            assert_eq!(header.is_last_byte(), self.last);
++            assert_eq!(
++                header.final_length(),
++                self.last.then_some(self.offset + self.body.len() as u64)
++            );
++            assert_eq!(header.auxiliary(), self.auxiliary);
++            assert_eq!(header.header_length(), header_length);
++            assert_eq!(consumed, consumed_expected);
++            assert_eq!(body, self.body);
++            assert_eq!(message.body(), self.body);
++            assert_eq!(body.as_ptr(), wire[header_length..].as_ptr());
++            assert_eq!(parser.context().previous_class(), Some(self.class));
++            assert_eq!(parser.context().previous_codestream(), Some(self.stream));
++        }
++    }
++
++    fn spec_random(seed: &mut u64) -> u64 {
++        *seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
++        *seed >> 17
++    }
++
++    #[test]
++    fn deepspec_standard_header_forms() {
++        parses_all_three_standard_header_forms_and_auxiliary();
++        let limits = ResourceLimits::default();
++        let mut seed = 0x808_2022;
++        let boundaries = [0, 1, 15, 16, 127, 128, 2047, 2048, 16383, 16384];
++        for value in boundaries {
++            let fixture = SpecMessage {
++                class: 8,
++                stream: value,
++                bin: value,
++                offset: value,
++                body: vec![0x80],
++                last: false,
++                auxiliary: None,
++            };
++            fixture.assert_parse(&mut JpipMessageParser::new(limits), 3, true);
++        }
++        for index in 0..160 {
++            let class = [0, 1, 2, 4, 5, 6, 8][index % 7];
++            let value = if index < boundaries.len() {
++                boundaries[index]
++            } else {
++                spec_random(&mut seed) % 65536
++            };
++            let fixture = SpecMessage {
++                class,
++                stream: value,
++                bin: if class == 8 { value } else { 0 },
++                offset: value,
++                body: vec![0, 0xff, 0x80],
++                last: index % 2 == 0,
++                auxiliary: (class % 2 == 1).then_some(1),
++            };
++            fixture.assert_parse(&mut JpipMessageParser::new(limits), 3, true);
++            let mut parser = JpipMessageParser::new(limits);
++            fixture.assert_parse(&mut parser, 3, false);
++            fixture.assert_parse(&mut parser, 1, true);
++            fixture.assert_parse(&mut parser, 2, false);
++            let initial_class_only = SpecMessage {
++                stream: 0,
++                ..fixture
++            };
++            initial_class_only.assert_parse(&mut JpipMessageParser::new(limits), 2, false);
++        }
++        for first in [0x01, 0x10, 0x81] {
++            let mut parser = JpipMessageParser::new(limits);
++            assert_eq!(
++                parser.parse(&[first, 0, 0]),
++                Err(DecodeError::MalformedInput {
++                    offset: 0,
++                    kind: MalformedKind::InvalidJpipHeader,
++                }),
++                "A.2.1 prohibits indicator bb=00; first={first:#x}"
++            );
++            assert_eq!(parser.context(), JpipHeaderContext::new());
++        }
++
++        // A.2.1 defines zero defaults, NOT an InvalidJpipHeader rejection.
++        // The minimal first message names precinct 0, offset 0, length 0.
++        let mut failures = Vec::new();
++        for bin in [0, 1, 15, 16, 127, 128] {
++            for last in [false, true] {
++                let fixture = SpecMessage {
++                    class: 0,
++                    stream: 0,
++                    bin,
++                    offset: 0,
++                    body: Vec::new(),
++                    last,
++                    auxiliary: None,
++                };
++                let (wire, _) = fixture.wire(1);
++                let mut parser = JpipMessageParser::new(limits);
++                match parser.parse(&wire) {
++                    Ok(_) => fixture.assert_parse(&mut JpipMessageParser::new(limits), 1, false),
++                    Err(error) => failures.push(format!("first inherited {wire:02x?}: {error:?}")),
++                }
++            }
++        }
++        assert!(
++            failures.is_empty(),
++            "A.2.1 zero defaults violated:\n{}",
++            failures.join("\n")
++        );
++    }
++
++    #[test]
++    fn deepspec_bounded_data_and_eor_framing() {
++        parses_end_of_response();
++        let limits = ResourceLimits::default()
++            .with_maximum_input_bytes(512)
++            .unwrap();
++        let mut seed = 0xd3_2022;
++        let mut lengths = vec![0, 1, 2, 15, 16, 126, 127, 128, 129, 255, 256];
++        lengths.extend((0..40).map(|_| (spec_random(&mut seed) % 257) as usize));
++        for length in lengths {
++            let body: Vec<_> = (0..length)
++                .map(|index| (index as u8).wrapping_mul(73))
++                .collect();
++            let fixture = SpecMessage {
++                class: 8,
++                stream: 128,
++                bin: 2048,
++                offset: 0,
++                body: body.clone(),
++                last: true,
++                auxiliary: None,
++            };
++            fixture.assert_parse(&mut JpipMessageParser::new(limits), 3, true);
++            let (data, _) = fixture.wire(3);
++            for reason in [1, 2, 3, 4, 5, 6, 7, 0xff] {
++                let mut eor = vec![0, reason];
++                eor.extend(spec_vbas(length as u64));
++                let header_length = eor.len();
++                eor.extend_from_slice(&body);
++                let consumed_expected = eor.len();
++                eor.extend_from_slice(&[0x60, 8, 0, 0, 0]);
++                let mut parser = JpipMessageParser::new(limits);
++                let (message, consumed) = parser.parse(&eor).unwrap();
++                let JpipMessage::EndOfResponse(end) = message else {
++                    panic!("D.3 EOR expected, reason={reason}, length={length}");
++                };
++                assert_eq!(end.reason_code(), reason);
++                assert_eq!(end.header_length(), header_length);
++                assert_eq!(end.body(), body);
++                assert_eq!(message.body(), body);
++                assert_eq!(end.body().as_ptr(), eor[header_length..].as_ptr());
++                assert_eq!(consumed, consumed_expected);
++                assert_eq!(parser.context(), JpipHeaderContext::new());
++                for prefix in 0..consumed_expected {
++                    assert!(
++                        matches!(
++                            parser.parse(&eor[..prefix]),
++                            Err(DecodeError::MalformedInput {
++                                kind: MalformedKind::Truncated,
++                                ..
++                            })
++                        ),
++                        "truncated EOR accepted/wrong error: reason={reason} length={length} prefix={prefix}"
++                    );
++                }
++            }
++            for prefix in 0..data.len() {
++                let mut parser = JpipMessageParser::new(limits);
++                assert!(
++                    matches!(
++                        parser.parse(&data[..prefix]),
++                        Err(DecodeError::MalformedInput {
++                            kind: MalformedKind::Truncated,
++                            ..
++                        })
++                    ),
++                    "truncated Data accepted/wrong error: length={length} prefix={prefix}"
++                );
++                assert_eq!(parser.context(), JpipHeaderContext::new());
++            }
++            for mut wire in [data, {
++                let mut eor = vec![0, 2];
++                eor.extend(spec_vbas(length as u64));
++                eor.extend_from_slice(&body);
++                eor
++            }] {
++                let limit = wire.len() as u64;
++                let exact = ResourceLimits::default()
++                    .with_maximum_input_bytes(limit)
++                    .unwrap();
++                assert_eq!(
++                    JpipMessageParser::new(exact).parse(&wire).unwrap().1,
++                    wire.len()
++                );
++                wire.push(0);
++                assert_eq!(
++                    JpipMessageParser::new(exact).parse(&wire),
++                    Err(DecodeError::LimitExceeded {
++                        resource: Resource::InputBytes,
++                        limit,
++                        actual: limit + 1,
++                    }),
++                    "whole supplied input, not only declared body, must respect limit"
++                );
++            }
++        }
++        for (offset, expected) in [(510, None), (511, Some(513))] {
++            let fixture = SpecMessage {
++                class: 8,
++                stream: 0,
++                bin: 0,
++                offset,
++                body: vec![0, 0xff],
++                last: false,
++                auxiliary: None,
++            };
++            let (wire, _) = fixture.wire(3);
++            let mut parser = JpipMessageParser::new(limits);
++            if let Some(actual) = expected {
++                assert_eq!(
++                    parser.parse(&wire),
++                    Err(DecodeError::LimitExceeded {
++                        resource: Resource::InputBytes,
++                        limit: 512,
++                        actual,
++                    })
++                );
++                assert_eq!(parser.context(), JpipHeaderContext::new());
++            } else {
++                fixture.assert_parse(&mut parser, 3, false);
++            }
++        }
++        for wire in [vec![0x60, 8, 0, 0x80, 0, 0], vec![0, 2, 0x80, 0]] {
++            let mut parser = JpipMessageParser::new(limits);
++            assert!(
++                matches!(
++                    parser.parse(&wire),
++                    Err(DecodeError::MalformedInput {
++                        kind: MalformedKind::InvalidJpipVbas,
++                        ..
++                    })
++                ),
++                "noncanonical VBAS not rejected: {wire:02x?}"
++            );
++            assert_eq!(parser.context(), JpipHeaderContext::new());
++        }
++        let overflow = SpecMessage {
++            class: 8,
++            stream: 0,
++            bin: 0,
++            offset: u64::MAX,
++            body: vec![0],
++            last: false,
++            auxiliary: None,
++        };
++        let (wire, header_length) = overflow.wire(3);
++        assert_eq!(
++            JpipMessageParser::new(limits).parse(&wire),
++            Err(DecodeError::MalformedInput {
++                offset: header_length as u64,
++                kind: MalformedKind::ArithmeticOverflow,
++            }),
++            "small input must reject overflowing declared offset+length"
++        );
++        let mut overflowing_vbas = vec![0x60, 8, 0];
++        overflowing_vbas.extend_from_slice(&[0xff; 10]);
++        overflowing_vbas.extend_from_slice(&[0x7f, 0]);
++        assert_eq!(
++            JpipMessageParser::new(limits).parse(&overflowing_vbas),
++            Err(DecodeError::MalformedInput {
++                offset: 3,
++                kind: MalformedKind::InvalidJpipVbas,
++            })
++        );
++    }
++
++    #[test]
++    fn deepspec_parser_local_inheritance_lifecycle() {
++        let limits = ResourceLimits::default()
++            .with_maximum_input_bytes(512)
++            .unwrap();
++        let mut parser = JpipMessageParser::new(limits);
++        let mut other = JpipMessageParser::new(limits);
++        assert_eq!(parser.context(), JpipHeaderContext::new());
++        let isolated = SpecMessage {
++            class: 8,
++            stream: 999,
++            bin: 16,
++            offset: 1,
++            body: vec![0xff],
++            last: false,
++            auxiliary: None,
++        };
++        isolated.assert_parse(&mut other, 3, false);
++        assert_eq!(parser.context(), JpipHeaderContext::new());
++        let mut seed = 0xa2_2022;
++        let mut class = 8;
++        let mut stream = 128;
++        for index in 0..160 {
++            let form = if index == 0 { 3 } else { 1 + (index % 3) as u8 };
++            if form >= 2 {
++                class = [0, 1, 2, 4, 5, 6, 8][(spec_random(&mut seed) % 7) as usize];
++            }
++            if form == 3 {
++                stream = spec_random(&mut seed) % 65536;
++            }
++            let fixture = SpecMessage {
++                class,
++                stream,
++                bin: 0,
++                offset: index as u64,
++                body: vec![index as u8, 0xff],
++                last: index % 2 == 0,
++                auxiliary: (class % 2 == 1).then_some(1),
++            };
++            fixture.assert_parse(&mut parser, form, false);
++            let snapshot = parser.context();
++            assert_eq!(snapshot.previous_class(), Some(class));
++            assert_eq!(snapshot.previous_codestream(), Some(stream));
++            assert_eq!(other.context().previous_class(), Some(8));
++            assert_eq!(other.context().previous_codestream(), Some(999));
++            isolated.assert_parse(&mut other, 1, false);
++
++            let replacement = SpecMessage {
++                class: if class == 8 { 6 } else { 8 },
++                stream: stream + 1,
++                bin: 0,
++                offset: 0,
++                body: vec![1, 2, 3],
++                last: true,
++                auxiliary: None,
++            };
++            let (wire, header_length) = replacement.wire(3);
++            for prefix in 0..wire.len() {
++                assert!(
++                    matches!(
++                        parser.parse(&wire[..prefix]),
++                        Err(DecodeError::MalformedInput {
++                            kind: MalformedKind::Truncated,
++                            ..
++                        })
++                    ),
++                    "failed explicit header must not commit; prefix={prefix} header={header_length}"
++                );
++                assert_eq!(
++                    parser.context(),
++                    snapshot,
++                    "context changed after prefix={prefix}"
++                );
++            }
++            assert!(matches!(
++                parser.parse(&[1, 0, 0]),
++                Err(DecodeError::MalformedInput {
++                    kind: MalformedKind::InvalidJpipHeader,
++                    ..
++                })
++            ));
++            assert_eq!(parser.context(), snapshot);
++            let oversized = SpecMessage {
++                offset: 511,
++                ..replacement
++            };
++            let (wire, _) = oversized.wire(3);
++            assert_eq!(
++                parser.parse(&wire),
++                Err(DecodeError::LimitExceeded {
++                    resource: Resource::InputBytes,
++                    limit: 512,
++                    actual: 514,
++                })
++            );
++            assert_eq!(parser.context(), snapshot);
++            let mut invalid = vec![0x60, oversized.class as u8];
++            invalid.extend(spec_vbas(oversized.stream));
++            invalid.extend_from_slice(&[0x80, 0, 0]);
++            assert!(matches!(
++                parser.parse(&invalid),
++                Err(DecodeError::MalformedInput {
++                    kind: MalformedKind::InvalidJpipVbas,
++                    ..
++                })
++            ));
++            assert_eq!(parser.context(), snapshot);
++            assert_eq!(
++                parser.parse(&[0; 513]),
++                Err(DecodeError::LimitExceeded {
++                    resource: Resource::InputBytes,
++                    limit: 512,
++                    actual: 513,
++                })
++            );
++            assert_eq!(parser.context(), snapshot);
++            fixture.assert_parse(&mut parser, 1, true);
++            assert_eq!(snapshot.previous_class(), Some(class));
++            assert_eq!(snapshot.previous_codestream(), Some(stream));
++        }
++        let snapshot = parser.context();
++        let (message, consumed) = parser.parse(&[0, 2, 2, 0x80, 0xff]).unwrap();
++        assert!(matches!(message, JpipMessage::EndOfResponse(_)));
++        assert_eq!(message.body(), [0x80, 0xff]);
++        assert_eq!(consumed, 5);
++        assert_eq!(
++            parser.context(),
++            snapshot,
++            "EOR must not replace inherited identifiers"
++        );
++    }
++
+     #[test]
+     fn reassembles_out_of_order_fragments() {
+         let target = id(8, 4);

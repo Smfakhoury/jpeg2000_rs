@@ -1,0 +1,15 @@
+diff --git a/src/jpip.rs b/src/jpip.rs
+--- a/src/jpip.rs
++++ b/src/jpip.rs
+@@ -4879,6 +4879,11 @@
+ mod tests {
+     use super::*;
+ 
++    mod transcode_contract_tests {
++        use super::*;
++        include!("jpip/transcode_contract_tests.rs");
++    }
++
+     fn id(class: u64, in_class: u64) -> DatabinId {
+         DatabinId::new(class, 0, in_class).unwrap()
+     }

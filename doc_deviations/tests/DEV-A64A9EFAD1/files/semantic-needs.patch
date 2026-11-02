@@ -1,0 +1,264 @@
+diff --git a/src/jpip.rs b/src/jpip.rs
+--- a/src/jpip.rs
++++ b/src/jpip.rs
+@@ -5734,9 +5734,79 @@ mod tests {
+             Some(0),
+         ));
+ 
++        let expected_dependencies = [
++            (JpipSemanticNeedKind::MetadataBin, 1),
++            (JpipSemanticNeedKind::Codestream, 0),
++        ];
++        let mut seed = 0x7979_98cd_u32;
++        let mut splits = vec![0, 1, root.len() - 1, root.len()];
++        for _ in 0..12 {
++            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
++            splits.push(seed as usize % (root.len() + 1));
++        }
++        for split in splits {
++            eprintln!("route=insert->assemble_semantic_container(0)->semantic_needs split={split}");
++            let mut fragmented = DatabinCache::new(ResourceLimits::default());
++            let absent = fragmented.assemble_semantic_container(0).unwrap();
++            assert_container_dependencies(
++                &absent,
++                JpipAvailability::Missing,
++                &[(JpipSemanticNeedKind::MetadataBin, 0)],
++            );
++            if split != 0 {
++                fragmented
++                    .insert(fragment(id(8, 0), 0, &root[..split], false))
++                    .unwrap();
++            }
++            let unfinished = fragmented.assemble_semantic_container(0).unwrap();
++            assert_container_dependencies(
++                &unfinished,
++                JpipAvailability::Missing,
++                &[(JpipSemanticNeedKind::MetadataBin, 0)],
++            );
++            fragmented
++                .insert(fragment(id(8, 0), split as u64, &root[split..], true))
++                .unwrap();
++            let finished_root = fragmented.assemble_semantic_container(0).unwrap();
++            assert_container_dependencies(
++                &finished_root,
++                JpipAvailability::Partial,
++                &expected_dependencies,
++            );
++
++            let mut reversed = DatabinCache::new(ResourceLimits::default());
++            reversed
++                .insert(fragment(id(8, 0), split as u64, &root[split..], true))
++                .unwrap();
++            if split != 0 {
++                let hole = reversed.assemble_semantic_container(0).unwrap();
++                assert_container_dependencies(
++                    &hole,
++                    JpipAvailability::Missing,
++                    &[(JpipSemanticNeedKind::MetadataBin, 0)],
++                );
++            }
++            if split != 0 {
++                reversed
++                    .insert(fragment(id(8, 0), 0, &root[..split], false))
++                    .unwrap();
++            }
++            let finished_reversed = reversed.assemble_semantic_container(0).unwrap();
++            assert_container_dependencies(
++                &finished_reversed,
++                JpipAvailability::Partial,
++                &expected_dependencies,
++            );
++        }
++
+         let mut cache = DatabinCache::new(ResourceLimits::default());
+         cache.insert(fragment(id(8, 0), 0, &root, true)).unwrap();
+         let missing_metadata = cache.assemble_semantic_container(0).unwrap();
++        assert_container_dependencies(
++            &missing_metadata,
++            JpipAvailability::Partial,
++            &expected_dependencies,
++        );
+         assert_eq!(missing_metadata.status(), JpipAvailability::Partial);
+         assert_eq!(
+             missing_metadata.semantic_needs()[0].kind(),
+@@ -5747,6 +5817,16 @@ mod tests {
+             .insert(fragment(id(8, 1), 0, &jp2h_payload, true))
+             .unwrap();
+         let missing_codestream = cache.assemble_semantic_container(0).unwrap();
++        assert_container_dependencies(
++            &missing_codestream,
++            JpipAvailability::Partial,
++            &[(JpipSemanticNeedKind::Codestream, 0)],
++        );
++        assert_container_dependencies(
++            &missing_metadata,
++            JpipAvailability::Partial,
++            &expected_dependencies,
++        );
+         assert_eq!(missing_codestream.status(), JpipAvailability::Partial);
+         assert!(
+             missing_codestream
+@@ -5770,6 +5850,7 @@ mod tests {
+             ))
+             .unwrap();
+         let assembled = cache.assemble_semantic_container(0).unwrap();
++        assert_container_dependencies(&assembled, JpipAvailability::Available, &[]);
+         assert_eq!(assembled.status(), JpipAvailability::Available);
+         assert!(assembled.semantic_needs().is_empty());
+         let container = assembled.container().unwrap();
+@@ -5783,6 +5864,155 @@ mod tests {
+                 .windows(4)
+                 .all(|value| value != b"phld")
+         );
++        let mut expected = box32(*b"jP  ", &[0x0d, 0x0a, 0x87, 0x0a]);
++        expected.extend(box32(*b"ftyp", b"jp2 \0\0\0\0jp2 "));
++        expected.extend(box32(*b"jp2h", &jp2h_payload));
++        expected.extend(box32(*b"jp2c", &codestream));
++        assert_eq!(container.as_bytes(), expected);
++        assert_container_dependencies(
++            &missing_codestream,
++            JpipAvailability::Partial,
++            &[(JpipSemanticNeedKind::Codestream, 0)],
++        );
++    }
++
++    fn assert_container_dependencies(
++        report: &JpipContainerAssembly,
++        status: JpipAvailability,
++        expected: &[(JpipSemanticNeedKind, u64)],
++    ) {
++        let observed: Vec<_> = report
++            .semantic_needs()
++            .iter()
++            .map(|need| (need.kind(), need.identifier()))
++            .collect();
++        assert_eq!(observed, expected, "exact outstanding dependencies");
++        assert_eq!(report.status(), status, "dependency availability");
++        assert_eq!(
++            report.container().is_some(),
++            status == JpipAvailability::Available,
++            "incomplete data must not expose a reconstructed container"
++        );
++        assert_eq!(report.semantic_needs().len(), observed.len());
++        for (need, expected) in report.semantic_needs().iter().zip(expected) {
++            assert_eq!((need.kind(), need.identifier()), *expected);
++        }
++    }
++
++    #[test]
++    fn semantic_metadata_needs_ignore_metadata_codestream_index() {
++        // T.808 A.3.6.1: one logical target, metadata root ID 0, CSn ignored.
++        // A.3.6.3: flags=1, 8-byte OrigID and OrigBH, ordinary phld LBox.
++        let codestream = decodable_codestream();
++        let mut image_header = Vec::new();
++        image_header.extend_from_slice(&1_u32.to_be_bytes());
++        image_header.extend_from_slice(&1_u32.to_be_bytes());
++        image_header.extend_from_slice(&1_u16.to_be_bytes());
++        image_header.extend_from_slice(&[7, 7, 0, 0]);
++        let mut jp2h_payload = box32(*b"ihdr", &image_header);
++        jp2h_payload.extend(box32(*b"colr", &[1, 0, 0, 0, 0, 0, 17]));
++        let mut prefix = box32(*b"jP  ", &[0x0d, 0x0a, 0x87, 0x0a]);
++        prefix.extend(box32(*b"ftyp", b"jp2 \0\0\0\0jp2 "));
++        let suffix = box32(*b"jp2c", &codestream);
++        let mut expected_container = prefix.clone();
++        expected_container.extend(box32(*b"jp2h", &jp2h_payload));
++        expected_container.extend_from_slice(&suffix);
++        assert_eq!(&expected_container[4..8], b"jP  ");
++        assert_eq!(&expected_container[16..20], b"ftyp");
++        assert_eq!(&expected_container[20..24], b"jp2 ");
++
++        let mut violations = Vec::new();
++        for bin in [1, 127, 128, u64::from(u32::MAX) + 1, u64::MAX] {
++            let placeholder = metadata_placeholder(
++                *b"jp2h",
++                u32::try_from(jp2h_payload.len() + 8).unwrap(),
++                1,
++                bin,
++                None,
++            );
++            assert_eq!(placeholder.len(), 28);
++            assert_eq!(u32::from_be_bytes(placeholder[..4].try_into().unwrap()), 28);
++            assert_eq!(&placeholder[4..8], b"phld");
++            assert_eq!(&placeholder[8..12], &1_u32.to_be_bytes());
++            assert_eq!(&placeholder[12..20], &bin.to_be_bytes());
++            assert_eq!(&placeholder[24..28], b"jp2h");
++            let mut root = prefix.clone();
++            root.extend(placeholder);
++            root.extend_from_slice(&suffix);
++            for (root_csn, child_csn, query_csn) in
++                [(0, 0, 0), (7, 7, 7), (0, 1, 0), (0, 0, 1), (3, 5, 7)]
++            {
++                let mut cache = DatabinCache::new(ResourceLimits::default());
++                let absent = cache.assemble_semantic_container(query_csn).unwrap();
++                assert_container_dependencies(
++                    &absent,
++                    JpipAvailability::Missing,
++                    &[(JpipSemanticNeedKind::MetadataBin, 0)],
++                );
++                cache
++                    .insert(fragment(
++                        DatabinId::new(8, root_csn, 0).unwrap(),
++                        0,
++                        &root,
++                        true,
++                    ))
++                    .unwrap();
++                for complete in [false, true] {
++                    if complete {
++                        cache
++                            .insert(fragment(
++                                DatabinId::new(8, child_csn, bin).unwrap(),
++                                0,
++                                &jp2h_payload,
++                                true,
++                            ))
++                            .unwrap();
++                    }
++                    eprintln!(
++                        "route=insert(class=8)->assemble_semantic_container->semantic_needs \
++                         root_csn={root_csn} child_csn={child_csn} query_csn={query_csn} \
++                         bin={bin} complete={complete}"
++                    );
++                    let report = cache.assemble_semantic_container(query_csn).unwrap();
++                    let needs: Vec<_> = report
++                        .semantic_needs()
++                        .iter()
++                        .map(|need| (need.kind(), need.identifier()))
++                        .collect();
++                    let expected_needs = if complete {
++                        Vec::new()
++                    } else {
++                        vec![(JpipSemanticNeedKind::MetadataBin, bin)]
++                    };
++                    let actual = (
++                        report.status(),
++                        needs,
++                        report.container().map(|view| view.as_bytes()),
++                    );
++                    let expected = (
++                        if complete {
++                            JpipAvailability::Available
++                        } else {
++                            JpipAvailability::Partial
++                        },
++                        expected_needs,
++                        complete.then_some(expected_container.as_slice()),
++                    );
++                    if actual != expected {
++                        violations.push(format!(
++                            "bin={bin} root_csn={root_csn} child_csn={child_csn} \
++                             query_csn={query_csn} complete={complete}: \
++                             actual={actual:?} expected={expected:?}"
++                        ));
++                    }
++                }
++            }
++        }
++        assert!(
++            violations.is_empty(),
++            "metadata CSn must not create spurious dependencies:\n{}",
++            violations.join("\n")
++        );
+     }
+ 
+     #[test]

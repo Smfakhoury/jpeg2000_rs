@@ -1,0 +1,55 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "validation/jpip-ingest-contract.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; p=Path('src/jpip.rs').read_text(); t=Path('src/jpip_ingest_contract_tests.rs').read_text(); assert p.count('include!(\"jpip_ingest_contract_tests.rs\");') == 1; assert 'fn ingests_response_with_inherited_context()' in p; assert 'fn contract_ingest_payload_reassembly()' in t; assert 'fn contract_ingest_header_forms_response_local()' in t"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "1efdfed94ecf6fa7e50d4390",
+  "deviation_id": "2afa90f245a7e27a3a0ff8b8",
+  "entry": "src/jpip.rs:3504:jpip::ingest_jpip_response",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "input=[30, 00, 01, 00], result=Err(MalformedInput { offset: 0, kind: InvalidJpipHeader })"
+  },
+  "files": [
+    {
+      "path": "src/jpip_ingest_contract_tests.rs",
+      "sha256": "145a11c1299deea06e5bb43a688a08065bd83fca9974e1e9c995c01bb8f2947b"
+    },
+    {
+      "path": "validation/jpip-ingest-contract.patch",
+      "sha256": "0a9bdf2a01936a8761a5d3afb087605b3f5dbd325d2bf32c62ccd11c069c4f7b"
+    }
+  ],
+  "id": "DEV-A47C95C101",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "f927e4d42200fb374bda61d6",
+  "test": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "jpip::tests::contract_ingest_header_forms_response_local",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "66aff522bc300198b9d75ec3"
+}

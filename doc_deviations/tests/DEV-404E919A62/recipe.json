@@ -1,0 +1,55 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "arbitrary-level-registration.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/transform.rs').read_text(); t=Path('src/transform/tests/arbitrary_level_contract.rs').read_text(); assert '    mod arbitrary_level_contract;' in s; assert 'assert_eq!(contexts, 560);' in t; assert 'failures.is_empty()' in t; assert 'let result = inverse_level_arbitrary(level, &kernel, &limits);' in t; print('Replay source guards: additive registration, 560-case assertion, output oracle and subject call present')"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "8b69097aab2e6e4d6823ff4c",
+  "deviation_id": "482b542f6def2f270392639d",
+  "entry": "src/transform.rs:1274:transform::inverse_level_arbitrary",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "1x3, phases=false/false, REV=true, minit=false: interleaved input=[-180, 256, -80]; expected [118, 208, 168]; got ReconstructedPlane { width: 1, height: 3, fraction_bits: 0, samples: [218, 308, 268] }"
+  },
+  "files": [
+    {
+      "path": "src/transform/tests/arbitrary_level_contract.rs",
+      "sha256": "e646dfab1a3eef012d3ff5b39ae4fee01cbdb6e0f2e6c4b06cb5cdfb07e1815b"
+    },
+    {
+      "path": "arbitrary-level-registration.patch",
+      "sha256": "37584bbf6e3095ad1f44029807c04a20a14b50c8c84daaf1e2bfecfcfd102e26"
+    }
+  ],
+  "id": "DEV-404E919A62",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "d348494f1956deec3f860649",
+  "test": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "transform::tests::arbitrary_level_contract::arbitrary_level_matches_standard_equations_and_rejects_bad_geometry_or_budget",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "bf508298baa60bed6c89cac4"
+}

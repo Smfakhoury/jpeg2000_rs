@@ -1,0 +1,51 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "deepspec_codestream.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "import hashlib; from pathlib import Path; assert hashlib.sha256(Path('src/jp2.rs').read_bytes()).hexdigest() == '85817f58973870ac765c4ba110650fffcd4b43a5e20c9a5c04a92bb15dfb5750', 'replay source must contain the entire additive assertion extension'"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "09f93dd85547f3089d8c40f4",
+  "deviation_id": "b9a36ad9f01aa7bd3ec1763c",
+  "entry": "src/jp2.rs:653:jp2::Jp2File::codestream",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "N=2, H=1: admitted 2 streams, missing headers at [1]"
+  },
+  "files": [
+    {
+      "path": "deepspec_codestream.patch",
+      "sha256": "2654566dbe5853575831bebc4bc797358741be9d4f262f4e3b6008f88e41d67e"
+    }
+  ],
+  "id": "DEV-CBF63FCFA1",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "88410e65d017a25fe34e462f",
+  "test": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "jp2::tests::retains_and_inspects_explicit_jpx_codestreams_and_headers",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "111437184a2d565c3ed13b32"
+}

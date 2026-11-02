@@ -1,0 +1,41 @@
+{
+  "build": [
+    [
+      "bash",
+      "-eu",
+      "-c",
+      "patch --batch --forward -p1 < validation/databin-contract-tests.patch; grep -Fq 'include!(\"jpip_databin_contract_tests.rs\");' src/jpip.rs; cargo test --lib --no-run --locked; python3 validation/databin-contract-runner.py"
+    ]
+  ],
+  "case_id": "99fed806685c9122fb266211",
+  "deviation_id": "accd4e55f4de0c3590a4a0bd",
+  "entry": "src/jpip.rs:62:jpip::DatabinId::new",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "264 reserved-class assignments received ordinary standard semantics; first examples: [(3, 0, 0, TileHeader), (7, 0, 0, MainHeader), (3, 0, 1, TileHeader), (7, 0, 1, MainHeader), (3, 0, 15, TileHeader), (7, 0, 15, MainHeader), (3, 0, 16, TileHeader), (7, 0, 16, MainHeader), (3, 0, 127, TileHeader), (7, 0, 127, MainHeader), (3, 0, 128, TileHeader), (7, 0, 128, MainHeader)]"
+  },
+  "files": [
+    {
+      "path": "src/jpip_databin_contract_tests.rs",
+      "sha256": "93cb50969993ec0555a6366b92293d0d78cda30534ab1d594e36192938fbc5d5"
+    },
+    {
+      "path": "validation/databin-contract-tests.patch",
+      "sha256": "8b292b9598c38d674d6f3bd04e859aa11bd067a31d84df2392d9697a4d7b7084"
+    },
+    {
+      "path": "validation/databin-contract-runner.py",
+      "sha256": "35fdcd688cbe9c6aafbebffefe0bf285ee506601b3ab61936d814af72b1decdd"
+    }
+  ],
+  "id": "DEV-2D35E4323C",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "6dd97b323f90d87cebe6dafa",
+  "test": [
+    "target/databin-contract-tests",
+    "jpip::tests::standard_databin_class_assignment",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "baf1d4fa2691d414510aeaae"
+}

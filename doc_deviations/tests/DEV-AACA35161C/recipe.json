@@ -1,0 +1,47 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "jp2-spec-registration.patch"
+    ],
+    [
+      "python3",
+      "validation/jp2_spec_runner.py",
+      "build"
+    ]
+  ],
+  "case_id": "cde914b61a0470c6f30bbbb3",
+  "deviation_id": "a048c253f1a0de8dcc9926ae",
+  "entry": "src/jp2.rs:977:jp2::parse",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "codestream_header: None }], compositing_layers: [], composition: None, metadata_boxes: 1, metadata_depth: 1, box_count: 19 })"
+  },
+  "files": [
+    {
+      "path": "src/jp2/spec_tests.rs",
+      "sha256": "273779122e890eb01c6232749af91db7cc4d034adc049eebe05ed8e408cf5cd1"
+    },
+    {
+      "path": "jp2-spec-registration.patch",
+      "sha256": "72f38d9d2d5418ff65b693856f6cc3d54840c377f1a46597ac32cf86a7abca5b"
+    },
+    {
+      "path": "validation/jp2_spec_runner.py",
+      "sha256": "70fd1cf40199a480eda463a5174856f74ab66c9e8c5de74f45b05fb1492fc3a3"
+    }
+  ],
+  "id": "DEV-AACA35161C",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "7e6b2fe8a69f4c8dd15c378e",
+  "test": [
+    "python3",
+    "validation/jp2_spec_runner.py",
+    "spec_jpx_header_bijection_and_defaults"
+  ],
+  "test_item": "ea8d9c3e31baf68e430c41aa"
+}

@@ -1,0 +1,43 @@
+{
+  "build": [
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; p=Path('src/decode.rs'); s=p.read_text(); anchor='#[cfg(test)]\\nmod tests {\\n'; assert s.count(anchor)==1; p.write_text(s.replace(anchor, anchor+'    mod jph_contract;\\n', 1))"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--locked",
+      "--no-run"
+    ]
+  ],
+  "case_id": "debd9f4cb2047d9570f27b9b",
+  "deviation_id": "2979ee1372269d167a663f1d",
+  "entry": "src/decode.rs:3975:decode::decode_jph",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "D.2 component-only JPH rejected: MalformedInput { offset: 40, kind: MissingRequiredStructure }"
+  },
+  "files": [
+    {
+      "path": "src/decode/tests/jph_contract.rs",
+      "sha256": "07482a7420d2a1693cd896409703bf766c65978ffbeced573bc4c06f6d03633d"
+    }
+  ],
+  "id": "DEV-174EC5FEE4",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "6a3078c49e79034ec262df2c",
+  "test": [
+    "cargo",
+    "test",
+    "--lib",
+    "--locked",
+    "decode::tests::jph_contract::typed_planes_independent_of_colour_conversion",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "dcdc31654724c4c2ad030fd2"
+}

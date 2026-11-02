@@ -1,0 +1,41 @@
+{
+  "build": [
+    [
+      "bash",
+      "-eu",
+      "-c",
+      "patch --batch --forward -p1 < validation/databin-contract-tests.patch; grep -Fq 'include!(\"jpip_databin_contract_tests.rs\");' src/jpip.rs; cargo test --lib --no-run --locked; python3 validation/databin-contract-runner.py"
+    ]
+  ],
+  "case_id": "6430a2e679802b9144ea5a4b",
+  "deviation_id": "13063969ba37ce71dca53781",
+  "entry": "src/jpip.rs:62:jpip::DatabinId::new",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 } / DatabinId { class_identifier: 8, class: Metadata, codestream: 1, in_class: 0 }, split=0, reverse=false: wrong final length/prefix/bytes/intervals for DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 }: None"
+  },
+  "files": [
+    {
+      "path": "src/jpip_databin_contract_tests.rs",
+      "sha256": "93cb50969993ec0555a6366b92293d0d78cda30534ab1d594e36192938fbc5d5"
+    },
+    {
+      "path": "validation/databin-contract-tests.patch",
+      "sha256": "8b292b9598c38d674d6f3bd04e859aa11bd067a31d84df2392d9697a4d7b7084"
+    },
+    {
+      "path": "validation/databin-contract-runner.py",
+      "sha256": "35fdcd688cbe9c6aafbebffefe0bf285ee506601b3ab61936d814af72b1decdd"
+    }
+  ],
+  "id": "DEV-F487B6A88C",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "78ac2bcf8f8510fe8f2c9078",
+  "test": [
+    "target/databin-contract-tests",
+    "jpip::tests::metadata_databin_identity_ignores_codestream",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "baf1d4fa2691d414510aeaae"
+}

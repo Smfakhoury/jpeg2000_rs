@@ -1,0 +1,10 @@
+--- a/src/jp2.rs
++++ b/src/jp2.rs
+@@ -3169,6 +3169,7 @@
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++    include!("jp2_palette_contract_tests.rs");
+ 
+     fn box32(box_type: [u8; 4], payload: &[u8]) -> Vec<u8> {
+         let length = u32::try_from(8 + payload.len()).unwrap();

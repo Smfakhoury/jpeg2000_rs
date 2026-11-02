@@ -1,0 +1,36 @@
+{
+  "build": [
+    [
+      "bash",
+      "-c",
+      "set -e; patch --batch --fuzz=0 -p1 < validation/plm-standard-tests.patch; cargo test --locked --lib --no-run; for binary in target/debug/deps/jpeg2000_rs-*; do if [ -f \"$binary\" ] && [ -x \"$binary\" ]; then cp \"$binary\" target/plm-standard-tests; exit 0; fi; done; exit 127"
+    ]
+  ],
+  "case_id": "b062a512e7267bca1f14bad8",
+  "deviation_id": "8bbaee85a2f30c8fd352e207",
+  "entry": "src/codestream.rs:9168:codestream::Parser::parse_plm",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "case 1: valid A.35 octet framing rejected: MalformedInput { offset: 0, kind: InvalidMarkerLength }"
+  },
+  "files": [
+    {
+      "path": "src/codestream/tests/standard_plm.rs",
+      "sha256": "1ce1e6e5ec8a1482390ed44517b0f0b2444617d242bde9e0fd45b8d25209e4d5"
+    },
+    {
+      "path": "validation/plm-standard-tests.patch",
+      "sha256": "0716b8a87fa9bb3efd3bc1d14027313af7b015ac8532e0cd3e798dbbade798d9"
+    }
+  ],
+  "id": "DEV-C56978D32B",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "c8b504049e1d05d2b877050b",
+  "test": [
+    "target/plm-standard-tests",
+    "codestream::tests::standard_plm::standard_plm_octet_counts_and_wire_order",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "c7779586ba7e5308becdb3ab"
+}

@@ -1,0 +1,36 @@
+{
+  "build": [
+    [
+      "python3",
+      "coc_clause_harness.py",
+      "build"
+    ]
+  ],
+  "case_id": "13da61704101aa4758fec233",
+  "deviation_id": "68863f8ed83222b5c6ed28e3",
+  "entry": "src/codestream.rs:8739:codestream::Parser::parse_coc",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "main-header parse_layout accepted illegal high-resolution precinct: [(1, 1), (0, 15)]"
+  },
+  "files": [
+    {
+      "path": "src/codestream/tests/coc_clause_tests.rs",
+      "sha256": "f45e998b4337abdc10dd6d9656dee623bc24ce510a6b21a4c5afd44acb784522"
+    },
+    {
+      "path": "coc_clause_harness.py",
+      "sha256": "42786c00d42b08ccda4bca1398ef6e8c49c8ba1e10e7a0c37d65b2bc4db6233e"
+    }
+  ],
+  "id": "DEV-64FD2DDB2B",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "af4bc1414e81593a62244981",
+  "test": [
+    "python3",
+    "coc_clause_harness.py",
+    "run",
+    "admission"
+  ],
+  "test_item": "7b34b23231926ec82a67e1e9"
+}

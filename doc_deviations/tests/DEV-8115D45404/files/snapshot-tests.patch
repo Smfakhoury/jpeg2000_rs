@@ -1,0 +1,7 @@
+diff --git a/src/jpip.rs b/src/jpip.rs
+--- a/src/jpip.rs
++++ b/src/jpip.rs
+@@ -4879,2 +4879,3 @@
+ mod tests {
+     use super::*;
++    include!("jpip_snapshot_spec_tests.rs");

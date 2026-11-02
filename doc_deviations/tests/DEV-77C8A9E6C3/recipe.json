@@ -1,0 +1,35 @@
+{
+  "build": [
+    [
+      "python3",
+      "deepstar_jpip_contract.py"
+    ]
+  ],
+  "case_id": "c9864b4838ab5c38a5152150",
+  "deviation_id": "6fa67f583032c8307d4bf6b1",
+  "entry": "src/jpip.rs:33:jpip::DatabinClass::from_identifier",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "semantic classification mismatches:\nDatabinClass::from_identifier(3): expected None, got Some(TileHeader)\nDatabinClass::from_identifier(7): expected None, got Some(MainHeader)"
+  },
+  "files": [
+    {
+      "path": "src/jpip_class_contract_tests.rs",
+      "sha256": "601a7e36b316984017ccb790a07e5dd521a29f6597b25b2b66ce30e0616aaff6"
+    },
+    {
+      "path": "deepstar_jpip_contract.py",
+      "sha256": "d2d7c5e0a89e37bc24afdf6178ec587b1634de0646f85b70ccba66184368f0d5"
+    }
+  ],
+  "id": "DEV-77C8A9E6C3",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "482717998449fb68d677ca32",
+  "test": [
+    "target/deepstar-jpip-contract",
+    "jpip::tests::class_identifiers_follow_t808_table_a2",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "583f972673fddddde6328f24"
+}

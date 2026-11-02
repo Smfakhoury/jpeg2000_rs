@@ -1,0 +1,48 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "validation/jpip-transcode-registration.patch"
+    ],
+    [
+      "python3",
+      "validation/jpip-transcode-suite.py",
+      "build"
+    ]
+  ],
+  "case_id": "46e0d3178e7a407a7247f7b8",
+  "deviation_id": "4264ae18da850a4abdc4c97b",
+  "entry": "src/jpip.rs:3088:jpip::DatabinCache::transcode_precinct_codestream",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "profile contract violations:\neffective tile progression 1: published output=true, status=Available\neffective tile progression 2: published output=true, status=Available\neffective tile progression 3: published output=true, status=Available\neffective tile progression 4: published output=true, status=Available"
+  },
+  "files": [
+    {
+      "path": "src/jpip/transcode_contract_tests.rs",
+      "sha256": "95fec3397ee6a47f21b51e45c50c27b6355508c327b593a3936a43c6e0c3af6b"
+    },
+    {
+      "path": "validation/jpip-transcode-registration.patch",
+      "sha256": "2dd37d3671a9c818a6bbb46ca77442e6ce2044869911a9bf2963447055bf5a4d"
+    },
+    {
+      "path": "validation/jpip-transcode-suite.py",
+      "sha256": "a8f700a0b5234d381363cbb900714352d17d4cbfb29320b8d1711bd48526b4f0"
+    }
+  ],
+  "id": "DEV-0A9BF676EF",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "f2c61ee4ddec8a88d2a0a9e7",
+  "test": [
+    "python3",
+    "validation/jpip-transcode-suite.py",
+    "run",
+    "explicit_profile_rejects_all_non_lrcp_and_attached_sources"
+  ],
+  "test_item": "0825d2151cc175fbae2c4912"
+}

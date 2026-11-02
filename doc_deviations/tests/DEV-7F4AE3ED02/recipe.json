@@ -1,0 +1,55 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "layer_reference_tests.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/jp2.rs').read_text(); t=Path('src/jp2_layer_reference_tests.rs').read_text(); assert 'mod layer_reference_contract {\\n        include!(\"jp2_layer_reference_tests.rs\");\\n    }' in s; assert 'fn no_registration_uses_ordinal_bounds()' in t; assert 'fn registration_presence_is_file_wide_and_references_exist()' in t; assert 'accepted_mixed.is_empty()' in t"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--locked",
+      "--no-run"
+    ]
+  ],
+  "case_id": "e62d0f8ba0be84c76f97c921",
+  "deviation_id": "df903a5147260ea3adf42972",
+  "entry": "src/jp2.rs:1919:jp2::validate_layer_references",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "M.11.7.7 all-or-none presence: accepted 494 mixed patterns; first=Some((2, 1))"
+  },
+  "files": [
+    {
+      "path": "src/jp2_layer_reference_tests.rs",
+      "sha256": "c616bf5f6c7d630fc9802618ca484f81798c9cd029cbec7de1fdd12d38121e15"
+    },
+    {
+      "path": "layer_reference_tests.patch",
+      "sha256": "365a0ddbdb62d415979f3a005a0699f50d788c7d11b940d5d18201de3899bdb1"
+    }
+  ],
+  "id": "DEV-7F4AE3ED02",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "ce77e09dc97f1a44c8c8d5e3",
+  "test": [
+    "cargo",
+    "test",
+    "--lib",
+    "--locked",
+    "jp2::tests::layer_reference_contract::registration_presence_is_file_wide_and_references_exist",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "bb705c76759f74c8112ad3a5"
+}

@@ -1,0 +1,35 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/run_metadata_contract_suite.py",
+      "build"
+    ]
+  ],
+  "case_id": "9c7d6b44332022f336f2ca0d",
+  "deviation_id": "aa382efda7c3965118fc5f28",
+  "entry": "src/jpip.rs:2021:jpip::DatabinCache::expand_metadata_bin",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "xref->colr original-XLBox=false, equivalent-XLBox=false: got [0, 0, 0, 15, 120, 114, 101, 102, 1, 0, 0, 0, 0, 0, 17], expected [0, 0, 0, 15, 99, 111, 108, 114, 1, 0, 0, 0, 0, 0, 17]"
+  },
+  "files": [
+    {
+      "path": "src/jpip_metadata_contract_tests.rs",
+      "sha256": "0d8789c8a4bfa1365c236218de7c38b7a21b0775f0ec7d094d67566ee3f33cae"
+    },
+    {
+      "path": "validation/run_metadata_contract_suite.py",
+      "sha256": "127c7f034c705a03d038af6136029fafc445c45e7836a57279bfb566bc80e167"
+    }
+  ],
+  "id": "DEV-6744E122C7",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "fb0a3e26284355e86e6cfece",
+  "test": [
+    "python3",
+    "validation/run_metadata_contract_suite.py",
+    "stream_equivalent_uses_equivalent_box_identity"
+  ],
+  "test_item": "e1f075d7b5416d4f472c0f9a"
+}

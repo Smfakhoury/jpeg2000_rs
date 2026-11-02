@@ -1,0 +1,35 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/run_metadata_contract_suite.py",
+      "build"
+    ]
+  ],
+  "case_id": "b5687497c2e5f6f00a32be75",
+  "deviation_id": "5981c911d45a1015b8c730aa",
+  "entry": "src/jpip.rs:2021:jpip::DatabinCache::expand_metadata_bin",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "iteration=11 mode=0 selected-CSn=7: complete=false, output=0/282, missing=[JpipMissingRange { databin: DatabinId { class_identifier: 8, class: Metadata, codestream: 7, in_class: 0 }, offset: 0, length: None }], needs=[JpipSemanticNeed { kind: MetadataBin, identifier: 0 }]"
+  },
+  "files": [
+    {
+      "path": "src/jpip_metadata_contract_tests.rs",
+      "sha256": "0d8789c8a4bfa1365c236218de7c38b7a21b0775f0ec7d094d67566ee3f33cae"
+    },
+    {
+      "path": "validation/run_metadata_contract_suite.py",
+      "sha256": "127c7f034c705a03d038af6136029fafc445c45e7836a57279bfb566bc80e167"
+    }
+  ],
+  "id": "DEV-AAF82B7313",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "113505b00b0d37d1dadf8a9f",
+  "test": [
+    "python3",
+    "validation/run_metadata_contract_suite.py",
+    "metadata_identity_ignores_message_csn"
+  ],
+  "test_item": "e1f075d7b5416d4f472c0f9a"
+}

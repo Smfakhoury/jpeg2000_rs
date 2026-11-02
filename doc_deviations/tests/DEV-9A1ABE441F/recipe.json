@@ -1,0 +1,46 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/install-jpip-vbas-contract.py"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--locked",
+      "--no-run"
+    ]
+  ],
+  "case_id": "a47255338004ddac419b357f",
+  "deviation_id": "1a09df4370e8bfc3bfe3d592",
+  "entry": "src/jpip.rs:361:jpip::read_vbas",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "parse_jpip_message -> read_vbas, independent metadata header [60, 80, 08, 00, 00, 01, ab, 5a]: expected value-preserving Data, got Err(MalformedInput { offset: 1, kind: InvalidJpipVbas })"
+  },
+  "files": [
+    {
+      "path": "validation/jpip_vbas_contract.rs",
+      "sha256": "bc655a866095318cd94570525383dadfd42c28862af9f8c521a1505c7602e23a"
+    },
+    {
+      "path": "validation/install-jpip-vbas-contract.py",
+      "sha256": "7c3275f68fb6227fbc881dc5ede594f3568b00ee1fe7058021efce7976f7f44a"
+    }
+  ],
+  "id": "DEV-9A1ABE441F",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "6b2c861fc7792bec596e0b48",
+  "test": [
+    "cargo",
+    "test",
+    "--lib",
+    "--locked",
+    "jpip::tests::bounded_standard_vbas_contract",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "55730ec94ef7342e41f0ebc5"
+}

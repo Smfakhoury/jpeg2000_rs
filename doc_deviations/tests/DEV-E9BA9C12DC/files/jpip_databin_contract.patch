@@ -1,0 +1,284 @@
+--- a/src/jpip.rs
++++ b/src/jpip.rs
+@@ -5070,6 +5070,281 @@
+         };
+         assert_eq!(header.databin().class(), DatabinClass::Metadata);
+         assert_eq!(header.databin().codestream(), 1);
++        databin_contract_sweep();
++    }
++
++    fn contract_vbas(mut value: u64) -> Vec<u8> {
++        let mut bytes = vec![(value & 127) as u8];
++        value >>= 7;
++        while value != 0 {
++            bytes.push((value & 127) as u8 | 128);
++            value >>= 7;
++        }
++        bytes.reverse();
++        bytes
++    }
++
++    fn contract_precinct_wire(form: u8, identity: (u64, u64, u64), range: (u64, bool)) -> Vec<u8> {
++        let (class, stream, bin) = identity;
++        let (offset, last) = range;
++        assert!((1..=3).contains(&form));
++        assert!(class <= 1);
++        assert!(offset < 3);
++        // T.808 A.2.1: Bin-ID has four initial value bits, then seven per byte.
++        let mut tail = Vec::new();
++        let mut high = bin;
++        while high > 15 {
++            tail.push((high & 127) as u8);
++            high >>= 7;
++        }
++        tail.reverse();
++        let mut wire = vec![
++            (form << 5)
++                | if last { 16 } else { 0 }
++                | high as u8
++                | if tail.is_empty() { 0 } else { 128 },
++        ];
++        let tail_len = tail.len();
++        for (index, byte) in tail.into_iter().enumerate() {
++            wire.push(byte | if index + 1 == tail_len { 0 } else { 128 });
++        }
++        if form >= 2 {
++            wire.extend(contract_vbas(class));
++        }
++        if form == 3 {
++            wire.extend(contract_vbas(stream));
++        }
++        wire.extend(contract_vbas(offset));
++        wire.push(1);
++        if class == 1 {
++            wire.push(if offset == 0 { 1 } else { 3 });
++        }
++        // One zero byte is an empty JPEG 2000 packet. The fixture has three layers.
++        wire.push(0);
++        wire
++    }
++
++    fn contract_parse_precinct(
++        parser: &mut JpipMessageParser,
++        form: u8,
++        identity: (u64, u64, u64),
++        range: (u64, bool),
++    ) -> JpipFragment {
++        let (class, stream, bin) = identity;
++        let (offset, last) = range;
++        if form == 1 {
++            assert_eq!(parser.context().previous_class().unwrap_or(0), class);
++        }
++        if form != 3 {
++            assert_eq!(parser.context().previous_codestream().unwrap_or(0), stream);
++        }
++        let wire = contract_precinct_wire(form, identity, range);
++        let (message, consumed) = parser.parse(&wire).unwrap_or_else(|error| {
++            panic!(
++                "parse -> header.databin -> fragment: form={form} class={class} \
++                 stream={stream} bin={bin} offset={offset} last={last} \
++                 wire={wire:02x?}: {error:?}"
++            )
++        });
++        assert_eq!(consumed, wire.len());
++        let JpipMessage::Data { header, body } = message else {
++            panic!("expected precinct data");
++        };
++        let actual = header.databin();
++        assert_eq!(
++            actual.class_identifier(),
++            class,
++            "raw wire class must survive"
++        );
++        assert_eq!(actual.class(), DatabinClass::Precinct);
++        assert_eq!(actual.codestream(), stream);
++        assert_eq!(actual.in_class(), bin);
++        assert_eq!(header.offset(), offset);
++        assert_eq!(header.length(), 1);
++        assert_eq!(header.is_last_byte(), last);
++        assert_eq!(header.final_length(), last.then_some(offset + 1));
++        assert_eq!(
++            header.auxiliary(),
++            (class == 1).then_some(if offset == 0 { 1 } else { 3 })
++        );
++        assert_eq!(header.header_length(), wire.len() - 1);
++        assert_eq!(body, [0]);
++        assert_eq!(parser.context().previous_class(), Some(class));
++        assert_eq!(parser.context().previous_codestream(), Some(stream));
++        JpipFragment::from_message(header, body, &ResourceLimits::default()).unwrap()
++    }
++
++    fn databin_contract_sweep() {
++        assert_eq!(
++            contract_precinct_wire(3, (1, 128, 16), (2, true)),
++            [0xf0, 0x10, 1, 0x81, 0, 2, 1, 3, 0]
++        );
++        let limits = ResourceLimits::default();
++        let mut identities = vec![
++            (0, 0),
++            (1, 1),
++            (127, 15),
++            (128, 16),
++            (16383, 127),
++            (16384, 128),
++            (2, 2047),
++            (3, 2048),
++            (65535, 65535),
++        ];
++        let mut seed = 0x4a50_4950_u64;
++        for _ in 0..16 {
++            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
++            identities.push(((seed >> 32) & 65535, seed & 65535));
++        }
++        for (stream, bin) in identities {
++            eprintln!("databin contract sweep: stream={stream} bin={bin}");
++            for class in 0..=1 {
++                for form in 1..=3 {
++                    let mut parser = JpipMessageParser::new(limits);
++                    let prior_class = if form == 1 { class } else { class ^ 1 };
++                    let prior_stream = if form == 3 { stream ^ 1 } else { stream };
++                    contract_parse_precinct(
++                        &mut parser,
++                        3,
++                        (prior_class, prior_stream, bin ^ 1),
++                        (0, false),
++                    );
++                    contract_parse_precinct(&mut parser, form, (class, stream, bin), (0, false));
++                }
++                let mut fresh = JpipMessageParser::new(limits);
++                contract_parse_precinct(&mut fresh, 2, (class, 0, bin), (0, false));
++
++                for order in [[0, 1, 2], [1, 2, 0]] {
++                    let ordinary = DatabinId::new(0, stream, bin).unwrap();
++                    let extended = DatabinId::new(1, stream, bin).unwrap();
++                    let mut caches = [DatabinCache::new(limits), DatabinCache::new(limits)];
++                    for (path, cache) in caches.iter_mut().enumerate() {
++                        let mut parser = JpipMessageParser::new(limits);
++                        // Only the class/Aux changes in the normalized execution.
++                        // Parse dependent headers in wire order before reordering fragments.
++                        let classes = if path == 0 {
++                            [class, class ^ 1, class ^ 1]
++                        } else {
++                            [0; 3]
++                        };
++                        let fragments = [
++                            contract_parse_precinct(
++                                &mut parser,
++                                3,
++                                (classes[0], stream, bin),
++                                (0, false),
++                            ),
++                            contract_parse_precinct(
++                                &mut parser,
++                                2,
++                                (classes[1], stream, bin),
++                                (2, true),
++                            ),
++                            contract_parse_precinct(
++                                &mut parser,
++                                1,
++                                (classes[2], stream, bin),
++                                (1, false),
++                            ),
++                        ];
++                        let mut occupied = [false; 3];
++                        let mut final_seen = false;
++                        for (step, index) in order.into_iter().enumerate() {
++                            cache.insert(fragments[index].clone()).unwrap();
++                            occupied[[0, 2, 1][index]] = true;
++                            final_seen |= index == 1;
++                            let prefix =
++                                occupied.iter().take_while(|&&present| present).count() as u64;
++                            let intervals = occupied
++                                .iter()
++                                .enumerate()
++                                .filter(|&(i, &present)| present && (i == 0 || !occupied[i - 1]))
++                                .count() as u64;
++                            assert_eq!(cache.databin_count(), 1, "classes 0/1 must share a bin");
++                            assert_eq!(cache.stored_bytes(), (step + 1) as u64);
++                            assert_eq!(cache.accepted_fragments(), (step + 1) as u64);
++                            for target in [ordinary, extended] {
++                                let status =
++                                    cache.status(target).expect("both aliases must resolve");
++                                assert_eq!(status.final_length(), final_seen.then_some(3));
++                                assert_eq!(status.contiguous_prefix(), prefix);
++                                assert_eq!(status.stored_bytes(), (step + 1) as u64);
++                                assert_eq!(status.interval_count(), intervals);
++                                assert_eq!(cache.is_complete(target), final_seen && prefix == 3);
++                                if step == 2 {
++                                    assert_eq!(
++                                        cache.databin_view(target).unwrap().as_bytes(),
++                                        [0; 3]
++                                    );
++                                } else {
++                                    assert!(matches!(
++                                        cache.databin_view(target),
++                                        Err(DecodeError::MalformedInput {
++                                            kind: MalformedKind::MissingRequiredStructure,
++                                            ..
++                                        })
++                                    ));
++                                }
++                            }
++                        }
++                        for alias_class in 0..=1 {
++                            let duplicate = contract_parse_precinct(
++                                &mut parser,
++                                3,
++                                (alias_class, stream, bin),
++                                (2, true),
++                            );
++                            cache.insert(duplicate).unwrap();
++                            assert_eq!(cache.databin_count(), 1);
++                            assert_eq!(cache.stored_bytes(), 3);
++                            assert_eq!(cache.accepted_fragments(), 4 + alias_class);
++                            assert_eq!(cache.databin_view(ordinary).unwrap().as_bytes(), [0; 3]);
++                            assert_eq!(cache.status(ordinary), cache.status(extended));
++                        }
++                        for other in [
++                            DatabinId::new(0, stream + 1, bin).unwrap(),
++                            DatabinId::new(1, stream, bin + 1).unwrap(),
++                            DatabinId::new(2, stream, bin).unwrap(),
++                        ] {
++                            assert_eq!(
++                                cache.status(other),
++                                None,
++                                "different identities must not alias"
++                            );
++                        }
++                        for (other_stream, other_bin) in [(stream + 1, bin), (stream, bin + 1)] {
++                            let distinct = contract_parse_precinct(
++                                &mut parser,
++                                3,
++                                (1, other_stream, other_bin),
++                                (0, false),
++                            );
++                            cache.insert(distinct).unwrap();
++                            let target = DatabinId::new(0, other_stream, other_bin).unwrap();
++                            let status = cache.status(target).unwrap();
++                            assert_eq!(status.final_length(), None);
++                            assert_eq!(status.contiguous_prefix(), 1);
++                            assert_eq!(status.stored_bytes(), 1);
++                            assert!(!cache.is_complete(target));
++                            assert_eq!(cache.databin_view(extended).unwrap().as_bytes(), [0; 3]);
++                        }
++                        assert_eq!(cache.databin_count(), 3);
++                        assert_eq!(cache.stored_bytes(), 5);
++                        assert_eq!(cache.accepted_fragments(), 7);
++                    }
++                    for target in [ordinary, extended] {
++                        assert_eq!(caches[0].status(target), caches[1].status(target));
++                        assert_eq!(
++                            caches[0].databin_view(target),
++                            caches[1].databin_view(target)
++                        );
++                    }
++                }
++            }
++        }
++        // A.2.1 assigns zero to omitted Class and CSn when there is no predecessor.
++        let mut initial = JpipMessageParser::new(limits);
++        contract_parse_precinct(&mut initial, 1, (0, 0, 0), (0, false));
+     }
+ 
+     #[test]

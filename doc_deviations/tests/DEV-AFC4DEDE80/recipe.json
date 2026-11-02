@@ -1,0 +1,53 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "validation/metadata-cardinality-registration.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/jp2.rs').read_text(); assert s.count('    include!(\"jp2_metadata_cardinality_test.rs\");') == 1; assert 'fn retains_general_layer_cdef_and_nested_metadata()' in s; t=Path('src/jp2_metadata_cardinality_test.rs').read_text(); assert 'fn association_requires_two_immediate_children()' in t; assert 'failures.is_empty()' in t"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "31f9c6f9ee4357015c058216",
+  "deviation_id": "a5fb215b31e469aa5bcdd3f3",
+  "entry": "src/jp2.rs:1323:jp2::inspect_metadata_box",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "empty at depth 1: immediate=0, expected=None, observed=Ok((1, 1))"
+  },
+  "files": [
+    {
+      "path": "src/jp2_metadata_cardinality_test.rs",
+      "sha256": "d8c51f27fe3cd6ff33d482c4a96b453b04b0f89ae88f861bd1d08c842267feb9"
+    },
+    {
+      "path": "validation/metadata-cardinality-registration.patch",
+      "sha256": "823076fd680a82435f15e46e1edc478044714828c773eba014b58a1838f27d11"
+    }
+  ],
+  "id": "DEV-AFC4DEDE80",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "fddd4285e23c96ff7162e33c",
+  "test": [
+    "cargo",
+    "test",
+    "--lib",
+    "jp2::tests::association_requires_two_immediate_children",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "9970988c331d1d0c2b443c1d"
+}

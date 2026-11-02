@@ -1,0 +1,36 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/run_jpip_contract.py",
+      "build"
+    ]
+  ],
+  "case_id": "07be402c570ea0a3c7248a7d",
+  "deviation_id": "9368214fac938ede78f24ab7",
+  "entry": "src/jpip.rs:235:jpip::parse_jpip_message",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "A.2.1 first form-01 bytes=[20, 00, 02, 12, 34]: expected class=0, CSn=0; got Err(MalformedInput { offset: 0, kind: InvalidJpipHeader })"
+  },
+  "files": [
+    {
+      "path": "src/jpip_contract_tests.rs",
+      "sha256": "dac83fe290b42f0a74178d49a17c7f9bd1b8933727ba8cd504f7b871f946d5f9"
+    },
+    {
+      "path": "validation/run_jpip_contract.py",
+      "sha256": "ac8f69a5e098fccb0759ea7d91b2ab7a1d20570d55e7bebce42a337ec16bd203"
+    }
+  ],
+  "id": "DEV-30865B7D2D",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "a3f0825227645d309edff279",
+  "test": [
+    "python3",
+    "validation/run_jpip_contract.py",
+    "run",
+    "forms"
+  ],
+  "test_item": "2d56080287e2a81af4e09946"
+}

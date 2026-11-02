@@ -1,0 +1,55 @@
+{
+  "build": [
+    [
+      "patch",
+      "-p1",
+      "--batch",
+      "--forward",
+      "-i",
+      "inherited_class_registration.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; s=Path('src/jpip.rs').read_text(); assert s.count('check_inherited_class_contract();') == 1; assert s.count('include!(\"jpip_inherited_class_contract.rs\");') == 1; h=Path('src/jpip_inherited_class_contract.rs').read_text(); assert 'assert_eq!(initial, [0x21, 0, 0]);' in h; assert 'fn check_inherited_class_contract()' in h"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "f7af47278d5dee22cba50ede",
+  "deviation_id": "fc071e2951e754e38ccd77ae",
+  "entry": "src/jpip.rs:116:jpip::JpipHeaderContext::previous_class",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "valid dependent/independent header must parse: MalformedInput { offset: 0, kind: InvalidJpipHeader }"
+  },
+  "files": [
+    {
+      "path": "inherited_class_registration.patch",
+      "sha256": "719a664a2af2e9297b3cf243a25b1cca687aa4f7cfd8959d1b28424a5e1c1ee0"
+    },
+    {
+      "path": "src/jpip_inherited_class_contract.rs",
+      "sha256": "7c78732f5708c85522266c42fff903bab0a6f4bf79a2defdbabc7116c5fd740b"
+    }
+  ],
+  "id": "DEV-CA85C0D7B5",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "e747fe080bc71ebe1d1c602a",
+  "test": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "jpip::tests::parses_all_three_standard_header_forms_and_auxiliary",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "088604b66ca5feb8fa8bce96"
+}

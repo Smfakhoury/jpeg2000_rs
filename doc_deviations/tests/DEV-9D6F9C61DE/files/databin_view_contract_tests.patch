@@ -1,0 +1,250 @@
+--- a/src/jpip.rs
++++ b/src/jpip.rs
+@@ -5113,6 +5113,247 @@
+         cache.insert(fragment(target, 0, b"abc", false)).unwrap();
+         assert!(cache.is_complete(target));
+         assert_eq!(cache.databin_view(target).unwrap().as_bytes(), b"abcdef");
++
++        databin_view_full_coverage_sweep();
++    }
++
++    fn databin_view_full_coverage_sweep() {
++        let mut seed = 0x6a09_e667_f3bc_c909_u64;
++        let limits = ResourceLimits::default()
++            .with_maximum_input_bytes(256)
++            .unwrap();
++        for class in [0, 2, 4, 6, 8] {
++            for length in [0, 1, 2, 3, 7, 8, 15, 16, 31, 32, 63, 64, 127, 128, 255, 256] {
++                let target = id(class, 0);
++                let expected: Vec<u8> = (0..length)
++                    .map(|_| {
++                        seed ^= seed << 13;
++                        seed ^= seed >> 7;
++                        seed ^= seed << 17;
++                        seed as u8
++                    })
++                    .collect();
++                let check = |cache: &DatabinCache, covered: &[bool], final_known: bool| {
++                    let prefix = covered.iter().take_while(|&&present| present).count();
++                    let actual = cache.databin_view(target).map(JpipByteView::into_bytes);
++                    let wanted = if final_known && prefix == length {
++                        Ok(expected.clone())
++                    } else {
++                        Err(DecodeError::malformed(
++                            prefix as u64,
++                            MalformedKind::MissingRequiredStructure,
++                        ))
++                    };
++                    assert_eq!(
++                        actual, wanted,
++                        "insert -> databin_view: class={class}, length={length}, \
++                         prefix={prefix}, final_known={final_known}, covered={covered:?}"
++                    );
++                };
++
++                let mut cache = DatabinCache::new(limits);
++                check(&cache, &vec![false; length], false);
++                if length > 0 {
++                    cache.insert(fragment(target, 0, &expected, false)).unwrap();
++                }
++                check(&cache, &vec![true; length], false);
++                cache
++                    .insert(fragment(target, length as u64, b"", true))
++                    .unwrap();
++                check(&cache, &vec![true; length], true);
++
++                // A last-byte indication establishes length, not coverage (T.808 A.2.1).
++                let mut cache = DatabinCache::new(limits);
++                cache
++                    .insert(fragment(target, length as u64, b"", true))
++                    .unwrap();
++                let mut covered = vec![false; length];
++                check(&cache, &covered, true);
++                let mut order: Vec<usize> = (0..length).collect();
++                for index in (1..length).rev() {
++                    seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
++                    order.swap(index, (seed % (index as u64 + 1)) as usize);
++                }
++                for index in order {
++                    cache
++                        .insert(fragment(
++                            target,
++                            index as u64,
++                            &expected[index..index + 1],
++                            false,
++                        ))
++                        .unwrap();
++                    covered[index] = true;
++                    check(&cache, &covered, true);
++                }
++                cache.insert(fragment(target, 0, &expected, true)).unwrap();
++                check(&cache, &covered, true);
++                if length > 0 {
++                    cache.insert(fragment(target, 0, &expected, false)).unwrap();
++                }
++                check(&cache, &covered, true);
++
++                if length == 0 {
++                    continue;
++                }
++                for hole in [0, length / 2, length - 1] {
++                    let mut cache = DatabinCache::new(limits);
++                    cache
++                        .insert(fragment(
++                            target,
++                            (hole + 1) as u64,
++                            &expected[hole + 1..],
++                            true,
++                        ))
++                        .unwrap();
++                    if hole > 0 {
++                        cache
++                            .insert(fragment(target, 0, &expected[..hole], false))
++                            .unwrap();
++                    }
++                    let mut covered = vec![true; length];
++                    covered[hole] = false;
++                    check(&cache, &covered, true);
++                    cache
++                        .insert(fragment(
++                            target,
++                            hole as u64,
++                            &expected[hole..hole + 1],
++                            false,
++                        ))
++                        .unwrap();
++                    covered[hole] = true;
++                    check(&cache, &covered, true);
++                }
++            }
++        }
++    }
++
++    #[test]
++    fn databin_view_metadata_identity_ignores_codestream() {
++        // T.808 (12/2022) A.3.6.1: one logical target per cache, root bin 0,
++        // and metadata made of family-file boxes. No transport header is fabricated.
++        let expected = box32(*b"free", b"metadata identity");
++        assert_eq!(
++            u32::from_be_bytes(expected[..4].try_into().unwrap()) as usize,
++            expected.len()
++        );
++        assert_eq!(&expected[4..8], b"free");
++        let mut failures = Vec::new();
++        for (stored_stream, other_stream) in
++            [(0, 1), (1, 0), (127, 128), (128, 16383), (16384, u64::MAX)]
++        {
++            let root = DatabinId::new(8, stored_stream, 0).unwrap();
++            let root_alias = DatabinId::new(8, other_stream, 0).unwrap();
++            assert_eq!(root.class(), DatabinClass::Metadata);
++            assert_eq!(root.in_class(), 0);
++            assert_ne!(stored_stream, other_stream);
++
++            let mut cache = DatabinCache::new(ResourceLimits::default());
++            assert_eq!(
++                cache.databin_view(root_alias),
++                Err(DecodeError::malformed(
++                    0,
++                    MalformedKind::MissingRequiredStructure
++                ))
++            );
++            cache.insert(fragment(root, 0, &expected, true)).unwrap();
++            assert_eq!(cache.databin_view(root).unwrap().as_bytes(), expected);
++            let actual = cache.databin_view(root_alias).map(JpipByteView::into_bytes);
++            if actual != Ok(expected.clone()) {
++                failures.push(format!(
++                    "complete root: stored CSn={stored_stream}, queried CSn={other_stream}, \
++                     expected={expected:?}, actual={actual:?}"
++                ));
++            }
++            let distinct_bin = DatabinId::new(8, other_stream, 1).unwrap();
++            assert_eq!(
++                cache.databin_view(distinct_bin),
++                Err(DecodeError::malformed(
++                    0,
++                    MalformedKind::MissingRequiredStructure
++                ))
++            );
++            let distinct_class = DatabinId::new(4, other_stream, 0).unwrap();
++            assert_eq!(
++                cache.databin_view(distinct_class),
++                Err(DecodeError::malformed(
++                    0,
++                    MalformedKind::MissingRequiredStructure
++                ))
++            );
++
++            let mut empty = DatabinCache::new(ResourceLimits::default());
++            empty.insert(fragment(root, 0, b"", true)).unwrap();
++            let actual = empty.databin_view(root_alias).map(JpipByteView::into_bytes);
++            if actual != Ok(Vec::new()) {
++                failures.push(format!(
++                    "empty root: stored CSn={stored_stream}, queried CSn={other_stream}, actual={actual:?}"
++                ));
++            }
++
++            for bin in [0, 1, 15, 16, 127, 128] {
++                let first = DatabinId::new(8, stored_stream, bin).unwrap();
++                let second = DatabinId::new(8, other_stream, bin).unwrap();
++                let mut mixed = DatabinCache::new(ResourceLimits::default());
++                if bin != 0 {
++                    mixed.insert(fragment(root, 0, b"", true)).unwrap();
++                }
++                let middle = expected.len() / 2;
++                mixed
++                    .insert(fragment(second, middle as u64, &expected[middle..], true))
++                    .unwrap();
++                for query in [first, second] {
++                    assert_eq!(
++                        mixed.databin_view(query),
++                        Err(DecodeError::malformed(
++                            0,
++                            MalformedKind::MissingRequiredStructure
++                        )),
++                        "incomplete metadata: bin={bin}, query={query:?}"
++                    );
++                }
++                mixed
++                    .insert(fragment(first, 0, &expected[..middle], false))
++                    .unwrap();
++                for query in [first, second] {
++                    let actual = mixed.databin_view(query).map(JpipByteView::into_bytes);
++                    if actual != Ok(expected.clone()) {
++                        failures.push(format!(
++                            "mixed fragments: bin={bin}, CSns={stored_stream}/{other_stream}, \
++                             query={query:?}, expected={expected:?}, actual={actual:?}"
++                        ));
++                    }
++                }
++            }
++        }
++        // The metadata exception must not collapse codestream-specific data-bins.
++        for class in [0, 2, 4, 6] {
++            let first = DatabinId::new(class, 0, 0).unwrap();
++            let second = DatabinId::new(class, 1, 0).unwrap();
++            let mut cache = DatabinCache::new(ResourceLimits::default());
++            cache.insert(fragment(first, 0, b"first", true)).unwrap();
++            assert_eq!(
++                cache.databin_view(second),
++                Err(DecodeError::malformed(
++                    0,
++                    MalformedKind::MissingRequiredStructure
++                ))
++            );
++            cache.insert(fragment(second, 0, b"second", true)).unwrap();
++            assert_eq!(cache.databin_view(first).unwrap().as_bytes(), b"first");
++            assert_eq!(cache.databin_view(second).unwrap().as_bytes(), b"second");
++        }
++        assert!(
++            failures.is_empty(),
++            "insert -> databin_view violates metadata CSn independence:\n{}",
++            failures
++                .iter()
++                .take(8)
++                .cloned()
++                .collect::<Vec<_>>()
++                .join("\n")
++        );
+     }
+ 
+     #[test]

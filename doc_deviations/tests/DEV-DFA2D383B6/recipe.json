@@ -1,0 +1,39 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/build-jpip-transition-contract-tests.py"
+    ]
+  ],
+  "case_id": "819f3c90a11c1699f4f18609",
+  "deviation_id": "66802981d80b00d878039753",
+  "entry": "src/jpip.rs:1912:jpip::DatabinCache::tile_part_transitions",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "bytes=[ff, 90, 00, 0a, 00, 07, 00, 00, 00, 0c, 00, 01, ff, 64, 00, 06, 00, 01, 6f, 6b, ff, 93]: expected Err(MalformedInput { offset: 0, kind: InvalidTilePart }); got Ok(JpipTilePartTransitionReport { status: Available, transitions: [JpipTilePartTransition { tile: 7, tile_part: 0, packet_count: None, data_length: None, functional: false, header: [255, 144, 0, 10, 0, 7, 0, 0, 0, 12, 0, 1, 255, 100, 0, 6, 0, 1, 111, 107, 255, 147] }], needs: [], missing: [] })"
+  },
+  "files": [
+    {
+      "path": "src/jpip_transition_contract_tests.rs",
+      "sha256": "3b83717c21efc15c1d4818c661274f4d6294edcf0b3c037e331d8b31bf8647f5"
+    },
+    {
+      "path": "validation/build-jpip-transition-contract-tests.py",
+      "sha256": "046e071be9cddf93a924412009be80ba891877c9355534a9e55fdeb658ed58f8"
+    }
+  ],
+  "id": "DEV-DFA2D383B6",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "ecde50e8b39ea19cc97ae9a9",
+  "test": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "jpip::tests::contract_exact_parse_and_errors",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "4ff071cfd7937f8ec9a893bc"
+}

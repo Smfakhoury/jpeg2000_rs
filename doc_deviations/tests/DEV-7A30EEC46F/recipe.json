@@ -1,0 +1,35 @@
+{
+  "build": [
+    [
+      "python3",
+      "jpip_class_contract_suite.py",
+      "build"
+    ]
+  ],
+  "case_id": "3e5d68269d3492faf061a2e1",
+  "deviation_id": "bd27b4292b7e47daf8f8b67e",
+  "entry": "src/jpip.rs:77:jpip::DatabinId::class",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "DatabinId::new(3, 0, 0) -> Ok(DatabinId { class_identifier: 3, class: TileHeader, codestream: 0, in_class: 0 }); Table A.2 semantic class expected None"
+  },
+  "files": [
+    {
+      "path": "src/jpip_class_contract_cases.rs",
+      "sha256": "bcbba230fd1dcd7901dc7c7d15a61beb35083721ebf5a28ed0f9652aa7ab0d04"
+    },
+    {
+      "path": "jpip_class_contract_suite.py",
+      "sha256": "66e76cb9f3e0e619dbd2b2ca1b4bf453ed72da30e8a8b9f9902e59f9166c6fc1"
+    }
+  ],
+  "id": "DEV-7A30EEC46F",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "cca7e9b1da20c54a63cf8dfc",
+  "test": [
+    "python3",
+    "jpip_class_contract_suite.py",
+    "jpip::tests::standard_assigned_classes_exclude_reserved_signaling"
+  ],
+  "test_item": "c6736423f68eca94b5682885"
+}

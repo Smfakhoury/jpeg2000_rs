@@ -1,0 +1,46 @@
+{
+  "build": [
+    [
+      "python3",
+      "register_normalization_contract_tests.py"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--no-run",
+      "--quiet"
+    ]
+  ],
+  "case_id": "75d55d0e82420b19700d15de",
+  "deviation_id": "6d98cc079e1e848463d4205f",
+  "entry": "src/jpip.rs:4269:jpip::normalize_automatic_tile_headers",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "tile=0 retained=0 SOD=false: valid complete class-2 bin rejected: MalformedInput { offset: 0, kind: MissingRequiredStructure }"
+  },
+  "files": [
+    {
+      "path": "src/jpip_normalization_contract_tests.rs",
+      "sha256": "760f32cdd20d06dde81b4c689c56915bade09cc742b68ddb9276d3d630486ca8"
+    },
+    {
+      "path": "register_normalization_contract_tests.py",
+      "sha256": "9007514b525174c77e257cfb372fab53f47bfffb9f99029855b4ababcc0ee5c4"
+    }
+  ],
+  "id": "DEV-76187B67F4",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "153c097eaf82d53210996129",
+  "test": [
+    "cargo",
+    "test",
+    "--lib",
+    "--quiet",
+    "--",
+    "jpip::tests::automatic_normalization_accepts_optional_wire_sod_contract",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "944e3d6310a427b8a34ed222"
+}

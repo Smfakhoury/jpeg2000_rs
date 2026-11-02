@@ -1,0 +1,36 @@
+{
+  "build": [
+    [
+      "python3",
+      "deepspec_jpip_replay.py",
+      "build"
+    ]
+  ],
+  "case_id": "b1b7a6f7872efc32ef4a1492",
+  "deviation_id": "ad8869565c7aded2454bb8f6",
+  "entry": "src/jpip.rs:230:jpip::JpipMessageParser::parse",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "A.2.1 zero defaults violated:\nfirst inherited [20, 00, 00]: MalformedInput { offset: 0, kind: InvalidJpipHeader }"
+  },
+  "files": [
+    {
+      "path": "deepspec_jpip_parse.patch",
+      "sha256": "31f4cb218f4db19c19496deec29c34e17439544ccc3d03542da0740835611438"
+    },
+    {
+      "path": "deepspec_jpip_replay.py",
+      "sha256": "292cbd3b4c97fbab2737149df95d8999ecda66fdaaf452c1db51200988ef91e5"
+    }
+  ],
+  "id": "DEV-F1E3AE04A3",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "43f15ffa053ac75972b21f66",
+  "test": [
+    "python3",
+    "deepspec_jpip_replay.py",
+    "run",
+    "jpip::tests::deepspec_standard_header_forms"
+  ],
+  "test_item": "8bd5786813557fc358538a36"
+}

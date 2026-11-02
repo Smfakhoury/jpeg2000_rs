@@ -1,0 +1,50 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "databin_view_contract_tests.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "import hashlib; from pathlib import Path; assert hashlib.sha256(Path('src/jpip.rs').read_bytes()).hexdigest() == '3fad65d700b3556fd5ec8d9400494dedaabf9a43a381e19c8bab1afef3ff8ff5', 'Source overlay missing or modified'"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "b5221dd13644ef774e61f99c",
+  "deviation_id": "639ba0bbcea6d6e5806f70dc",
+  "entry": "src/jpip.rs:1741:jpip::DatabinCache::databin_view",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "complete root: stored CSn=0, queried CSn=1, expected=[0, 0, 0, 25, 102, 114, 101, 101, 109, 101, 116, 97, 100, 97, 116, 97, 32, 105, 100, 101, 110, 116, 105, 116, 121], actual=Err(MalformedInput { offset: 0, kind: MissingRequiredStructure })"
+  },
+  "files": [
+    {
+      "path": "databin_view_contract_tests.patch",
+      "sha256": "29ee74aff05aecc51a3debf08ae4788c868d73843eca111491de8c3320dfee72"
+    },
+    {
+      "path": "run_databin_view_case.py",
+      "sha256": "637eb2c7e9be4b78802c4a44f899f4d8223fcc38f007480f4c05e01031112a63"
+    }
+  ],
+  "id": "DEV-9D6F9C61DE",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "0ac89b07817eea830103928b",
+  "test": [
+    "python3",
+    "run_databin_view_case.py",
+    "metadata_identity"
+  ],
+  "test_item": "981a9320e9a90ac6c78a0a2c"
+}

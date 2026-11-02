@@ -1,0 +1,11 @@
+--- a/src/transform.rs
++++ b/src/transform.rs
+@@ -2434,6 +2434,8 @@
+ pub(crate) mod tests {
+     use super::*;
+ 
++    mod arbitrary_level_contract;
++
+     #[test]
+     fn arbitrary_q32_arithmetic_preserves_full_signed_edges_and_errors() {
+         let overflow = DecodeError::MalformedInput {

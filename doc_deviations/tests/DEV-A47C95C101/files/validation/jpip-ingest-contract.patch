@@ -1,0 +1,11 @@
+--- a/src/jpip.rs
++++ b/src/jpip.rs
+@@ -4879,6 +4879,8 @@
+ mod tests {
+     use super::*;
+ 
++    include!("jpip_ingest_contract_tests.rs");
++
+     fn id(class: u64, in_class: u64) -> DatabinId {
+         DatabinId::new(class, 0, in_class).unwrap()
+     }

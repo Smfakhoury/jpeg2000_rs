@@ -1,0 +1,47 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "jp2-spec-registration.patch"
+    ],
+    [
+      "python3",
+      "validation/jp2_spec_runner.py",
+      "build"
+    ]
+  ],
+  "case_id": "e68962b8c90cb4b6836ef844",
+  "deviation_id": "db8bb16a144e122cd7532716",
+  "entry": "src/jp2.rs:977:jp2::parse",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "jp2::parse: ordinary JP2 accepts 2 complete well-framed codestreams within limit 8; Err(MalformedInput { offset: 176, kind: InvalidBoxContents }): false"
+  },
+  "files": [
+    {
+      "path": "src/jp2/spec_tests.rs",
+      "sha256": "273779122e890eb01c6232749af91db7cc4d034adc049eebe05ed8e408cf5cd1"
+    },
+    {
+      "path": "jp2-spec-registration.patch",
+      "sha256": "72f38d9d2d5418ff65b693856f6cc3d54840c377f1a46597ac32cf86a7abca5b"
+    },
+    {
+      "path": "validation/jp2_spec_runner.py",
+      "sha256": "70fd1cf40199a480eda463a5174856f74ab66c9e8c5de74f45b05fb1492fc3a3"
+    }
+  ],
+  "id": "DEV-457ACAB2C3",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "6137c299a688f80716db60bc",
+  "test": [
+    "python3",
+    "validation/jp2_spec_runner.py",
+    "spec_later_jp2_codestreams_preserve_first_display"
+  ],
+  "test_item": "ea8d9c3e31baf68e430c41aa"
+}

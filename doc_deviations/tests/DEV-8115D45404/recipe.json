@@ -1,0 +1,53 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "--forward",
+      "-p1",
+      "-i",
+      "snapshot-tests.patch"
+    ],
+    [
+      "python3",
+      "-c",
+      "from pathlib import Path; assert 'include!(\"jpip_snapshot_spec_tests.rs\");' in Path('src/jpip.rs').read_text(); s=Path('src/jpip_snapshot_spec_tests.rs').read_text(); assert all('fn '+n+'()' in s for n in ['snapshot_spec_reconstructed_lengths','snapshot_spec_received_header_normalization','snapshot_spec_unavailable_headers'])"
+    ],
+    [
+      "cargo",
+      "test",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "30609dc5558500d02003e8d6",
+  "deviation_id": "6bc0aa42c164f206466ffd1d",
+  "entry": "src/jpip.rs:2229:jpip::DatabinCache::build_automatic_snapshot",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "legal complete JPP header rejected: layers=1 progression=2 comment=false SOD=false: malformed input at byte 0: MissingRequiredStructure"
+  },
+  "files": [
+    {
+      "path": "src/jpip_snapshot_spec_tests.rs",
+      "sha256": "acf9d2fec6d736ac9266686a5fbf09baa2c7611eb201d5de1f2f674f3f93a3eb"
+    },
+    {
+      "path": "snapshot-tests.patch",
+      "sha256": "472bff45ab6c190a88e1bf134fe6cb11b37bef1457b7e20eb9f4471a173350b7"
+    }
+  ],
+  "id": "DEV-8115D45404",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "3b21d8f452bd5242f422399e",
+  "test": [
+    "cargo",
+    "test",
+    "--lib",
+    "jpip::tests::snapshot_spec_received_header_normalization",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "test_item": "f3953d5e15029c5e0a4736bc"
+}

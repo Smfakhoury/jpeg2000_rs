@@ -1,0 +1,36 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/read-tile-part-contract.py",
+      "build"
+    ]
+  ],
+  "case_id": "db69a93bf86d084071e11986",
+  "deviation_id": "d376ea8284e282622433a04e",
+  "entry": "src/codestream.rs:9830:codestream::Parser::read_tile_part",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "consistent PLM/PLT must work separately AND together: [\"count=1 sources=3: MalformedInput { offset: 84, kind: InvalidMarkerOrder }\", \"count=2 sources=3: MalformedInput { offset: 85, kind: InvalidMarkerOrder }\", \"count=127 sources=3: MalformedInput { offset: 210, kind: InvalidMarkerOrder }\", \"count=128 sources=3: MalformedInput { offset: 211, kind: InvalidMarkerOrder }\", \"count=255 sources=3: MalformedInput { offset: 338, kind: InvalidMarkerOrder }\"]"
+  },
+  "files": [
+    {
+      "path": "src/codestream/read_tile_part_contract.rs",
+      "sha256": "12ef26458e82369bf88fb123ec49e7a957376372819e948e0fe1d1a71a0d5a33"
+    },
+    {
+      "path": "validation/read-tile-part-contract.py",
+      "sha256": "07835ebe23ded46fe2fcccc229adfb26edf4b9a3e03a5be1d878f11525f2957e"
+    }
+  ],
+  "id": "DEV-C36C516466",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "d6220bf1a69f68a0f1f19555",
+  "test": [
+    "python3",
+    "validation/read-tile-part-contract.py",
+    "run",
+    "plm_plt"
+  ],
+  "test_item": "9a82786057472396f5b9ef42"
+}

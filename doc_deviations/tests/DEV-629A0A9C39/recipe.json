@@ -1,0 +1,35 @@
+{
+  "build": [
+    [
+      "python3",
+      "validation/build-jp2-header-spec-tests.py"
+    ]
+  ],
+  "case_id": "349f62632c2048a190657687",
+  "deviation_id": "8857d0298e2942da6070ff7c",
+  "entry": "src/jp2.rs:2139:jp2::parse_jp2_header",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "method=255 extra=0 base=40: expected ignored colr, got MalformedInput { offset: 77, kind: InvalidColorSpecification }"
+  },
+  "files": [
+    {
+      "path": "src/jp2_header_spec_tests.rs",
+      "sha256": "d6845552527f61555dca2789e5665bba3ded59242e47f0bb9142201681cc6ebc"
+    },
+    {
+      "path": "validation/build-jp2-header-spec-tests.py",
+      "sha256": "7dcaf733ca5a643fe2e97592e8eb6c6fcf15a063f7525ca43aee3523c8c89db9"
+    }
+  ],
+  "id": "DEV-629A0A9C39",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "523cb72fe91c187071e962e3",
+  "test": [
+    "target/jp2-header-spec-tests",
+    "--exact",
+    "jp2::tests::spec_header_ignores_later_colour_semantics",
+    "--nocapture"
+  ],
+  "test_item": "56c3811ca88c040d23aa7d2a"
+}

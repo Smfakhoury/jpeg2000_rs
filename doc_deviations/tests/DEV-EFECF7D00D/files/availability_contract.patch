@@ -1,0 +1,12 @@
+diff --git a/src/jpip.rs b/src/jpip.rs
+--- a/src/jpip.rs
++++ b/src/jpip.rs
+@@ -4881,6 +4881,8 @@ mod tests {
+     fn id(class: u64, in_class: u64) -> DatabinId {
+         DatabinId::new(class, 0, in_class).unwrap()
+     }
+ 
++    include!("jpip_availability_contract_tests.rs");
++
+     fn fragment(databin: DatabinId, offset: u64, bytes: &[u8], final_byte: bool) -> JpipFragment {
+         JpipFragment::new(

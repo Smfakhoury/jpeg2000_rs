@@ -1,0 +1,61 @@
+{
+  "build": [
+    [
+      "patch",
+      "--batch",
+      "-p1",
+      "-i",
+      "availability_contract.patch"
+    ],
+    [
+      "grep",
+      "-Fq",
+      "include!(\"jpip_availability_contract_tests.rs\");",
+      "src/jpip.rs"
+    ],
+    [
+      "grep",
+      "-Fq",
+      "metadata CSn must not partition availability",
+      "src/jpip_availability_contract_tests.rs"
+    ],
+    [
+      "cargo",
+      "test",
+      "--locked",
+      "--lib",
+      "--no-run"
+    ]
+  ],
+  "case_id": "102f14d562fb2310b01ec046",
+  "deviation_id": "0c3f10cc584d07b1e6229cb4",
+  "entry": "src/jpip.rs:2937:jpip::DatabinCache::availability",
+  "expected": {
+    "exit": "nonzero",
+    "output_contains": "assertion `left == right` failed: metadata CSn must not partition availability\n  left: JpipAvailabilityReport { status: Partial, required_bytes: 16, available_bytes: 8, missing: [JpipMissingRange { databin: DatabinId { class_identifier: 8, class: Metadata, codestream: 0, in_class: 0 }, offset: 8, length: Some(8) }] }\n right: JpipAvailabilityReport { status: Available, required_bytes: 16, available_bytes: 16, missing: [] }"
+  },
+  "files": [
+    {
+      "path": "src/jpip_availability_contract_tests.rs",
+      "sha256": "e0a99efbfe8d974b1190787b3efb88f2e2313f43c63dfb80563e5597089363cc"
+    },
+    {
+      "path": "availability_contract.patch",
+      "sha256": "4a9598de5e0f6a9ada945c21b792d84cbe9c440094656fe6c6cb47035269b460"
+    }
+  ],
+  "id": "DEV-EFECF7D00D",
+  "schema": "rfc-deviation-test/1",
+  "spec_id": "8f9b87d47d2934d844317263",
+  "test": [
+    "cargo",
+    "test",
+    "--locked",
+    "--lib",
+    "availability_contract_",
+    "--",
+    "--nocapture",
+    "--test-threads=1"
+  ],
+  "test_item": "362ea31d9df2c2de98a1835c"
+}

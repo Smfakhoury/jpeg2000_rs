@@ -1,0 +1,11 @@
+--- a/src/jpip.rs
++++ b/src/jpip.rs
+@@ -4878,6 +4878,8 @@
+ #[cfg(test)]
+ mod tests {
+     use super::*;
++
++    include!("jpip_precinct_map_contract.rs");
+ 
+     fn id(class: u64, in_class: u64) -> DatabinId {
+         DatabinId::new(class, 0, in_class).unwrap()
