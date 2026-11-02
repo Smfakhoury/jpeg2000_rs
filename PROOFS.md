@@ -15,6 +15,33 @@ contracts and models. Exact run counts and source/tool hashes belong in fresh
 CI artifacts, not committed result snapshots. Independent model-to-standard
 review and official conformance testing remain separate.
 
+## Proposed exact SOC/SIZ prologue record
+
+The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
+proposes only the nine protected paths of the existing `layout-prologue`
+profile for #210. This record branch changes documentation only; the sixteen
+existing records, seventeen profiles, decoder/model source, pins and resource
+caps are unchanged.
+
+The complete regular-file blob pairs, including the absent-before/new-after
+`specs/layout_input.rs`, bind source
+`91df2b0537d024d91f4fffd6d35458b41b9bb2d0` against accepted main
+`9402332c120132abaa8dd1dfe89f0bf725cf916e`. Original held technical CI
+`41370207229` and Verus `41370207276` qualify that source, not this record's
+unchanged base decoder. No subset or union of amendments is authorized.
+
+The proposed source derives the actual SOC/segment/SIZ Result, complete
+image-size fields, header start and final reader state from raw input.
+Existing main-component finalizers, tile-data window and requirement
+meanings/reference unions are preserved. Main-header traversal, tile
+configuration, raw public decoding, lifetime and normative correspondence
+remain separate.
+
+Normal record adoption and fresh actual-main acceptance provide eligibility
+only. Source ancestry refresh, fresh gates and Ready hold, separate
+actual-source review, guarded merge and fresh main acceptance are still
+required. This is not source approval or publication completion.
+
 ## Proposed exact main-component finalizer record
 
 The accompanying [trusted amendment registry](validation/reviewed-amendments.md)
