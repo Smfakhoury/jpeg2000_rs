@@ -1,0 +1,16 @@
+{
+  "sources": [
+    "src/**/*.rs"
+  ],
+  "documents": [
+    "standards/t800-201906.txt",
+    "standards/t801-202106.txt",
+    "standards/t803-202402.txt",
+    "standards/t808-202212.txt",
+    "standards/t814-201906.txt"
+  ],
+  "document_style": "itu",
+  "spec_db": ".deepstar/core/core.db",
+  "max_attempts": 2,
+  "command_timeout_s": 300
+}
